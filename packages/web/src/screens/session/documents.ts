@@ -1,14 +1,12 @@
-// The workspace surface's model. Everything the surface can show is a document: a workspace file, a notebook, an
-// artifact. Documents open into one list, one of them is on show, and they all close the same way. Pure, so it is
-// testable without a DOM.
-import type { Artifact } from '@odin/shared/api'
+// The workspace surface's model. Everything the surface opens is a document: a workspace file or a notebook (or the
+// page that starts one). Artifacts are not documents; they have their own subpanel. Documents open into one list, one
+// of them is on show, and they all close the same way. Pure, so it is testable without a DOM.
 import type { NotebookCell, NotebookKernel, NotebookOutput } from '@odin/shared/notebooks'
 import type { IconName } from '@/components/Icon'
 
 export type DocRef =
   | { kind: 'file'; path: string }
   | { kind: 'notebook'; kernelId: string }
-  | { kind: 'artifact'; artifactId: number }
   /** The page that starts a notebook; it becomes the notebook once one is created. */
   | { kind: 'new-notebook'; name?: string }
 
@@ -25,8 +23,6 @@ export function docId(ref: DocRef): string {
       return `file:${ref.path}`
     case 'notebook':
       return `notebook:${ref.kernelId}`
-    case 'artifact':
-      return `artifact:${ref.artifactId}`
     case 'new-notebook':
       return 'new-notebook'
   }
@@ -116,10 +112,7 @@ export interface DocLabel {
   icon: IconName
 }
 
-export function docLabel(
-  ref: DocRef,
-  ctx: { artifacts: readonly Artifact[]; kernels: readonly NotebookKernel[] },
-): DocLabel {
+export function docLabel(ref: DocRef, ctx: { kernels: readonly NotebookKernel[] }): DocLabel {
   switch (ref.kind) {
     case 'file':
       return { name: baseName(ref.path), crumbs: ref.path.split('/'), icon: fileIcon(ref.path) }
@@ -127,10 +120,6 @@ export function docLabel(
       const kernel = ctx.kernels.find(k => k.id === ref.kernelId)
       const name = notebookFileName(kernel?.name ?? 'Notebook')
       return { name, crumbs: ['Notebooks', name], icon: 'terminal' }
-    }
-    case 'artifact': {
-      const title = ctx.artifacts.find(a => a.id === ref.artifactId)?.title ?? 'Output'
-      return { name: title, crumbs: ['Outputs', title], icon: 'board' }
     }
     case 'new-notebook':
       return { name: 'New notebook', crumbs: ['Notebooks', 'New notebook'], icon: 'terminal' }

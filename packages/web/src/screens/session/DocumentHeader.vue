@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// The one header every document wears on the workspace surface: what it is and where it lives, one line of status,
-// then its main action, a menu for the rest, and close. A file, a notebook and an artifact differ only in what they
-// put in it.
+// The one header every document wears on the workspace surface: a way back to the browser, what it is and where it
+// lives, one line of status, then its main action, a menu for the rest, and close. A file and a notebook differ only in
+// what they put in it.
 import { computed, inject } from 'vue'
 import { IuButton } from '@/components/Button'
 import { IuIcon, type IconName } from '@/components/Icon'
@@ -21,8 +21,10 @@ const props = withDefaults(
     /** Draws a status dot before the line; the line still says the state in words. */
     tone?: Status | null
     menu?: MenuItem[]
+    /** Offers the way back to the browser (the browser's own header does not). */
+    back?: boolean
   }>(),
-  { dir: '', icon: 'file', status: '', tone: null, menu: () => [] },
+  { dir: '', icon: 'file', status: '', tone: null, menu: () => [], back: true },
 )
 const emit = defineEmits<{ select: [id: string]; close: [] }>()
 const surface = inject(SURFACE, null)
@@ -45,18 +47,15 @@ const full = computed(() => (props.dir ? `${props.dir}/${props.name}` : props.na
 <template>
   <header class="doc-header">
     <IuButton
-      v-if="surface"
+      v-if="surface && back && !surface.browsing.value"
       variant="ghost"
       size="sm"
       icon-only
-      aria-label="Open a file, notebook or output"
-      title="Open…"
-      aria-haspopup="true"
-      :aria-expanded="surface.browsing.value"
-      :aria-controls="surface.drawerId"
-      @click="surface.toggleBrowse"
+      aria-label="Back to files"
+      title="Files"
+      @click="surface.showBrowser"
     >
-      <template #icon><IuIcon name="search" :size="14" /></template>
+      <template #icon><IuIcon name="chevronLeft" :size="14" /></template>
     </IuButton>
     <IuIcon class="doc-header__icon" :name="icon" :size="14" />
     <h2 class="doc-header__title" :title="full">

@@ -237,15 +237,14 @@ describe('SessionScreen', () => {
     await mountSession(id, api)
     const frame = wrapper!.find('iframe').element
     await textarea().setValue('Parent draft')
-    await wrapper!.find('[aria-label="Open a file, notebook or output"]').trigger('click')
-    await flushPromises()
+    await button('Browse all files')!.trigger('click')
     await vi.waitFor(() =>
-      expect(wrapper!.findAll('.doc-nav__row').some(b => b.text().includes('README.md'))).toBe(
+      expect(wrapper!.findAll('.panel-line__main').some(b => b.text().includes('README.md'))).toBe(
         true,
       ),
     )
     await wrapper!
-      .findAll('.doc-nav__row')
+      .findAll('.panel-line__main')
       .find(b => b.text().includes('README.md'))!
       .trigger('click')
     await vi.dynamicImportSettled()
@@ -733,9 +732,10 @@ describe('SessionScreen', () => {
 
   it('shows one artifact in the right column and a card in the thread', async () => {
     const { api } = await mountSession(FIXTURE_SESSION_IDS.idle)
-    const column = wrapper!.find('.artifact-panel--doc')
+    const column = wrapper!.find('.artifact-panel--sub')
     expect(column.exists()).toBe(true)
-    expect(column.find('.doc-header__name').text()).toBe('Pick a History layout')
+    expect(column.find('.artifact-panel__toggle').attributes('aria-expanded')).toBe('true')
+    expect(column.find('.artifact-panel__summary').text()).toBe('Pick a History layout')
     expect(column.find('[role="tablist"]').exists()).toBe(false)
     const iframe = column.find('iframe')
     expect(iframe.attributes('sandbox')).toBe('allow-scripts allow-forms')
@@ -749,13 +749,13 @@ describe('SessionScreen', () => {
 
   it('lists artifacts in Details and previews a card without moving focus', async () => {
     const { api } = await mountSession(FIXTURE_SESSION_IDS.ended)
-    const column = wrapper!.find('.artifact-panel--doc')
-    // two outputs are two tabs on the one surface, not a second tab row inside the artifact
-    expect(wrapper!.findAll('.session-workbench__tabs [role="tab"]').map(t => t.text())).toEqual([
+    const column = wrapper!.find('.artifact-panel--sub')
+    // two outputs are two tabs in the subpanel, and none on the surface's tab row
+    expect(column.findAll('[role="tab"]').map(t => t.text())).toEqual([
       'Removal checklist',
       'Module dependency map',
     ])
-    expect(column.find('[role="tablist"]').exists()).toBe(false)
+    expect(wrapper!.find('.session-workbench__tabs').exists()).toBe(false)
     await wrapper!.find('[aria-label="Show details"]').trigger('click')
     const links = wrapper!.findAll('.session-side__open').filter(b => b.text().includes(' · v'))
     expect(links.map(b => b.text())).toEqual([

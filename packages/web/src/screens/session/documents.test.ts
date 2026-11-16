@@ -25,9 +25,9 @@ describe('document list', () => {
     expect(list.docs[0]!.key).toBe(first)
   })
   it('adds without selecting when asked, but selects into an empty list', () => {
-    let list = openDoc(emptyDocs(), { kind: 'artifact', artifactId: 1 }, false)
+    let list = openDoc(emptyDocs(), { kind: 'file', path: 'a.md' }, false)
     expect(list.active).toBe(list.docs[0]!.key)
-    list = openDoc(list, { kind: 'artifact', artifactId: 2 }, false)
+    list = openDoc(list, { kind: 'file', path: 'b.md' }, false)
     expect(list.active).toBe(list.docs[0]!.key)
   })
   it('closes the shown document onto its right neighbour, else the left', () => {

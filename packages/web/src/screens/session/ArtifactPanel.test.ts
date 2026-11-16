@@ -122,16 +122,32 @@ describe('ArtifactPanel', () => {
     expect(wrapper!.emitted('close')).toHaveLength(1)
   })
 
-  it('is a document inline: the shared header, no drawer chrome, version steps in its menu', async () => {
-    await mountPanel(of(FIXTURE_SESSION_IDS.idle), { presentation: 'inline' })
-    expect(wrapper!.find('[aria-label="Close panel"]').exists()).toBe(false)
-    expect(wrapper!.find('.doc-header').exists()).toBe(true)
+  it('is a collapsible subpanel inline: its bar names the artifact and toggles the body', async () => {
+    await mountPanel(of(FIXTURE_SESSION_IDS.idle), { presentation: 'inline', open: true })
     expect(wrapper!.find('aside').exists()).toBe(false)
-    expect(wrapper!.find('.doc-header__name').text()).toBe(
-      of(FIXTURE_SESSION_IDS.idle).at(-1)!.title,
-    )
-    await wrapper!.find('[aria-label^="Close "]').trigger('click')
-    expect(wrapper!.emitted('close')).toHaveLength(1)
+    expect(wrapper!.find('.doc-header').exists()).toBe(false)
+    expect(wrapper!.find('[aria-label="Close panel"]').exists()).toBe(false)
+    const toggle = wrapper!.find('.artifact-panel__toggle')
+    expect(toggle.attributes('aria-expanded')).toBe('true')
+    expect(toggle.text()).toContain('Pick a History layout')
+    expect(wrapper!.find('.artifact-panel__body').isVisible()).toBe(true)
+
+    await toggle.trigger('click')
+    expect(wrapper!.emitted('update:open')?.at(-1)).toEqual([false])
+    await wrapper!.setProps({ open: false })
+    expect(wrapper!.find('.artifact-panel__toggle').attributes('aria-expanded')).toBe('false')
+    expect(wrapper!.find('.artifact-panel__body').isVisible()).toBe(false)
+  })
+
+  it('shows and expands an artifact a card asks for, without moving focus into the frame', async () => {
+    await mountPanel(of(FIXTURE_SESSION_IDS.ended), { presentation: 'inline', open: false })
+    const focused = document.activeElement
+    wrapper!.vm.show(2, 1)
+    await flushPromises()
+    expect(wrapper!.emitted('update:open')?.at(-1)).toEqual([true])
+    expect(visibleFrame().find('iframe').attributes('src')).toBe(api.artifactUrl(2, 1))
+    expect(wrapper!.emitted('shown')?.at(-1)).toEqual([2, 1])
+    expect(document.activeElement).toBe(focused)
   })
 })
 

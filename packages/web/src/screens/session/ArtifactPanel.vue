@@ -1,10 +1,13 @@
 <script setup lang="ts">
-// The session's artifact column: a header with the artifact's title (or one tab per artifact when there are
-// several) and a gear for the version picker and the width, over the sandboxed frame filling the rest.
+// The session's artifacts, in a sandboxed frame. Inline it is the subpanel under the browser: a collapsible bar
+// (the artifacts, the one on show and its version, a gear for the version picker and PDF export) over the frame, one
+// tab per artifact when there are several. Its body is a fixed share of the window, so the browser above keeps room.
+// On a narrow window it is an overlay drawer over the conversation: the screen owns `open` and puts focus back on the
+// opener when it closes.
 //
-// It opens on the newest artifact. A new artifact arriving selects its tab, without moving focus. Tabs that have been
-// shown stay mounted (hidden), so a half-filled form survives a look at another tab. On a narrow window the column is
-// an overlay drawer: the screen owns `open` and puts focus back on the opener when it closes.
+// It opens on the newest artifact. A new artifact arriving selects its tab and expands the subpanel, without moving
+// focus. Showing one from a thread card or the browser selects and expands it, also without moving focus. Tabs that
+// have been shown stay mounted (hidden), so a half-filled form survives a look at another tab.
 import { computed, nextTick, reactive, ref, useId, useTemplateRef, watch } from 'vue'
 import type { Artifact, Session } from '@odin/shared/api'
 import { useApi } from '@/api'
@@ -14,7 +17,6 @@ import { IuMenu, type MenuItem } from '@/components/Menu'
 import { IuSidePanel } from '@/components/SidePanel'
 import { IuTabs, type Tab } from '@/components/Tabs'
 import ArtifactFrame from './ArtifactFrame.vue'
-import DocumentHeader from './DocumentHeader.vue'
 import { artifactOrder, newestArtifact, tabLabel, versionNumbers } from './artifacts'
 import { getDesktop } from '@/app/desktop'
 import { useToast } from '@/components/Toast'
@@ -38,7 +40,7 @@ const emit = defineEmits<{
   shown: [id: number, version: number]
 }>()
 
-/** The drawer's open state; ignored inline, where the column is always there. */
+/** Inline: the subpanel's body is shown. Overlay: the drawer is open. */
 const open = defineModel<boolean>('open', { default: false })
 
 const api = useApi()
@@ -98,13 +100,17 @@ watch(
       known.set(id, latest)
     }
     const newest = newestArtifact(arrived)
-    if (newest) selectedId.value = newest.id
+    if (newest) {
+      selectedId.value = newest.id
+      if (!overlay.value) open.value = true
+    }
   },
 )
 
 /** Show this artifact (and this version of it): what a card in the thread does. */
 function show(id: number, version?: number) {
   selectedId.value = id
+  if (!overlay.value) open.value = true
   const a = props.artifacts.find(x => x.id === id)
   if (!a) return
   if (version === undefined || version === a.latestVersion) pinned.delete(id)
@@ -216,7 +222,8 @@ watch(
   { immediate: true },
 )
 
-// ── drawer ──────────────────────────────────────────────────────────────────
+// ── subpanel and drawer ─────────────────────────────────────────────────────
+const bodyId = useId()
 const panel = useTemplateRef<{ focus: () => void }>('panel')
 /** Called by the screen after the user opened the drawer. */
 async function focus() {
@@ -228,29 +235,67 @@ defineExpose({ show, focus })
 </script>
 
 <template>
-  <section
-    v-if="!overlay"
-    class="artifact-panel artifact-panel--doc"
-    :aria-label="selected?.title ?? 'Artifacts'"
-  >
-    <DocumentHeader
-      :name="selected?.title ?? 'Output'"
-      icon="board"
-      :status="`v${shown}${numbers.length > 1 ? ` of ${latest}` : ''}`"
-      :menu="menuItems"
-      @select="onMenu"
-      @close="emit('close')"
-    />
-    <template v-for="a in ordered" :key="a.id">
-      <div v-if="mounted.has(a.id)" v-show="a.id === selected?.id" class="artifact-panel__view">
-        <ArtifactFrame
-          :artifact-id="a.id"
-          :version="shownVersion(a)"
-          :title="a.title"
-          @answered="emit('answered', $event)"
+  <section v-if="!overlay" class="artifact-panel artifact-panel--sub" aria-label="Artifacts">
+    <div class="artifact-panel__bar">
+      <button
+        type="button"
+        class="artifact-panel__toggle"
+        :aria-expanded="open"
+        :aria-controls="bodyId"
+        @click="open = !open"
+      >
+        <IuIcon :name="open ? 'chevronDown' : 'chevronRight'" :size="14" />
+        <span class="artifact-panel__label">Artifacts</span>
+        <span class="artifact-panel__count">{{ ordered.length }}</span>
+        <span class="artifact-panel__summary">{{ selected?.title }}</span>
+      </button>
+      <span class="artifact-panel__version" aria-live="polite"
+        >v{{ shown }}<template v-if="numbers.length > 1"> of {{ latest }}</template></span
+      >
+      <IuMenu :items="menuItems" @select="onMenu">
+        <template #trigger="{ toggle, open: menuOpen }">
+          <IuButton
+            variant="ghost"
+            size="sm"
+            icon-only
+            aria-label="Artifact settings"
+            aria-haspopup="menu"
+            :aria-expanded="menuOpen"
+            @click="toggle"
+          >
+            <template #icon><IuIcon name="gear" :size="16" /></template>
+          </IuButton>
+        </template>
+      </IuMenu>
+    </div>
+    <div v-show="open" :id="bodyId" class="artifact-panel__body">
+      <div v-if="multiple" class="artifact-panel__tabs">
+        <IuTabs
+          v-model="activeTab"
+          :tabs="tabs"
+          variant="segmented"
+          :panels="false"
+          :id-base="idBase"
         />
       </div>
-    </template>
+      <template v-for="a in ordered" :key="a.id">
+        <div
+          v-if="mounted.has(a.id)"
+          v-show="a.id === selected?.id"
+          :id="multiple ? `${idBase}-panel-${a.id}` : undefined"
+          class="artifact-panel__view"
+          :role="multiple ? 'tabpanel' : undefined"
+          :aria-labelledby="multiple ? `${idBase}-tab-${a.id}` : undefined"
+        >
+          <ArtifactFrame
+            :artifact-id="a.id"
+            :version="shownVersion(a)"
+            :title="a.title"
+            @answered="emit('answered', $event)"
+          />
+        </div>
+      </template>
+    </div>
   </section>
   <IuSidePanel
     v-else
@@ -347,15 +392,80 @@ defineExpose({ show, focus })
   flex: 1;
   min-height: 0;
 }
-.artifact-panel--doc {
+.artifact-panel--sub {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--iu-ground);
+}
+.artifact-panel__bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 6px 0 4px;
+}
+.artifact-panel__toggle {
   display: flex;
   flex: 1;
-  flex-direction: column;
-  min-height: 0;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
+  min-height: 32px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--iu-radius-sm);
+  background: transparent;
+  color: var(--iu-text);
+  font: inherit;
+  font-size: var(--iu-font-size-13);
+  text-align: left;
+  cursor: pointer;
 }
-.artifact-panel--doc > .artifact-panel__view {
+.artifact-panel__toggle:hover {
+  background: var(--iu-well);
+}
+.artifact-panel__toggle:focus-visible {
+  outline: 2px solid var(--iu-accent);
+  outline-offset: -2px;
+}
+.artifact-panel__toggle > .iu-icon {
+  flex: none;
+  color: var(--iu-text-muted);
+}
+.artifact-panel__label {
+  flex: none;
+  font-weight: var(--iu-font-weight-medium);
+  white-space: nowrap;
+}
+.artifact-panel__count {
+  flex: none;
+  color: var(--iu-text-muted);
+  font-family: var(--iu-font-mono);
+  font-size: var(--iu-font-size-11-5);
+}
+.artifact-panel__summary {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--iu-text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* the subpanel's body is a share of the window, clamped; the browser above takes the rest and scrolls */
+.artifact-panel__body {
   display: flex;
   flex-direction: column;
+  height: clamp(200px, 44vh, 480px);
+  min-height: 0;
+}
+.artifact-panel__body > .artifact-panel__view {
+  display: flex;
+  flex-direction: column;
+}
+.artifact-panel--sub > .artifact-panel__body > .artifact-panel__tabs {
+  padding: 0 8px 6px;
 }
 </style>

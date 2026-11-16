@@ -3,8 +3,9 @@
 // useSessionView. Nothing that appears on its own takes focus; a polite live region says when Claude needs an answer
 // or finishes a turn.
 //
-// Details holds the plan, changes, artifacts and metrics. The outer column previews files or the selected artifact.
-// Narrow windows use overlays; explicit artifact drawer dismissal returns focus to its opener.
+// Details holds the plan, changes, artifacts and metrics. The outer column is the side panel: the file browser (or the
+// open file or notebook) above an artifacts subpanel. Narrow windows use overlays; explicit artifact drawer dismissal
+// returns focus to its opener.
 // Side threads (questions asked beside this session) show in the preview pane's Side view. One just asked is
 // selected there without taking focus; where the pane would cover the conversation (narrow, or squeezing the details
 // panel) a toast offers to open it instead.
@@ -52,6 +53,7 @@ import SessionWorkbench from './SessionWorkbench.vue'
 import SideThreadPane from './SideThreadPane.vue'
 import { useSideThreads } from './SideThreads'
 import type { PreviewView } from './workbench'
+import type { CellRef } from './fileActivity'
 import { buildRows, contextWindow } from './sessionView'
 
 import { useMediaQuery } from './useMediaQuery'
@@ -282,6 +284,8 @@ const narrow = useMediaQuery('(max-width: 1024px)')
 const drawerOpen = ref(false)
 const artifactPanel = useTemplateRef<InstanceType<typeof ArtifactPanel>>('artifactPanel')
 const shownArtifact = ref<{ id: number; version: number } | null>(null)
+/** The artifacts subpanel (inline): expanded or collapsed. Open from the start, once there are artifacts. */
+const artifactsOpen = ref(true)
 let opener: HTMLElement | null = null
 
 async function openDrawer() {
@@ -304,6 +308,20 @@ function openFile(path: string) {
   workbenchTab.value = 'docs'
   workbench.value?.openFile(path)
   if (narrow.value || compact.value) setSide(false)
+}
+function openCell(cell: CellRef) {
+  previewDismissed.value = false
+  filesOpen.value = true
+  workbenchTab.value = 'docs'
+  workbench.value?.openCell(cell)
+  if (narrow.value || compact.value) setSide(false)
+}
+// The panel points back at a step. Where the panel covers the conversation (narrow) it steps aside first.
+const thread = useTemplateRef<InstanceType<typeof SessionThread>>('thread')
+async function revealStep(entryId: string) {
+  if (narrow.value) previewDismissed.value = true
+  await nextTick()
+  await thread.value?.reveal(entryId)
 }
 /** The header's Files button: the document surface, open on whatever was open; pressed again it puts the panel away. */
 function toggleFiles() {
@@ -348,12 +366,13 @@ watch(
   },
 )
 
-// A card in the thread: select its tab; on a narrow window, open the drawer on it.
-function openArtifact(id: number, version: number) {
+// A card in the thread, or an output in the browser: select it and expand the subpanel (a narrow window opens the
+// drawer on it). Focus stays where it is.
+function openArtifact(id: number, version?: number) {
   previewDismissed.value = false
   if (narrow.value || compact.value) setSide(false)
-  if (!narrow.value) workbench.value?.showArtifact(id, version)
-  else artifactPanel.value?.show(id, version)
+  if (!narrow.value) workbenchTab.value = 'docs'
+  artifactPanel.value?.show(id, version)
   if (narrow.value && !drawerOpen.value) void openDrawer()
 }
 watch(
@@ -366,10 +385,8 @@ watch(
     // A deep link selects the preview without moving focus.
     previewDismissed.value = false
     workbenchTab.value = 'docs'
-    if (narrow.value) {
-      artifactPanel.value?.show(id, artifact.latestVersion)
-      drawerOpen.value = true
-    } else workbench.value?.showArtifact(id, artifact.latestVersion)
+    artifactPanel.value?.show(id, artifact.latestVersion)
+    if (narrow.value) drawerOpen.value = true
   },
   { immediate: true },
 )
@@ -386,11 +403,15 @@ function togglePreview() {
 watch(narrow, n => {
   if (!n) drawerOpen.value = false
 })
+// the thread's card for the artifact on show is marked, while that artifact is on show
 const cardCurrent = computed(() =>
-  (narrow.value && !drawerOpen.value) ||
-  (!narrow.value && !(tab.value === 'docs' && workbench.value?.activeKind === 'artifact'))
-    ? null
-    : shownArtifact.value,
+  narrow.value
+    ? drawerOpen.value
+      ? shownArtifact.value
+      : null
+    : tab.value === 'docs' && artifactsOpen.value
+      ? shownArtifact.value
+      : null,
 )
 
 // ── side threads ──
@@ -575,6 +596,7 @@ function onDeleted() {
               {{ recordError }}
             </IuCallout>
             <SessionThread
+              ref="thread"
               :rows="rows"
               :entries="view.detail.transcript"
               :root="session.cwd"
@@ -583,6 +605,8 @@ function onDeleted() {
               :current-artifact="cardCurrent"
               @open-artifact="openArtifact"
               @open-task="openTask"
+              @open-file="openFile"
+              @open-cell="openCell"
             />
             <div class="session-screen__dock">
               <NativeControls
@@ -661,14 +685,16 @@ function onDeleted() {
       v-show="showWorkbench"
       v-model:tab="tab"
       :session="session"
-      :artifacts="narrow ? [] : artifacts"
+      :artifacts="artifacts"
+      :artifact-panel="!narrow && artifacts.length > 0"
       :has-side="asideOpen"
       :has-activity="previewTask !== null"
       :width="previewWidth"
       :resizable="showWorkbench && !narrow"
       @update:width="previewWidth = $event"
       @close="closePreview"
-      @select-artifact="(id, version) => artifactPanel?.show(id, version)"
+      @open-artifact="openArtifact"
+      @reveal="revealStep"
     >
       <template #activity
         ><TaskPreview
@@ -696,14 +722,14 @@ function onDeleted() {
           @discarded="side.remove"
         />
       </template>
-      <template #artifacts="{ close }">
+      <template #artifacts>
         <ArtifactPanel
           v-if="artifacts.length && !narrow"
           ref="artifactPanel"
+          v-model:open="artifactsOpen"
           :artifacts="artifacts"
           presentation="inline"
           @answered="setRecord"
-          @close="close"
           @shown="(id, version) => (shownArtifact = { id, version })"
         />
       </template>
