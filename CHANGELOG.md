@@ -5,6 +5,8 @@ follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- The session side panel is one document surface: files, notebooks and outputs open in the same viewer under one header, switch with one row of tabs, and are found through an "Open" navigator that gets out of the way once something is open.
+
 ## [0.1.0]
 
 First public release.
