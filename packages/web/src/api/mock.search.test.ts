@@ -7,7 +7,7 @@ import { ApiRequestError } from './types'
 describe('mock file search', () => {
   it('fuzzy-matches fixture paths, directories included', async () => {
     const api = createMockApi()
-    const r = await api.searchSessionFiles(FIXTURE_SESSION_IDS.idle, 'exmp')
+    const r = await api.searchSessionFiles(FIXTURE_SESSION_IDS.idle, 'example')
     expect(r.matches).toEqual([{ path: 'src/example.ts', kind: 'file' }])
     const dirs = await api.searchSessionFiles(FIXTURE_SESSION_IDS.idle, 'dat')
     expect(dirs.matches[0]).toEqual({ path: 'data', kind: 'directory' })

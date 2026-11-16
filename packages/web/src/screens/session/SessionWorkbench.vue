@@ -22,7 +22,6 @@ import { useApi } from '@/api'
 import { IuTabs, type Tab } from '@/components/Tabs'
 import DocumentHeader from './DocumentHeader.vue'
 import DocumentNavigator from './DocumentNavigator.vue'
-import FileDocument from './FileDocument.vue'
 import {
   baseName,
   closeDoc,
@@ -35,8 +34,10 @@ import {
   type DocList,
   type DocRef,
 } from './documents'
+import { artifactOrder } from './artifacts'
 import { SURFACE } from './surface'
 import type { PreviewView } from './workbench'
+const FileDocument = defineAsyncComponent(() => import('./FileDocument.vue'))
 const NotebookDocument = defineAsyncComponent(() => import('./NotebookDocument.vue'))
 const NotebookStart = defineAsyncComponent(() => import('./NotebookStart.vue'))
 const props = withDefaults(
@@ -99,7 +100,7 @@ onBeforeUnmount(() => unsubscribe?.())
 // stays closed until it is opened again from the navigator
 const seen = new Set<number>()
 watch(
-  () => props.artifacts.map(a => a.id),
+  () => artifactOrder(props.artifacts).map(a => a.id),
   ids => {
     const fresh = ids.filter(id => !seen.has(id))
     const arrival = seen.size > 0
@@ -474,7 +475,7 @@ onBeforeUnmount(stopDrag)
   display: flex;
   max-height: calc(100% - 44px);
   flex-direction: column;
-  box-shadow: var(--iu-shadow-2, 0 8px 24px rgb(0 0 0 / 0.3));
+  box-shadow: var(--iu-shadow-raised);
 }
 .session-workbench__splitter {
   position: relative;

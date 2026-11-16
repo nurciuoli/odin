@@ -293,7 +293,7 @@ defineExpose({ focus })
   max-height: min(60%, 460px);
   border-bottom: 1px solid var(--iu-border);
   background: var(--iu-ground);
-  box-shadow: var(--iu-shadow-md, none);
+  box-shadow: var(--iu-shadow-raised);
 }
 .doc-nav:not(.doc-nav--drawer) {
   flex: 1;

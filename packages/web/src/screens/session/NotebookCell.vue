@@ -32,7 +32,9 @@ const props = withDefaults(
 const emit = defineEmits<{ run: []; remove: [] }>()
 const source = defineModel<string>('source', { required: true })
 // A Markdown cell opens as prose; an empty one has nothing to read, so it opens for writing.
-const editing = ref(props.cell.kind === 'markdown' && !props.cell.source.trim() && !props.detached)
+const opensForWriting = () =>
+  props.cell.kind === 'markdown' && !props.cell.source.trim() && !props.detached
+const editing = ref(opensForWriting())
 const prose = () => props.cell.kind === 'markdown' && !editing.value
 </script>
 

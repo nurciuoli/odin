@@ -16,7 +16,8 @@ const props = withDefaults(defineProps<{ session: SessionDetail; name?: string }
 })
 const emit = defineEmits<{ close: []; created: [kernelId: string] }>()
 const api = useApi()
-const name = ref(props.name)
+const initialName = () => props.name
+const title = ref(initialName())
 const distro = ref('')
 const environment = ref<NotebookEnvironment | null>(null)
 const environmentLocation = ref('')
@@ -51,7 +52,7 @@ const create = () =>
     if (!environment.value?.interpreter || environmentLocation.value !== JSON.stringify(location()))
       throw new Error('Detect or set up the environment first')
     const kernel = await api.createNotebook(props.session.project, {
-      name: name.value.trim(),
+      name: title.value.trim(),
       interpreter: environment.value.interpreter,
       location: location(),
     })
@@ -68,7 +69,7 @@ const summary = computed(() =>
 <template>
   <section class="nb-start" aria-label="New notebook">
     <DocumentHeader
-      :name="notebookFileName(name.trim() || 'Untitled')"
+      :name="notebookFileName(title.trim() || 'Untitled')"
       icon="terminal"
       status="Not created"
       @close="emit('close')"
@@ -81,8 +82,8 @@ const summary = computed(() =>
       <IuField
         label="Name"
         size="sm"
-        :model-value="name"
-        @update:model-value="name = String($event)"
+        :model-value="title"
+        @update:model-value="title = String($event)"
       />
       <IuField
         label="WSL distro"
@@ -104,7 +105,7 @@ const summary = computed(() =>
       <div>
         <IuButton
           variant="primary"
-          :disabled="busy || !name.trim() || !environment?.interpreter || environment.needsSetup"
+          :disabled="busy || !title.trim() || !environment?.interpreter || environment.needsSetup"
           @click="create"
           >Create and attach</IuButton
         >

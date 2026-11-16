@@ -124,7 +124,7 @@ describe('SessionScreen', () => {
     expect(wrapper!.find('iframe').attributes('src')).toBe(
       api.artifactUrl(artifact.id, artifact.latestVersion),
     )
-    expect(wrapper!.find('.session-workbench').attributes('data-tab')).toBe('artifacts')
+    expect(wrapper!.find('.session-workbench').attributes('data-tab')).toBe('docs')
   })
   it('closes and reopens the mounted preview, and resizes it with the keyboard', async () => {
     await mountSession(FIXTURE_SESSION_IDS.idle)
@@ -134,7 +134,6 @@ describe('SessionScreen', () => {
     await splitter.trigger('keydown', { key: 'ArrowLeft' })
     await flushPromises()
     expect(wrapper!.find('[role="separator"]').attributes('aria-valuenow')).toBe('776')
-    expect(wrapper!.find('aside[aria-label="Artifacts"]').attributes('style')).toContain('772px')
 
     const separator = wrapper!.find('[role="separator"]').element as HTMLElement & {
       setPointerCapture: (id: number) => void
@@ -155,7 +154,8 @@ describe('SessionScreen', () => {
     await wrapper!.find('[role="separator"]').trigger('pointercancel', { pointerId: 7 })
     expect(wrapper!.find('.session-workbench__drag-shield').exists()).toBe(false)
 
-    const close = wrapper!.find('[aria-label="Close preview"]')
+    // the Files button is the way in and the way out
+    const close = button('Files')!
     await close.trigger('click')
     await flushPromises()
     expect(wrapper!.find('[aria-label="Show preview"]').exists()).toBe(true)
@@ -237,17 +237,18 @@ describe('SessionScreen', () => {
     await mountSession(id, api)
     const frame = wrapper!.find('iframe').element
     await textarea().setValue('Parent draft')
-    await button('Files')!.trigger('click')
+    await wrapper!.find('[aria-label="Open a file, notebook or output"]').trigger('click')
     await flushPromises()
     await vi.waitFor(() =>
-      expect(
-        wrapper!.findAll('.session-files__listing button').some(b => b.text() === 'README.md'),
-      ).toBe(true),
+      expect(wrapper!.findAll('.doc-nav__row').some(b => b.text().includes('README.md'))).toBe(
+        true,
+      ),
     )
     await wrapper!
-      .findAll('.session-files__listing button')
-      .find(b => b.text() === 'README.md')!
+      .findAll('.doc-nav__row')
+      .find(b => b.text().includes('README.md'))!
       .trigger('click')
+    await vi.dynamicImportSettled()
     await flushPromises()
     const editor = wrapper!.findComponent(IuMarkdownEditor)
     editor.vm.$emit('update:modelValue', '# Unsaved parent file')
@@ -732,9 +733,9 @@ describe('SessionScreen', () => {
 
   it('shows one artifact in the right column and a card in the thread', async () => {
     const { api } = await mountSession(FIXTURE_SESSION_IDS.idle)
-    const column = wrapper!.find('aside[aria-label="Artifacts"]')
+    const column = wrapper!.find('.artifact-panel--doc')
     expect(column.exists()).toBe(true)
-    expect(column.find('h2').text()).toBe('Pick a History layout')
+    expect(column.find('.doc-header__name').text()).toBe('Pick a History layout')
     expect(column.find('[role="tablist"]').exists()).toBe(false)
     const iframe = column.find('iframe')
     expect(iframe.attributes('sandbox')).toBe('allow-scripts allow-forms')
@@ -748,7 +749,12 @@ describe('SessionScreen', () => {
 
   it('lists artifacts in Details and previews a card without moving focus', async () => {
     const { api } = await mountSession(FIXTURE_SESSION_IDS.ended)
-    const column = wrapper!.find('aside[aria-label="Artifacts"]')
+    const column = wrapper!.find('.artifact-panel--doc')
+    // two outputs are two tabs on the one surface, not a second tab row inside the artifact
+    expect(wrapper!.findAll('.session-workbench__tabs [role="tab"]').map(t => t.text())).toEqual([
+      'Removal checklist',
+      'Module dependency map',
+    ])
     expect(column.find('[role="tablist"]').exists()).toBe(false)
     await wrapper!.find('[aria-label="Show details"]').trigger('click')
     const links = wrapper!.findAll('.session-side__open').filter(b => b.text().includes(' · v'))

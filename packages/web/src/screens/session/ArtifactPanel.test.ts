@@ -19,7 +19,7 @@ const of = (session: string) => api.db.artifacts.filter(a => a.sessionId === ses
 
 async function mountPanel(artifacts: Artifact[], props: Record<string, unknown> = {}) {
   wrapper = mount(ArtifactPanel, {
-    props: { artifacts, ...props },
+    props: { artifacts, presentation: 'overlay', open: true, ...props },
     attachTo: document.body,
     global: { provide: { [API_KEY as symbol]: api } },
   })
@@ -122,9 +122,16 @@ describe('ArtifactPanel', () => {
     expect(wrapper!.emitted('close')).toHaveLength(1)
   })
 
-  it('has no close button inline', async () => {
-    await mountPanel(of(FIXTURE_SESSION_IDS.idle))
+  it('is a document inline: the shared header, no drawer chrome, version steps in its menu', async () => {
+    await mountPanel(of(FIXTURE_SESSION_IDS.idle), { presentation: 'inline' })
     expect(wrapper!.find('[aria-label="Close panel"]').exists()).toBe(false)
+    expect(wrapper!.find('.doc-header').exists()).toBe(true)
+    expect(wrapper!.find('aside').exists()).toBe(false)
+    expect(wrapper!.find('.doc-header__name').text()).toBe(
+      of(FIXTURE_SESSION_IDS.idle).at(-1)!.title,
+    )
+    await wrapper!.find('[aria-label^="Close "]').trigger('click')
+    expect(wrapper!.emitted('close')).toHaveLength(1)
   })
 })
 
