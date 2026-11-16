@@ -1,0 +1,1580 @@
+{
+ "note": "Recorded from a real Claude Agent SDK 0.3.322 session (claude 2.1.322) on 2026-11-11: a resumed session, turn 1 runs Bash `ls` (auto-allowed, read-only), turn 2 replies ok. Streaming input mode, includePartialMessages on. Paths scrubbed to /fixture/proj; init trimmed to stable fields.",
+ "messages": [
+  {
+   "type": "active_goal",
+   "value": null,
+   "uuid": "b7756d86-eeda-4b83-90ff-0744b5ebfaa9",
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78"
+  },
+  {
+   "type": "system",
+   "subtype": "session_title_changed",
+   "title": "Probe session",
+   "uuid": "160fa2a3-f612-4b48-9542-13f49efdf6ba",
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78"
+  },
+  {
+   "type": "autocompact_state",
+   "value": {
+    "enabled": true,
+    "effective_window": 980000,
+    "threshold": 901600,
+    "enforced": true,
+    "source": "model-default"
+   },
+   "uuid": "62a8b25c-3074-42d1-a5b5-682af658db6f",
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78"
+  },
+  {
+   "type": "system",
+   "subtype": "init",
+   "cwd": "/fixture/proj",
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "tools": [
+    "Task",
+    "Artifact",
+    "ArtifactComments",
+    "ArtifactData",
+    "AskUserQuestion",
+    "Bash",
+    "CronCreate",
+    "CronDelete",
+    "CronList",
+    "DesignSync",
+    "Edit",
+    "EnterPlanMode"
+   ],
+   "mcp_servers": [],
+   "model": "claude-fable-5-2",
+   "permissionMode": "default",
+   "slash_commands": [
+    "deep-research",
+    "design",
+    "slides",
+    "design-sync",
+    "dataviz"
+   ],
+   "apiKeySource": "none",
+   "claude_code_version": "2.1.322",
+   "output_style": "default",
+   "agents": [
+    "claude",
+    "claude-code-guide",
+    "Explore",
+    "general-purpose",
+    "Plan",
+    "statusline-setup"
+   ],
+   "skills": [
+    "deep-research",
+    "design",
+    "slides"
+   ],
+   "plugins": [],
+   "uuid": "b4c95bf1-4fd5-41d3-8c89-00b502d9554c"
+  },
+  {
+   "type": "system",
+   "subtype": "status",
+   "status": "requesting",
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "uuid": "6ac3f74c-3912-4765-8fc4-1612ac7c50b1"
+  },
+  {
+   "type": "stream_event",
+   "event": {
+    "type": "message_start",
+    "message": {
+     "model": "claude-fable-5-2",
+     "id": "msg_011CgvCmBc3988xk19sWZvDV",
+     "type": "message",
+     "role": "assistant",
+     "content": [],
+     "container": null,
+     "stop_reason": null,
+     "stop_sequence": null,
+     "stop_details": null,
+     "usage": {
+      "input_tokens": 4,
+      "cache_creation_input_tokens": 29,
+      "cache_read_input_tokens": 32787,
+      "cache_creation": {
+       "ephemeral_5m_input_tokens": 0,
+       "ephemeral_1h_input_tokens": 29
+      },
+      "output_tokens": 16,
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+     },
+     "input_transformations": [],
+     "diagnostics": null,
+     "context_management": null
+    }
+   },
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "parent_tool_use_id": null,
+   "uuid": "96a0c30d-61ff-4623-802d-c8f3f32a9bfb",
+   "ttft_ms": 1558,
+   "thinking_display": "updates",
+   "api_message_id": "msg_011CgvCmBc3988xk19sWZvDV"
+  },
+  {
+   "type": "stream_event",
+   "event": {
+    "type": "content_block_start",
+    "index": 0,
+    "content_block": {
+     "type": "tool_use",
+     "id": "toolu_01NXFULWszHTJHLww2fxBTof",
+     "name": "Bash",
+     "input": {},
+     "caller": {
+      "type": "direct"
+     }
+    }
+   },
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "parent_tool_use_id": null,
+   "uuid": "a5d1e293-3362-40b5-b680-4a0669c455e1",
+   "api_message_id": "msg_011CgvCmBc3988xk19sWZvDV"
+  },
+  {
+   "type": "stream_event",
+   "event": {
+    "type": "content_block_delta",
+    "index": 0,
+    "delta": {
+     "type": "input_json_delta",
+     "partial_json": ""
+    }
+   },
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "parent_tool_use_id": null,
+   "uuid": "d16f98e9-eb11-47ba-b608-ec1090ebd11f",
+   "api_message_id": "msg_011CgvCmBc3988xk19sWZvDV"
+  },
+  {
+   "type": "stream_event",
+   "event": {
+    "type": "content_block_delta",
+    "index": 0,
+    "delta": {
+     "type": "input_json_delta",
+     "partial_json": "{\"command\": \"ls"
+    }
+   },
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "parent_tool_use_id": null,
+   "uuid": "ebd10600-407e-495e-a2ef-b7d42f644a00",
+   "api_message_id": "msg_011CgvCmBc3988xk19sWZvDV"
+  },
+  {
+   "type": "stream_event",
+   "event": {
+    "type": "content_block_delta",
+    "index": 0,
+    "delta": {
+     "type": "input_json_delta",
+     "partial_json": "\", \"description\": \"List files in current directory"
+    }
+   },
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "parent_tool_use_id": null,
+   "uuid": "a751393f-7427-410d-b0c1-6070333a0dd4",
+   "api_message_id": "msg_011CgvCmBc3988xk19sWZvDV"
+  },
+  {
+   "type": "stream_event",
+   "event": {
+    "type": "content_block_delta",
+    "index": 0,
+    "delta": {
+     "type": "input_json_delta",
+     "partial_json": "\"}"
+    }
+   },
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "parent_tool_use_id": null,
+   "uuid": "fa68e4ee-f200-4fa6-89ff-66ce4645c2cd",
+   "api_message_id": "msg_011CgvCmBc3988xk19sWZvDV"
+  },
+  {
+   "type": "assistant",
+   "message": {
+    "model": "claude-fable-5-2",
+    "id": "msg_011CgvCmBc3988xk19sWZvDV",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+     {
+      "type": "tool_use",
+      "id": "toolu_01NXFULWszHTJHLww2fxBTof",
+      "name": "Bash",
+      "input": {
+       "command": "ls",
+       "description": "List files in current directory"
+      },
+      "caller": {
+       "type": "direct"
+      }
+     }
+    ],
+    "container": null,
+    "stop_reason": null,
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+     "input_tokens": 4,
+     "cache_creation_input_tokens": 29,
+     "cache_read_input_tokens": 32787,
+     "cache_creation": {
+      "ephemeral_5m_input_tokens": 0,
+      "ephemeral_1h_input_tokens": 29
+     },
+     "output_tokens": 16,
+     "service_tier": "standard",
+     "inference_geo": "global",
+     "speed": "standard"
+    },
+    "input_transformations": [],
+    "diagnostics": null,
+    "context_management": null
+   },
+   "parent_tool_use_id": null,
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "uuid": "1c24e85e-1187-4d4f-b7b3-486a6e077771",
+   "timestamp": "2026-11-11T00:35:39.400Z",
+   "wire_tool_inputs": {
+    "toolu_01NXFULWszHTJHLww2fxBTof": {
+     "command": "ls",
+     "description": "List files in current directory"
+    }
+   }
+  },
+  {
+   "type": "stream_event",
+   "event": {
+    "type": "content_block_stop",
+    "index": 0
+   },
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "parent_tool_use_id": null,
+   "uuid": "0c067ede-28ed-4393-95d7-746ff728794a",
+   "api_message_id": "msg_011CgvCmBc3988xk19sWZvDV"
+  },
+  {
+   "type": "stream_event",
+   "event": {
+    "type": "message_delta",
+    "delta": {
+     "stop_reason": "tool_use",
+     "stop_sequence": null,
+     "stop_details": null,
+     "container": null
+    },
+    "usage": {
+     "input_tokens": 4,
+     "cache_creation_input_tokens": 29,
+     "cache_read_input_tokens": 32787,
+     "output_tokens": 74,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "iterations": [
+      {
+       "input_tokens": 4,
+       "output_tokens": 74,
+       "cache_read_input_tokens": 32787,
+       "cache_creation_input_tokens": 29,
+       "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 29
+       },
+       "type": "message"
+      }
+     ]
+    },
+    "context_management": {
+     "applied_edits": []
+    }
+   },
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "parent_tool_use_id": null,
+   "uuid": "6cdb59ba-d8ca-49b5-a43a-0404fcc83de5",
+   "api_message_id": "msg_011CgvCmBc3988xk19sWZvDV"
+  },
+  {
+   "type": "stream_event",
+   "event": {
+    "type": "message_stop"
+   },
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "parent_tool_use_id": null,
+   "uuid": "39243c92-1bd1-406c-976a-f0311387bb74",
+   "api_message_id": "msg_011CgvCmBc3988xk19sWZvDV"
+  },
+  {
+   "type": "rate_limit_event",
+   "rate_limit_info": {
+    "status": "allowed",
+    "resetsAt": 1794374400,
+    "rateLimitType": "five_hour",
+    "overageStatus": "rejected",
+    "overageDisabledReason": "org_level_disabled",
+    "isUsingOverage": false,
+    "unifiedWindows": {
+     "five_hour": {
+      "utilization": 0.18,
+      "resetsAt": 1794374400,
+      "status": "allowed"
+     },
+     "seven_day": {
+      "utilization": 0.02,
+      "resetsAt": 1794794400,
+      "status": "allowed"
+     },
+     "seven_day_overage_included": {
+      "utilization": 0.03,
+      "resetsAt": 1794794400,
+      "status": "allowed"
+     }
+    }
+   },
+   "uuid": "1c32d1a6-caef-40fb-b576-290e3ff56c9a",
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78"
+  },
+  {
+   "type": "system",
+   "subtype": "task_summary",
+   "detail": "Listing files in current directory",
+   "uuid": "fe1852be-aa0d-4df3-b840-1674143b6c62",
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78"
+  },
+  {
+   "type": "user",
+   "message": {
+    "role": "user",
+    "content": [
+     {
+      "tool_use_id": "toolu_01NXFULWszHTJHLww2fxBTof",
+      "type": "tool_result",
+      "content": "hello.txt",
+      "is_error": false
+     }
+    ]
+   },
+   "parent_tool_use_id": null,
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "uuid": "3699e031-08f0-4689-bb90-cc2361ec2a31",
+   "timestamp": "2026-11-11T00:35:39.510Z",
+   "tool_use_result": {
+    "stdout": "hello.txt",
+    "stderr": "",
+    "interrupted": false,
+    "isImage": false,
+    "noOutputExpected": false
+   },
+   "tool_result_meta": [
+    {
+     "id": "toolu_01NXFULWszHTJHLww2fxBTof",
+     "permission_decision": {
+      "decision": "accept",
+      "source": "config",
+      "reason_type": "subcommandResults"
+     }
+    }
+   ]
+  },
+  {
+   "type": "system",
+   "subtype": "status",
+   "status": "requesting",
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "uuid": "4ba97b5a-6b03-4ae0-9267-6512ab13f9b9"
+  },
+  {
+   "type": "stream_event",
+   "event": {
+    "type": "message_start",
+    "message": {
+     "model": "claude-fable-5-2",
+     "id": "msg_011CgvCmPac1WmP9JbxG3CCz",
+     "type": "message",
+     "role": "assistant",
+     "content": [],
+     "container": null,
+     "stop_reason": null,
+     "stop_sequence": null,
+     "stop_details": null,
+     "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 86,
+      "cache_read_input_tokens": 32816,
+      "cache_creation": {
+       "ephemeral_5m_input_tokens": 0,
+       "ephemeral_1h_input_tokens": 86
+      },
+      "output_tokens": 16,
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+     },
+     "input_transformations": [],
+     "diagnostics": null,
+     "context_management": null
+    }
+   },
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "parent_tool_use_id": null,
+   "uuid": "765ba024-a556-4a2d-b0c5-ec8dc4cfb61f",
+   "ttft_ms": 1573,
+   "thinking_display": "updates",
+   "api_message_id": "msg_011CgvCmPac1WmP9JbxG3CCz"
+  },
+  {
+   "type": "stream_event",
+   "event": {
+    "type": "content_block_start",
+    "index": 0,
+    "content_block": {
+     "type": "text",
+     "text": ""
+    }
+   },
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "parent_tool_use_id": null,
+   "uuid": "b8c044d9-9645-456b-8211-d236671ff794",
+   "api_message_id": "msg_011CgvCmPac1WmP9JbxG3CCz"
+  },
+  {
+   "type": "stream_event",
+   "event": {
+    "type": "content_block_delta",
+    "index": 0,
+    "delta": {
+     "type": "text_delta",
+     "text": "The output is:\n\n```\nh"
+    }
+   },
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "parent_tool_use_id": null,
+   "uuid": "6b96042a-3684-4af4-9a77-9e106a7c8833",
+   "api_message_id": "msg_011CgvCmPac1WmP9JbxG3CCz"
+  },
+  {
+   "type": "stream_event",
+   "event": {
+    "type": "content_block_delta",
+    "index": 0,
+    "delta": {
+     "type": "text_delta",
+     "text": "ello.txt\n```"
+    }
+   },
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "parent_tool_use_id": null,
+   "uuid": "e9a541b0-4710-4e60-94c0-84e05b7cef99",
+   "api_message_id": "msg_011CgvCmPac1WmP9JbxG3CCz"
+  },
+  {
+   "type": "assistant",
+   "message": {
+    "model": "claude-fable-5-2",
+    "id": "msg_011CgvCmPac1WmP9JbxG3CCz",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+     {
+      "type": "text",
+      "text": "The output is:\n\n```\nhello.txt\n```"
+     }
+    ],
+    "container": null,
+    "stop_reason": null,
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+     "input_tokens": 2,
+     "cache_creation_input_tokens": 86,
+     "cache_read_input_tokens": 32816,
+     "cache_creation": {
+      "ephemeral_5m_input_tokens": 0,
+      "ephemeral_1h_input_tokens": 86
+     },
+     "output_tokens": 16,
+     "service_tier": "standard",
+     "inference_geo": "global",
+     "speed": "standard"
+    },
+    "input_transformations": [],
+    "diagnostics": null,
+    "context_management": null
+   },
+   "parent_tool_use_id": null,
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "uuid": "e12ae8ef-e3ba-48bf-9fd2-8063ce838853",
+   "timestamp": "2026-11-11T00:35:41.106Z"
+  },
+  {
+   "type": "stream_event",
+   "event": {
+    "type": "content_block_stop",
+    "index": 0
+   },
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "parent_tool_use_id": null,
+   "uuid": "47ec9be6-7d83-4c08-b917-2b37b5ffbd64",
+   "api_message_id": "msg_011CgvCmPac1WmP9JbxG3CCz"
+  },
+  {
+   "type": "stream_event",
+   "event": {
+    "type": "message_delta",
+    "delta": {
+     "stop_reason": "end_turn",
+     "stop_sequence": null,
+     "stop_details": null,
+     "container": null
+    },
+    "usage": {
+     "input_tokens": 2,
+     "cache_creation_input_tokens": 86,
+     "cache_read_input_tokens": 32816,
+     "output_tokens": 16,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "iterations": [
+      {
+       "input_tokens": 2,
+       "output_tokens": 16,
+       "cache_read_input_tokens": 32816,
+       "cache_creation_input_tokens": 86,
+       "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 86
+       },
+       "type": "message"
+      }
+     ]
+    },
+    "context_management": {
+     "applied_edits": []
+    }
+   },
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "parent_tool_use_id": null,
+   "uuid": "cc276929-a6af-4cd0-b820-7d2426b6e6ab",
+   "api_message_id": "msg_011CgvCmPac1WmP9JbxG3CCz"
+  },
+  {
+   "type": "stream_event",
+   "event": {
+    "type": "message_stop"
+   },
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "parent_tool_use_id": null,
+   "uuid": "fbd514df-9d4b-46fb-9b42-95a73bde79a5",
+   "api_message_id": "msg_011CgvCmPac1WmP9JbxG3CCz"
+  },
+  {
+   "type": "system",
+   "subtype": "post_turn_summary",
+   "summarizes_uuid": "e12ae8ef-e3ba-48bf-9fd2-8063ce838853",
+   "status_category": "completed",
+   "status_detail": "ran ls via Bash; output is hello.txt",
+   "needs_action": "",
+   "uuid": "4aaa35d6-4a37-45e7-9420-f5c50a5abb46",
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78"
+  },
+  {
+   "duration_api_ms": 9423,
+   "stop_reason": "end_turn",
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "total_cost_usd": 0.5552246,
+   "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 115,
+    "cache_read_input_tokens": 65603,
+    "output_tokens": 90,
+    "output_tokens_details": {
+     "thinking_tokens": 0
+    },
+    "server_tool_use": {
+     "web_search_requests": 0,
+     "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+     "ephemeral_1h_input_tokens": 115,
+     "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+     {
+      "input_tokens": 2,
+      "output_tokens": 16,
+      "cache_read_input_tokens": 32816,
+      "cache_creation_input_tokens": 86,
+      "cache_creation": {
+       "ephemeral_5m_input_tokens": 0,
+       "ephemeral_1h_input_tokens": 86
+      },
+      "type": "message"
+     }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+   },
+   "modelUsage": {
+    "claude-fable-5-2": {
+     "inputTokens": 10,
+     "outputTokens": 227,
+     "thinkingTokens": 0,
+     "cacheReadInputTokens": 98163,
+     "cacheCreationInputTokens": 32902,
+     "cacheCreationEphemeral5mInputTokens": 0,
+     "cacheCreationEphemeral1hInputTokens": 32902,
+     "webSearchRequests": 0,
+     "costUSD": 0.5552246,
+     "contextWindow": 1000000,
+     "maxOutputTokens": 128000,
+     "canonicalModel": "claude-fable-5-2",
+     "provider": "firstParty",
+     "costBasis": "list"
+    }
+   },
+   "permission_denials": [],
+   "terminal_reason": "completed",
+   "fast_mode_state": "off",
+   "fast_mode_disabled_reason": "sdk_opt_in_required",
+   "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+     "background": 0,
+     "foreground": 0,
+     "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+     "parent": 0,
+     "user": 0,
+     "system": 0
+    },
+    "refused": {
+     "depth_limit": 0,
+     "concurrency_limit": 0,
+     "budget": 0
+    },
+    "by_type": {}
+   },
+   "safety_stops": 0,
+   "is_error": false,
+   "num_turns": 2,
+   "subtype": "success",
+   "api_error_status": null,
+   "result": "The output is:\n\n```\nhello.txt\n```",
+   "ttft_ms": 2749,
+   "type": "result",
+   "duration_ms": 5762,
+   "uuid": "550cc741-4eb4-4ca3-97bf-2a356596c8d5",
+   "ttft_stream_ms": 1636,
+   "time_to_request_ms": 79,
+   "time_to_request_phases_ms": {
+    "other": 4,
+    "system_prompt": 9,
+    "resume_other": 0,
+    "process_user_input": 3,
+    "input_attachments": 9,
+    "input_hooks": 2,
+    "conversation_append": 0,
+    "transcript_persist": 1,
+    "tool_pool_refresh": 2,
+    "init_message": 3,
+    "init_frame_send": 1,
+    "engine_pickup": 1,
+    "loop_entry": 3,
+    "message_prep": 0,
+    "model_config_wait": 1,
+    "autocompact": 1,
+    "request_announcements": 2,
+    "query_setup": 1,
+    "model_gates": 0,
+    "tool_schema_build": 22,
+    "message_normalization": 3,
+    "client_creation": 4,
+    "request_build": 7
+   },
+   "turn_start_resume_kind": "none",
+   "process_turn_index": 0,
+   "time_to_request_loop_lag_ms": 25,
+   "time_to_request_cpu_ms": 85,
+   "time_to_request_major_faults": 0,
+   "process_rss_mib_turn_start": 211,
+   "process_anon_mib_turn_start": 130,
+   "process_rss_mib_result": 219,
+   "process_anon_mib_result": 131,
+   "process_peak_rss_mib": 238,
+   "process_cpu_ms_turn": 501,
+   "process_wall_ms_turn": 5761,
+   "tool_pool_build_count": 4,
+   "process_cpu_ms_streaming": 49,
+   "process_wall_ms_streaming": 1155,
+   "main_stream_count": 2,
+   "main_stream_event_count": 16,
+   "main_stream_chunk_count": 5,
+   "process_turn_states": {
+    "main_stream": {
+     "cpu_ms": 49,
+     "wall_ms": 1155,
+     "entries": 2
+    },
+    "tool": {
+     "cpu_ms": 34,
+     "wall_ms": 82,
+     "entries": 1
+    },
+    "first_event_wait": {
+     "cpu_ms": 277,
+     "wall_ms": 3127,
+     "entries": 2
+    },
+    "before_first_request": {
+     "cpu_ms": 85,
+     "wall_ms": 79,
+     "entries": 1
+    },
+    "between_requests": {
+     "cpu_ms": 24,
+     "wall_ms": 21,
+     "entries": 1
+    },
+    "after_last_request": {
+     "cpu_ms": 32,
+     "wall_ms": 1297,
+     "entries": 1
+    }
+   },
+   "input_attachments_detail": {
+    "slowest_producer": "changed_files",
+    "slowest_producer_ms": 3,
+    "cpu_ms": 10,
+    "major_faults": 0,
+    "changed_files_reread": 0,
+    "setup_ms": 1,
+    "prompt_producers_ms": 0,
+    "ambient_start_ms": 4,
+    "ambient_wait_ms": 2,
+    "render_ms": 0,
+    "producers": 43,
+    "token_counts": 0
+   },
+   "tool_schema_build_detail": {
+    "betas_ms": 0,
+    "waits_ms": 1,
+    "placement_ms": 3,
+    "render_ms": 17,
+    "after_ms": 1,
+    "other_ms": 0,
+    "tools": 16,
+    "new_schemas": 16
+   },
+   "message_normalization_detail": {
+    "before_ms": 0,
+    "normalize_ms": 3,
+    "images_ms": 0,
+    "post_process_ms": 0,
+    "after_ms": 0,
+    "other_ms": 0,
+    "messages": 16,
+    "wire_messages": 6
+   },
+   "request_build_detail": {
+    "records_ms": 0,
+    "system_ms": 1,
+    "headers_ms": 1,
+    "cache_break_record_ms": 2,
+    "plans_ms": 1,
+    "retry_setup_ms": 0,
+    "sent_build_ms": 2,
+    "record_attempt_ms": 0,
+    "other_ms": 0,
+    "sent_build_safety_context_ms": 0,
+    "sent_build_cache_breakpoints_ms": 0,
+    "sent_build_surrogate_scan_ms": 1
+   },
+   "first_content_frame_ms": 1636,
+   "time_to_request_from_spawn_ms": 712671,
+   "warm_spare_claimed": false,
+   "flag_fetch_kick": "not_asked_warm",
+   "time_origin_ms": 1794357336064.9155,
+   "queued_turn_count": 0,
+   "result_index": 0,
+   "model_usage_since_last_result": {
+    "claude-fable-5-2": {
+     "inputTokens": 6,
+     "outputTokens": 90,
+     "cacheReadInputTokens": 65603,
+     "cacheCreationInputTokens": 115,
+     "webSearchRequests": 0,
+     "costUSD": 0.0186086,
+     "contextWindow": 1000000,
+     "maxOutputTokens": 128000,
+     "thinkingTokens": 0,
+     "cacheCreationEphemeral5mInputTokens": 0,
+     "cacheCreationEphemeral1hInputTokens": 115,
+     "canonicalModel": "claude-fable-5-2",
+     "provider": "firstParty",
+     "costBasis": "list"
+    }
+   },
+   "process_start_tuning": 0
+  },
+  {
+   "type": "system",
+   "subtype": "task_summary",
+   "detail": null,
+   "uuid": "5c23b2a8-7d61-4226-a1af-e616d64ab30a",
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78"
+  },
+  {
+   "type": "system",
+   "subtype": "init",
+   "cwd": "/fixture/proj",
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "tools": [
+    "Task",
+    "Artifact",
+    "ArtifactComments",
+    "ArtifactData",
+    "AskUserQuestion",
+    "Bash",
+    "CronCreate",
+    "CronDelete",
+    "CronList",
+    "DesignSync",
+    "Edit",
+    "EnterPlanMode"
+   ],
+   "mcp_servers": [],
+   "model": "claude-fable-5-2",
+   "permissionMode": "default",
+   "slash_commands": [
+    "deep-research",
+    "design",
+    "slides",
+    "design-sync",
+    "dataviz"
+   ],
+   "apiKeySource": "none",
+   "claude_code_version": "2.1.322",
+   "output_style": "default",
+   "agents": [
+    "claude",
+    "claude-code-guide",
+    "Explore",
+    "general-purpose",
+    "Plan",
+    "statusline-setup"
+   ],
+   "skills": [
+    "deep-research",
+    "design",
+    "slides"
+   ],
+   "plugins": [],
+   "uuid": "5bb846d8-768e-46f2-8334-53fd6f878adf"
+  },
+  {
+   "type": "system",
+   "subtype": "status",
+   "status": "requesting",
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "uuid": "c5b01199-34c2-4fde-9209-a209b9b43939"
+  },
+  {
+   "type": "stream_event",
+   "event": {
+    "type": "message_start",
+    "message": {
+     "model": "claude-fable-5-2",
+     "id": "msg_011CgvCmbwFM5XqZkmKN8RA1",
+     "type": "message",
+     "role": "assistant",
+     "content": [],
+     "container": null,
+     "stop_reason": null,
+     "stop_sequence": null,
+     "stop_details": null,
+     "usage": {
+      "input_tokens": 4,
+      "cache_creation_input_tokens": 26,
+      "cache_read_input_tokens": 32902,
+      "cache_creation": {
+       "ephemeral_5m_input_tokens": 0,
+       "ephemeral_1h_input_tokens": 26
+      },
+      "output_tokens": 4,
+      "service_tier": "standard",
+      "inference_geo": "global",
+      "speed": "standard"
+     },
+     "input_transformations": [],
+     "diagnostics": null,
+     "context_management": null
+    }
+   },
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "parent_tool_use_id": null,
+   "uuid": "8d682430-5991-424b-b032-fac522c61da6",
+   "ttft_ms": 2268,
+   "thinking_display": "updates",
+   "api_message_id": "msg_011CgvCmbwFM5XqZkmKN8RA1"
+  },
+  {
+   "type": "stream_event",
+   "event": {
+    "type": "content_block_start",
+    "index": 0,
+    "content_block": {
+     "type": "text",
+     "text": ""
+    }
+   },
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "parent_tool_use_id": null,
+   "uuid": "9c8ad6ff-1f3f-4e8d-a641-905c63c07f59",
+   "api_message_id": "msg_011CgvCmbwFM5XqZkmKN8RA1"
+  },
+  {
+   "type": "stream_event",
+   "event": {
+    "type": "content_block_delta",
+    "index": 0,
+    "delta": {
+     "type": "text_delta",
+     "text": "ok"
+    }
+   },
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "parent_tool_use_id": null,
+   "uuid": "ef31860c-2d85-41d8-ad34-de96013f036f",
+   "api_message_id": "msg_011CgvCmbwFM5XqZkmKN8RA1"
+  },
+  {
+   "type": "assistant",
+   "message": {
+    "model": "claude-fable-5-2",
+    "id": "msg_011CgvCmbwFM5XqZkmKN8RA1",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+     {
+      "type": "text",
+      "text": "ok"
+     }
+    ],
+    "container": null,
+    "stop_reason": null,
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+     "input_tokens": 4,
+     "cache_creation_input_tokens": 26,
+     "cache_read_input_tokens": 32902,
+     "cache_creation": {
+      "ephemeral_5m_input_tokens": 0,
+      "ephemeral_1h_input_tokens": 26
+     },
+     "output_tokens": 4,
+     "service_tier": "standard",
+     "inference_geo": "global",
+     "speed": "standard"
+    },
+    "input_transformations": [],
+    "diagnostics": null,
+    "context_management": null
+   },
+   "parent_tool_use_id": null,
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "uuid": "d5a73a38-7613-42de-ba48-a3d167aafdda",
+   "timestamp": "2026-11-11T00:35:44.708Z"
+  },
+  {
+   "type": "stream_event",
+   "event": {
+    "type": "content_block_stop",
+    "index": 0
+   },
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "parent_tool_use_id": null,
+   "uuid": "7bd70b82-878e-46e5-b2dc-a7669dea01c6",
+   "api_message_id": "msg_011CgvCmbwFM5XqZkmKN8RA1"
+  },
+  {
+   "type": "stream_event",
+   "event": {
+    "type": "message_delta",
+    "delta": {
+     "stop_reason": "end_turn",
+     "stop_sequence": null,
+     "stop_details": null,
+     "container": null
+    },
+    "usage": {
+     "input_tokens": 4,
+     "cache_creation_input_tokens": 26,
+     "cache_read_input_tokens": 32902,
+     "output_tokens": 4,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "iterations": [
+      {
+       "input_tokens": 4,
+       "output_tokens": 4,
+       "cache_read_input_tokens": 32902,
+       "cache_creation_input_tokens": 26,
+       "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 26
+       },
+       "type": "message"
+      }
+     ]
+    },
+    "context_management": {
+     "applied_edits": []
+    }
+   },
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "parent_tool_use_id": null,
+   "uuid": "322b869c-ee44-425a-9aee-e4a65d87527b",
+   "api_message_id": "msg_011CgvCmbwFM5XqZkmKN8RA1"
+  },
+  {
+   "type": "stream_event",
+   "event": {
+    "type": "message_stop"
+   },
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "parent_tool_use_id": null,
+   "uuid": "217df67e-750c-464d-a611-ef055170b919",
+   "api_message_id": "msg_011CgvCmbwFM5XqZkmKN8RA1"
+  },
+  {
+   "type": "system",
+   "subtype": "post_turn_summary",
+   "summarizes_uuid": "d5a73a38-7613-42de-ba48-a3d167aafdda",
+   "status_category": "completed",
+   "status_detail": "replied 'ok' as requested",
+   "needs_action": "",
+   "uuid": "86f6ca60-9bd9-4978-999a-f519d2c67c6c",
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78"
+  },
+  {
+   "duration_api_ms": 11704,
+   "stop_reason": "end_turn",
+   "session_id": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+   "total_cost_usd": 0.5624129999999999,
+   "usage": {
+    "input_tokens": 4,
+    "cache_creation_input_tokens": 26,
+    "cache_read_input_tokens": 32902,
+    "output_tokens": 4,
+    "output_tokens_details": {
+     "thinking_tokens": 0
+    },
+    "server_tool_use": {
+     "web_search_requests": 0,
+     "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+     "ephemeral_1h_input_tokens": 26,
+     "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+     {
+      "input_tokens": 4,
+      "output_tokens": 4,
+      "cache_read_input_tokens": 32902,
+      "cache_creation_input_tokens": 26,
+      "cache_creation": {
+       "ephemeral_5m_input_tokens": 0,
+       "ephemeral_1h_input_tokens": 26
+      },
+      "type": "message"
+     }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+   },
+   "modelUsage": {
+    "claude-fable-5-2": {
+     "inputTokens": 14,
+     "outputTokens": 231,
+     "thinkingTokens": 0,
+     "cacheReadInputTokens": 131065,
+     "cacheCreationInputTokens": 32928,
+     "cacheCreationEphemeral5mInputTokens": 0,
+     "cacheCreationEphemeral1hInputTokens": 32928,
+     "webSearchRequests": 0,
+     "costUSD": 0.5624129999999999,
+     "contextWindow": 1000000,
+     "maxOutputTokens": 128000,
+     "canonicalModel": "claude-fable-5-2",
+     "provider": "firstParty",
+     "costBasis": "list"
+    }
+   },
+   "permission_denials": [],
+   "terminal_reason": "completed",
+   "fast_mode_state": "off",
+   "fast_mode_disabled_reason": "sdk_opt_in_required",
+   "subagent_stats": {
+    "spawned": 0,
+    "requested": {
+     "background": 0,
+     "foreground": 0,
+     "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 0,
+    "spawned_by_subagents": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+     "parent": 0,
+     "user": 0,
+     "system": 0
+    },
+    "refused": {
+     "depth_limit": 0,
+     "concurrency_limit": 0,
+     "budget": 0
+    },
+    "by_type": {}
+   },
+   "safety_stops": 0,
+   "is_error": false,
+   "num_turns": 1,
+   "subtype": "success",
+   "api_error_status": null,
+   "result": "ok",
+   "ttft_ms": 2286,
+   "type": "result",
+   "duration_ms": 3619,
+   "uuid": "f2246248-dfd0-4268-92c4-a6d669d35d1f",
+   "ttft_stream_ms": 2285,
+   "time_to_request_ms": 18,
+   "time_to_request_phases_ms": {
+    "other": 1,
+    "system_prompt": 0,
+    "resume_other": 0,
+    "process_user_input": 1,
+    "input_attachments": 2,
+    "input_hooks": 1,
+    "conversation_append": 0,
+    "transcript_persist": 1,
+    "tool_pool_refresh": 1,
+    "init_message": 1,
+    "init_frame_send": 1,
+    "engine_pickup": 0,
+    "loop_entry": 1,
+    "message_prep": 0,
+    "model_config_wait": 1,
+    "autocompact": 0,
+    "request_announcements": 0,
+    "query_setup": 1,
+    "model_gates": 0,
+    "tool_schema_build": 1,
+    "message_normalization": 1,
+    "client_creation": 1,
+    "request_build": 3
+   },
+   "turn_start_resume_kind": "none",
+   "process_turn_index": 1,
+   "time_to_request_loop_lag_ms": 0,
+   "time_to_request_cpu_ms": 19,
+   "time_to_request_major_faults": 0,
+   "process_rss_mib_turn_start": 220,
+   "process_anon_mib_turn_start": 132,
+   "process_rss_mib_result": 220,
+   "process_anon_mib_result": 132,
+   "process_peak_rss_mib": 238,
+   "process_cpu_ms_between_turns": 7,
+   "process_wall_ms_between_turns": 7,
+   "process_cpu_ms_turn": 77,
+   "process_wall_ms_turn": 3619,
+   "tool_pool_build_count": 1,
+   "process_cpu_ms_streaming": 4,
+   "process_wall_ms_streaming": 11,
+   "main_stream_count": 1,
+   "main_stream_event_count": 6,
+   "main_stream_chunk_count": 2,
+   "process_turn_states": {
+    "main_stream": {
+     "cpu_ms": 4,
+     "wall_ms": 11,
+     "entries": 1
+    },
+    "first_event_wait": {
+     "cpu_ms": 30,
+     "wall_ms": 2266,
+     "entries": 1
+    },
+    "before_first_request": {
+     "cpu_ms": 20,
+     "wall_ms": 19,
+     "entries": 1
+    },
+    "after_last_request": {
+     "cpu_ms": 23,
+     "wall_ms": 1323,
+     "entries": 1
+    }
+   },
+   "input_attachments_detail": {
+    "slowest_producer": "changed_files",
+    "slowest_producer_ms": 0,
+    "cpu_ms": 3,
+    "major_faults": 0,
+    "changed_files_reread": 0,
+    "setup_ms": 0,
+    "prompt_producers_ms": 0,
+    "ambient_start_ms": 1,
+    "ambient_wait_ms": 0,
+    "render_ms": 0,
+    "producers": 43,
+    "token_counts": 0
+   },
+   "tool_schema_build_detail": {
+    "betas_ms": 0,
+    "waits_ms": 0,
+    "placement_ms": 1,
+    "render_ms": 0,
+    "after_ms": 0,
+    "other_ms": 0,
+    "tools": 16,
+    "new_schemas": 0
+   },
+   "message_normalization_detail": {
+    "before_ms": 0,
+    "normalize_ms": 1,
+    "images_ms": 0,
+    "post_process_ms": 0,
+    "after_ms": 0,
+    "other_ms": 0,
+    "messages": 20,
+    "wire_messages": 10
+   },
+   "request_build_detail": {
+    "records_ms": 0,
+    "system_ms": 0,
+    "headers_ms": 0,
+    "cache_break_record_ms": 1,
+    "plans_ms": 0,
+    "retry_setup_ms": 0,
+    "sent_build_ms": 2,
+    "record_attempt_ms": 0,
+    "other_ms": 0,
+    "sent_build_safety_context_ms": 0,
+    "sent_build_cache_breakpoints_ms": 0,
+    "sent_build_surrogate_scan_ms": 0
+   },
+   "first_content_frame_ms": 2285,
+   "queued_turn_count": 0,
+   "result_index": 1,
+   "model_usage_since_last_result": {
+    "claude-fable-5-2": {
+     "inputTokens": 4,
+     "outputTokens": 4,
+     "cacheReadInputTokens": 32902,
+     "cacheCreationInputTokens": 26,
+     "webSearchRequests": 0,
+     "costUSD": 0.0071884,
+     "contextWindow": 1000000,
+     "maxOutputTokens": 128000,
+     "thinkingTokens": 0,
+     "cacheCreationEphemeral5mInputTokens": 0,
+     "cacheCreationEphemeral1hInputTokens": 26,
+     "canonicalModel": "claude-fable-5-2",
+     "provider": "firstParty",
+     "costBasis": "list"
+    }
+   },
+   "process_start_tuning": 0
+  }
+ ],
+ "canUseToolCall": {
+  "toolName": "Write",
+  "input": {
+   "file_path": "/fixture/proj/hello.txt",
+   "content": "hi\n"
+  },
+  "options": {
+   "displayName": "Write",
+   "suggestions": [
+    {
+     "type": "setMode",
+     "mode": "acceptEdits",
+     "destination": "session"
+    }
+   ],
+   "toolUseID": "toolu_012b7v5WB4odyw4fC1Kiqv9p",
+   "requestId": "2630c5f0-034c-4ef6-8289-c8cf3eb670cb"
+  }
+ },
+ "supportedModels": [
+  {
+   "value": "default",
+   "resolvedModel": "claude-fable-5-2",
+   "displayName": "Default (recommended)",
+   "description": "Fable 5.2",
+   "supportsEffort": true,
+   "supportedEffortLevels": [
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max"
+   ],
+   "supportsAdaptiveThinking": true,
+   "supportsFastMode": true,
+   "supportsAutoMode": true,
+   "supportsThinkingOff": false
+  },
+  {
+   "value": "opus",
+   "resolvedModel": "claude-opus-5-5",
+   "displayName": "Opus 5.5",
+   "description": "Best for everyday, complex tasks",
+   "supportsEffort": true,
+   "supportedEffortLevels": [
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max"
+   ],
+   "supportsAdaptiveThinking": true,
+   "supportsFastMode": true,
+   "supportsAutoMode": true,
+   "supportsThinkingOff": false
+  },
+  {
+   "value": "sonnet",
+   "resolvedModel": "claude-sonnet-5-5",
+   "displayName": "Sonnet 5.5",
+   "description": "Efficient for routine tasks",
+   "supportsEffort": true,
+   "supportedEffortLevels": [
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max"
+   ],
+   "supportsAdaptiveThinking": true,
+   "supportsAutoMode": true,
+   "supportsThinkingOff": false
+  },
+  {
+   "value": "claude-fable-5-2",
+   "resolvedModel": "claude-fable-5-2",
+   "displayName": "Fable 5.2",
+   "description": "Most capable for your hardest and longest-running tasks",
+   "supportsEffort": true,
+   "supportedEffortLevels": [
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max"
+   ],
+   "supportsAdaptiveThinking": true,
+   "supportsFastMode": true,
+   "supportsAutoMode": true,
+   "supportsThinkingOff": false
+  },
+  {
+   "value": "haiku",
+   "resolvedModel": "claude-haiku-5-5",
+   "displayName": "Haiku 5.5",
+   "description": "Fastest for quick answers",
+   "supportsEffort": true,
+   "supportedEffortLevels": [
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max"
+   ],
+   "supportsAdaptiveThinking": true,
+   "supportsAutoMode": true,
+   "supportsThinkingOff": false
+  },
+  {
+   "value": "claude-fable-5-1",
+   "resolvedModel": "claude-fable-5-1",
+   "displayName": "Fable 5.1",
+   "description": "Most capable for your hardest and longest-running tasks",
+   "supportsEffort": true,
+   "supportedEffortLevels": [
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max"
+   ],
+   "supportsAdaptiveThinking": true,
+   "supportsAutoMode": true,
+   "supportsThinkingOff": false
+  },
+  {
+   "value": "claude-haiku-4-5-20251001",
+   "resolvedModel": "claude-haiku-4-5-20251001",
+   "displayName": "Haiku 4.5",
+   "description": "Fastest for quick answers",
+   "supportsThinkingOff": true
+  },
+  {
+   "value": "claude-sonnet-5",
+   "resolvedModel": "claude-sonnet-5",
+   "displayName": "Sonnet 5",
+   "description": "Efficient for routine tasks",
+   "supportsEffort": true,
+   "supportedEffortLevels": [
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max"
+   ],
+   "supportsAdaptiveThinking": true,
+   "supportsAutoMode": true,
+   "supportsThinkingOff": true
+  },
+  {
+   "value": "claude-opus-5",
+   "resolvedModel": "claude-opus-5",
+   "displayName": "Opus 5",
+   "description": "Best for everyday, complex tasks",
+   "supportsEffort": true,
+   "supportedEffortLevels": [
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max"
+   ],
+   "supportsAdaptiveThinking": true,
+   "supportsFastMode": true,
+   "supportsAutoMode": true,
+   "supportsThinkingOff": true
+  },
+  {
+   "value": "claude-fable-5",
+   "resolvedModel": "claude-fable-5",
+   "displayName": "Fable 5",
+   "description": "Most capable for your hardest and longest-running tasks",
+   "supportsEffort": true,
+   "supportedEffortLevels": [
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max"
+   ],
+   "supportsAdaptiveThinking": true,
+   "supportsAutoMode": true,
+   "supportsThinkingOff": false
+  },
+  {
+   "value": "claude-opus-4-8",
+   "resolvedModel": "claude-opus-4-8",
+   "displayName": "Opus 4.8",
+   "description": "Best for everyday, complex tasks",
+   "supportsEffort": true,
+   "supportedEffortLevels": [
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max"
+   ],
+   "supportsAdaptiveThinking": true,
+   "supportsFastMode": true,
+   "supportsAutoMode": true,
+   "supportsThinkingOff": true
+  },
+  {
+   "value": "claude-opus-4-7",
+   "resolvedModel": "claude-opus-4-7",
+   "displayName": "Opus 4.7",
+   "description": "Best for everyday, complex tasks",
+   "supportsEffort": true,
+   "supportedEffortLevels": [
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max"
+   ],
+   "supportsAdaptiveThinking": true,
+   "supportsAutoMode": true,
+   "supportsThinkingOff": true
+  },
+  {
+   "value": "claude-opus-4-6",
+   "resolvedModel": "claude-opus-4-6",
+   "displayName": "Opus 4.6",
+   "description": "Best for everyday, complex tasks",
+   "supportsEffort": true,
+   "supportedEffortLevels": [
+    "low",
+    "medium",
+    "high",
+    "max"
+   ],
+   "supportsAdaptiveThinking": true,
+   "supportsAutoMode": true,
+   "supportsThinkingOff": true
+  },
+  {
+   "value": "claude-sonnet-4-6",
+   "resolvedModel": "claude-sonnet-4-6",
+   "displayName": "Sonnet 4.6",
+   "description": "Efficient for routine tasks",
+   "supportsEffort": true,
+   "supportedEffortLevels": [
+    "low",
+    "medium",
+    "high",
+    "max"
+   ],
+   "supportsAdaptiveThinking": true,
+   "supportsAutoMode": true,
+   "supportsThinkingOff": true
+  }
+ ],
+ "listSessionsEntry": {
+  "sessionId": "4c7baeb7-3dd0-457b-93ab-4a07c9cf7c78",
+  "summary": "Probe session",
+  "lastModified": 1794357324450,
+  "fileSize": 168832,
+  "customTitle": "Probe session",
+  "firstPrompt": "Create a file hello.txt containing the word hi, using the Write tool. Then say done.",
+  "gitBranch": "master",
+  "cwd": "/fixture/proj",
+  "createdAt": 1794357298497
+ }
+}

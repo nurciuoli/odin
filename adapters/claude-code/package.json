@@ -1,0 +1,10 @@
+{
+  "name": "@odin/adapter-claude-code",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    "./install": "./src/install.ts",
+    "./transcript": "./src/transcript.ts"
+  }
+}

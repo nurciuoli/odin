@@ -1,0 +1,5 @@
+export { default as IuField } from './Field.vue'
+export { default as IuTextarea } from './Textarea.vue'
+export { default as IuCheckbox } from './Checkbox.vue'
+export { default as IuRadio } from './Radio.vue'
+export { default as IuSwitch } from './Switch.vue'

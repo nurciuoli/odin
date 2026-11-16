@@ -1,0 +1,172 @@
+/*
+ * Instrument UI — design tokens (dark theme, v1 — the only theme for now).
+ * Every component reads these; nothing in a component <style> block should
+ * hardcode a hex, a radius, a control height, or a font stack.
+ * Source: Claude Design handoff bundle (Palette v2, locked picks 1B/2B/3A/4B/6B),
+ * cross-referenced against every component's rendered mockup colors.
+ */
+:root {
+  /* neutrals — half-warm ramp (2B) */
+  --iu-well: #0c0c0c;
+  --iu-ground: #121211;
+  --iu-surface: #1a1a18;
+  --iu-raised: #20201d;
+  --iu-surface-raised: #20201d; /* alias of --iu-raised, kept as its own name because component source refers to it by this name */
+  --iu-surface-sunken: #171715;
+  --iu-hairline: #272724;
+  --iu-border-quiet: #1e1e1c;
+  --iu-border: #373631;
+  --iu-border-strong: #4a4943;
+  --iu-hover: #161614;
+
+  /* text */
+  --iu-text: #eceae4;
+  --iu-text-2: #b4b2a9;
+  --iu-text-muted: #96948c;
+  --iu-text-disabled: #5c5b54;
+
+  /* accent — ember. Two depths (1B locked): bright for ink/links/strokes/focus
+     rings on dark surfaces, deep fill for anything white sits on top of
+     (white on bright ember is 2.96:1 — fails; white on the deep fill is 4.88:1). */
+  --iu-accent: #e07b4a;
+  --iu-accent-fill: #b85324;
+  --iu-accent-hover: #c25c2c;
+  --iu-accent-ink: #ffffff;
+  --iu-accent-border: #5c2e14;
+  --iu-accent-wash: #26150c;
+
+  /* semantic: info / positive / warning / danger — each a base + wash + border triple */
+  --iu-info: #8fa9d4;
+  --iu-info-wash: #16202c;
+  --iu-info-border: #2f4460;
+
+  --iu-positive: #6fae8e;
+  --iu-positive-wash: #12241b;
+  --iu-positive-border: #27503b;
+
+  --iu-warning: #c98a27;
+  --iu-warning-wash: #241d04;
+  --iu-warning-border: #514111;
+
+  --iu-danger: #d4705f;
+  --iu-danger-wash: #2a1512;
+  --iu-danger-border: #5a2f27;
+
+  /* people — the human marker in timelines/chat (agents use the accent) */
+  --iu-person: #8fa9d4;
+  --iu-person-wash: #2a3d52;
+  --iu-person-border: #4d6c8f;
+
+  /* identity hues — avatars without a photo; stable per id, six pairs of fill + ink */
+  --iu-hue-0-bg: #2a3d52;
+  --iu-hue-0-ink: #a8c4e0;
+  --iu-hue-1-bg: #1f3b36;
+  --iu-hue-1-ink: #87c4b4;
+  --iu-hue-2-bg: #3d3520;
+  --iu-hue-2-ink: #d6bd76;
+  --iu-hue-3-bg: #3d2530;
+  --iu-hue-3-ink: #dda3b6;
+  --iu-hue-4-bg: #33303f;
+  --iu-hue-4-ink: #bcaedb;
+  --iu-hue-5-bg: #2c3a26;
+  --iu-hue-5-ink: #a9c48d;
+  /* agents: a deeper ember wash than --iu-accent-wash so the tile reads as an object, not a highlight */
+  --iu-agent-bg: #3a2113;
+
+  /* elevation — shadows and scrims, darkest to lightest use */
+  --iu-shadow-raised: 0 12px 28px rgb(0 0 0 / 0.4); /* floating cards, toasts, listboxes */
+  --iu-shadow-popover: 0 16px 40px rgb(0 0 0 / 0.5); /* menus, filter popovers */
+  --iu-shadow-dialog: 0 24px 60px rgb(0 0 0 / 0.6); /* modals, command palette */
+  --iu-scrim: rgb(12 12 12 / 0.8); /* behind modals */
+  --iu-scrim-light: rgb(0 0 0 / 0.6); /* behind the command palette */
+
+  /* code wells & diffs */
+  --iu-well-header: #141413;
+  --iu-gutter: #101010;
+  --iu-diff-add-bg: #12201a;
+  --iu-diff-add-gutter: #14251d;
+  --iu-diff-add-ink: #a8d8c0;
+  --iu-diff-remove-bg: #1c1210;
+  --iu-diff-remove-gutter: #211412;
+  --iu-diff-remove-ink: #e7b4aa;
+
+  /* motion */
+  --iu-ease: cubic-bezier(0.2, 0, 0, 1);
+  --iu-dur-fast: 80ms;
+  --iu-dur: 160ms;
+  /* tempo is the status: each state has its own speed, readable from the corner of the eye.
+     running = quick and even (linear, never stops); awaiting the user = a slow breath;
+     finished = a check drawn once; failed = one short shake. All off under prefers-reduced-motion. */
+  --iu-dur-run: 1.4s;
+  --iu-dur-breathe: 3.2s;
+  --iu-dur-draw: 400ms;
+  --iu-dur-shake: 360ms;
+  --iu-dur-settle: 240ms; /* a new row settling into a list */
+  --iu-ease-breathe: ease-in-out;
+  --iu-dur-unfurl: 260ms; /* a step opening onto the rail */
+  --iu-dur-roll: 280ms; /* a verb rolling to past tense */
+  --iu-dur-fold: 320ms; /* height folds: live note, run body, rail zip */
+  --iu-dur-land: 600ms; /* a flock coming down to rest, taking off or scattering */
+  --iu-dur-hop: 9s; /* one bird on the wire hops along and back in this time */
+
+  /* type */
+  --iu-font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --iu-font-brand: 'Space Grotesk', var(--iu-font-sans);
+  --iu-font-mono: 'IBM Plex Mono', monospace;
+
+  /* type scale — UI text runs 10–14px in half-pixel steps; names are the px value
+     (12-5 = 12.5px). Display sizes (15px and up) are per-component for now. */
+  --iu-font-size-10: 10px;
+  --iu-font-size-10-5: 10.5px;
+  --iu-font-size-11: 11px;
+  --iu-font-size-11-5: 11.5px;
+  --iu-font-size-12: 12px;
+  --iu-font-size-12-5: 12.5px;
+  --iu-font-size-13: 13px;
+  --iu-font-size-13-5: 13.5px;
+  --iu-font-size-14: 14px;
+  --iu-font-size-24: 24px;
+  --iu-font-size-28: 28px;
+
+  --iu-font-weight-regular: 400;
+  --iu-font-weight-medium: 500;
+  --iu-font-weight-semibold: 600;
+
+  /* line heights — unitless; px line-heights stay where a row must match an icon box */
+  --iu-leading-none: 1; /* single-line controls, glyph boxes */
+  --iu-leading-tight: 1.25; /* titles */
+  --iu-leading-snug: 1.4; /* labels, list rows, card titles */
+  --iu-leading-normal: 1.5; /* body copy, the base */
+  --iu-leading-relaxed: 1.6; /* longer prose, descriptions */
+  --iu-leading-code: 1.7; /* code wells and diffs */
+
+  /* tracking for mono uppercase labels (eyebrows, column heads, group labels) */
+  --iu-tracking-caps: 0.12em;
+  --iu-tracking-caps-tight: 0.06em; /* badges and other caps inside a pill */
+
+  /* geometry */
+  --iu-radius-xs: 1px; /* hairline marks: lane ticks, meter segments */
+  --iu-radius-sm: 4px;
+  --iu-radius-md: 5px;
+  --iu-radius-lg: 8px;
+  --iu-radius-pill: 999px;
+  --iu-space-2: 8px;
+
+  /* control heights — set per-instance by sized components (buttons, fields,
+     selects) via an inline `--iu-control-height` on the root element, e.g.
+     :style="{ '--iu-control-height': { sm: '32px', md: '40px', lg: '48px' }[size] }" */
+  --iu-control-height: 40px;
+
+  /* data-viz — locked picks A2 (categorical), B3 (gain/loss), C1+C2 (ramps) */
+  --iu-viz-1: #e07b4a;
+  --iu-viz-2: #3fc2ad;
+  --iu-viz-3: #7b8ef0;
+  --iu-viz-4: #d9b02a;
+  --iu-viz-5: #ef6f96;
+  --iu-viz-6: #4fb6e8;
+  --iu-viz-gain: #6fae8e;
+  --iu-viz-loss: #d4705f;
+  --iu-viz-grid: #272724;
+  --iu-viz-zero-line: #373631;
+  --iu-viz-axis-label: #96948c;
+}

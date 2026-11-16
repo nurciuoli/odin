@@ -1,0 +1,15 @@
+node_modules
+dist
+*.local
+.DS_Store
+*.tsbuildinfo
+.worktrees
+.shots
+.scratch
+apps/desktop/stage
+work/
+
+# Yarn (node_modules linker; no Plug'n'Play, no checked-in release)
+.yarn/*
+!.yarn/patches
+.pnp.*

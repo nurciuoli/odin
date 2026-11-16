@@ -1,0 +1,41 @@
+name: Bug report
+description: Something in Odin doesn't work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Odin version or commit
+    validations:
+      required: true
+  - type: dropdown
+    id: how
+    attributes:
+      label: How you run Odin
+      options: [Desktop app, From source (browser), From source (desktop shell)]
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: OS and harness
+      description: For example "Windows 11, Codex (WSL)" or "macOS 15, Claude".
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant lines from desktop.log or the console. Remove tokens, paths and anything private first.
+      render: text

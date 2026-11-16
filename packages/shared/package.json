@@ -1,0 +1,21 @@
+{
+  "name": "@odin/shared",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./api": "./src/api.ts",
+    "./messages": "./src/messages.ts",
+    "./harness": "./src/harness.ts",
+    "./transcript": "./src/transcript.ts",
+    "./events": "./src/events.ts",
+    "./ingest": "./src/ingest.ts",
+    "./labels": "./src/labels.ts",
+    "./session": "./src/session.ts",
+    "./library": "./src/library.ts",
+    "./pricing": "./src/pricing.ts",
+    "./agents": "./src/agents.ts",
+    "./notebooks": "./src/notebooks.ts"
+  }
+}

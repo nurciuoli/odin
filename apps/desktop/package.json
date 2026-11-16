@@ -1,0 +1,21 @@
+{
+  "name": "@odin/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "src/main.ts",
+  "scripts": {
+    "postinstall": "node build/ensure-electron.ts",
+    "dev": "electron .",
+    "smoke": "node smoke/smoke.ts",
+    "test": "node --test \"src/**/*.test.ts\"",
+    "bundle": "node build/bundle.ts",
+    "dist": "node build/bundle.ts && node build/dist.ts"
+  },
+  "devDependencies": {
+    "electron": "^39.0.0",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.28.2"
+  }
+}

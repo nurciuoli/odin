@@ -1,0 +1,7 @@
+Odin
+Copyright 2026 N. Urciuoli
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+packages/web/src/components, packages/web/src/styles and packages/web/src/composables contain
+Instrument UI, a Vue component library by the same authors, included here under the same license.

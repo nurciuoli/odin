@@ -1,0 +1,298 @@
+{
+ "interruptLive": [
+  {
+   "type": "assistant",
+   "uuid": "a1",
+   "session_id": "eff78c02-06e9-4030-a919-48a5f0325e18",
+   "message": {
+    "id": "msg_01Int",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "content": [
+     {
+      "type": "tool_use",
+      "id": "toolu_int",
+      "name": "Bash",
+      "input": {
+       "command": "sleep 30"
+      }
+     }
+    ],
+    "usage": {
+     "input_tokens": 2,
+     "output_tokens": 9
+    }
+   },
+   "parent_tool_use_id": null,
+   "timestamp": "2026-11-15T20:04:16.800Z"
+  },
+  {
+   "type": "user",
+   "uuid": "r1",
+   "session_id": "eff78c02-06e9-4030-a919-48a5f0325e18",
+   "message": {
+    "role": "user",
+    "content": [
+     {
+      "type": "tool_result",
+      "tool_use_id": "toolu_int",
+      "content": "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.",
+      "is_error": true
+     }
+    ]
+   },
+   "parent_tool_use_id": null,
+   "timestamp": "2026-11-15T20:04:21.497Z",
+   "tool_use_result": "User rejected tool use",
+   "tool_result_meta": [
+    {
+     "id": "toolu_int",
+     "non_execution_kind": "user-rejected"
+    }
+   ]
+  },
+  {
+   "type": "user",
+   "uuid": "m1",
+   "session_id": "eff78c02-06e9-4030-a919-48a5f0325e18",
+   "message": {
+    "role": "user",
+    "content": [
+     {
+      "type": "text",
+      "text": "[Request interrupted by user for tool use]"
+     }
+    ]
+   },
+   "parent_tool_use_id": null,
+   "timestamp": "2026-11-15T20:04:21.500Z"
+  },
+  {
+   "type": "result",
+   "subtype": "error_during_execution",
+   "is_error": true,
+   "terminal_reason": "aborted_tools",
+   "errors": [
+    "[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use"
+   ],
+   "duration_ms": 4905,
+   "modelUsage": {}
+  }
+ ],
+ "interruptHistory": [
+  {
+   "type": "user",
+   "uuid": "u-p",
+   "session_id": "eff78c02-06e9-4030-a919-48a5f0325e18",
+   "message": {
+    "role": "user",
+    "content": "run it"
+   },
+   "parent_tool_use_id": null,
+   "timestamp": "2026-11-15T20:04:16.617Z"
+  },
+  {
+   "type": "assistant",
+   "uuid": "a1",
+   "session_id": "eff78c02-06e9-4030-a919-48a5f0325e18",
+   "message": {
+    "id": "msg_01Int",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "content": [
+     {
+      "type": "tool_use",
+      "id": "toolu_int",
+      "name": "Bash",
+      "input": {
+       "command": "sleep 30"
+      }
+     }
+    ],
+    "usage": {
+     "input_tokens": 2,
+     "output_tokens": 9
+    }
+   },
+   "parent_tool_use_id": null,
+   "timestamp": "2026-11-15T20:04:16.800Z"
+  },
+  {
+   "type": "user",
+   "uuid": "r1",
+   "session_id": "eff78c02-06e9-4030-a919-48a5f0325e18",
+   "message": {
+    "role": "user",
+    "content": [
+     {
+      "type": "tool_result",
+      "tool_use_id": "toolu_int",
+      "content": "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.",
+      "is_error": true
+     }
+    ]
+   },
+   "parent_tool_use_id": null,
+   "timestamp": "2026-11-15T20:04:21.497Z"
+  },
+  {
+   "type": "user",
+   "uuid": "m1",
+   "session_id": "eff78c02-06e9-4030-a919-48a5f0325e18",
+   "message": {
+    "role": "user",
+    "content": [
+     {
+      "type": "text",
+      "text": "[Request interrupted by user for tool use]"
+     }
+    ]
+   },
+   "parent_tool_use_id": null,
+   "timestamp": "2026-11-15T20:04:21.500Z"
+  }
+ ],
+ "denyLive": [
+  {
+   "type": "assistant",
+   "uuid": "a2",
+   "session_id": "eff78c02-06e9-4030-a919-48a5f0325e18",
+   "message": {
+    "id": "msg_01Den",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "content": [
+     {
+      "type": "tool_use",
+      "id": "toolu_deny",
+      "name": "Bash",
+      "input": {
+       "command": "sleep 30"
+      }
+     }
+    ],
+    "usage": {
+     "input_tokens": 2,
+     "output_tokens": 9
+    }
+   },
+   "parent_tool_use_id": null,
+   "timestamp": "2026-11-15T20:04:16.800Z"
+  },
+  {
+   "type": "user",
+   "uuid": "r2",
+   "session_id": "eff78c02-06e9-4030-a919-48a5f0325e18",
+   "message": {
+    "role": "user",
+    "content": [
+     {
+      "type": "tool_result",
+      "tool_use_id": "toolu_deny",
+      "content": "The user denied this tool call (test).",
+      "is_error": true
+     }
+    ]
+   },
+   "parent_tool_use_id": null,
+   "timestamp": "2026-11-15T20:04:21.497Z",
+   "tool_use_result": "Error: The user denied this tool call (test).",
+   "tool_result_meta": [
+    {
+     "id": "toolu_deny",
+     "non_execution_kind": "permission-rule",
+     "permission_decision": {
+      "decision": "reject",
+      "source": "user_reject"
+     }
+    }
+   ]
+  }
+ ],
+ "denyHistoryProse": [
+  {
+   "type": "user",
+   "uuid": "u-p",
+   "session_id": "eff78c02-06e9-4030-a919-48a5f0325e18",
+   "message": {
+    "role": "user",
+    "content": "run it"
+   },
+   "parent_tool_use_id": null,
+   "timestamp": "2026-11-15T20:04:16.617Z"
+  },
+  {
+   "type": "assistant",
+   "uuid": "a3",
+   "session_id": "eff78c02-06e9-4030-a919-48a5f0325e18",
+   "message": {
+    "id": "msg_01Cls",
+    "model": "claude-haiku-5-5",
+    "role": "assistant",
+    "content": [
+     {
+      "type": "tool_use",
+      "id": "toolu_cls",
+      "name": "Bash",
+      "input": {
+       "command": "sleep 30"
+      }
+     }
+    ],
+    "usage": {
+     "input_tokens": 2,
+     "output_tokens": 9
+    }
+   },
+   "parent_tool_use_id": null,
+   "timestamp": "2026-11-15T20:04:16.800Z"
+  },
+  {
+   "type": "user",
+   "uuid": "r3",
+   "session_id": "eff78c02-06e9-4030-a919-48a5f0325e18",
+   "message": {
+    "role": "user",
+    "content": [
+     {
+      "type": "tool_result",
+      "tool_use_id": "toolu_cls",
+      "content": "Permission for this action was denied by the Claude Code auto mode classifier: curl pipes to shell",
+      "is_error": true
+     }
+    ]
+   },
+   "parent_tool_use_id": null,
+   "timestamp": "2026-11-15T20:04:21.497Z"
+  }
+ ],
+ "streamInterruptLive": [
+  {
+   "type": "user",
+   "uuid": "m2",
+   "session_id": "eff78c02-06e9-4030-a919-48a5f0325e18",
+   "message": {
+    "role": "user",
+    "content": [
+     {
+      "type": "text",
+      "text": "[Request interrupted by user]"
+     }
+    ]
+   },
+   "parent_tool_use_id": null,
+   "timestamp": "2026-11-15T20:04:21.500Z"
+  },
+  {
+   "type": "result",
+   "subtype": "error_during_execution",
+   "is_error": true,
+   "terminal_reason": "aborted_streaming",
+   "errors": [
+    "[ede_diagnostic] x"
+   ],
+   "duration_ms": 800,
+   "modelUsage": {}
+  }
+ ]
+}

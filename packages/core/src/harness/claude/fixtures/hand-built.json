@@ -1,0 +1,42 @@
+{
+  "note": "Hand-built SDK message shapes for what sdk-recording.json lacks (thinking, subagent nesting, is_error results, TodoWrite, error results, notices). Shapes follow sdk.d.ts of @anthropic-ai/claude-agent-sdk 0.3.322; trimmed to the fields the mapping reads.",
+  "thinking": [
+    { "type": "stream_event", "event": { "type": "message_start", "message": { "id": "msg_T", "model": "claude-test-1", "role": "assistant", "content": [], "usage": { "input_tokens": 5, "cache_read_input_tokens": 100, "cache_creation_input_tokens": 10, "output_tokens": 1 } } }, "parent_tool_use_id": null, "uuid": "t-1", "session_id": "s" },
+    { "type": "stream_event", "event": { "type": "content_block_start", "index": 0, "content_block": { "type": "thinking", "thinking": "", "signature": "" } }, "parent_tool_use_id": null, "uuid": "t-2", "session_id": "s" },
+    { "type": "stream_event", "event": { "type": "content_block_delta", "index": 0, "delta": { "type": "thinking_delta", "thinking": "Let me " } }, "parent_tool_use_id": null, "uuid": "t-3", "session_id": "s" },
+    { "type": "stream_event", "event": { "type": "content_block_delta", "index": 0, "delta": { "type": "thinking_delta", "thinking": "think." } }, "parent_tool_use_id": null, "uuid": "t-4", "session_id": "s" },
+    { "type": "stream_event", "event": { "type": "content_block_delta", "index": 0, "delta": { "type": "signature_delta", "signature": "sig" } }, "parent_tool_use_id": null, "uuid": "t-5", "session_id": "s" },
+    { "type": "assistant", "message": { "id": "msg_T", "model": "claude-test-1", "role": "assistant", "content": [{ "type": "thinking", "thinking": "Let me think.", "signature": "sig" }], "usage": { "input_tokens": 5, "cache_read_input_tokens": 100, "cache_creation_input_tokens": 10, "output_tokens": 1 } }, "parent_tool_use_id": null, "uuid": "t-6", "session_id": "s", "timestamp": "2026-11-11T00:00:01.000Z" },
+    { "type": "stream_event", "event": { "type": "content_block_start", "index": 1, "content_block": { "type": "text", "text": "" } }, "parent_tool_use_id": null, "uuid": "t-7", "session_id": "s" },
+    { "type": "stream_event", "event": { "type": "content_block_delta", "index": 1, "delta": { "type": "text_delta", "text": "Hi" } }, "parent_tool_use_id": null, "uuid": "t-8", "session_id": "s" },
+    { "type": "assistant", "message": { "id": "msg_T", "model": "claude-test-1", "role": "assistant", "content": [{ "type": "text", "text": "Hi" }], "usage": { "input_tokens": 5, "cache_read_input_tokens": 100, "cache_creation_input_tokens": 10, "output_tokens": 3 } }, "parent_tool_use_id": null, "uuid": "t-9", "session_id": "s", "timestamp": "2026-11-11T00:00:02.000Z" }
+  ],
+  "subagent": [
+    { "type": "assistant", "message": { "id": "msg_M", "model": "claude-test-1", "role": "assistant", "content": [{ "type": "tool_use", "id": "toolu_task", "name": "Task", "input": { "description": "Look around", "prompt": "List the files", "subagent_type": "Explore" } }], "usage": { "input_tokens": 1, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0, "output_tokens": 1 } }, "parent_tool_use_id": null, "uuid": "a-1", "session_id": "s", "timestamp": "2026-11-11T00:00:01.000Z" },
+    { "type": "user", "message": { "role": "user", "content": [{ "type": "text", "text": "List the files" }] }, "parent_tool_use_id": "toolu_task", "uuid": "u-sub", "session_id": "s", "timestamp": "2026-11-11T00:00:02.000Z" },
+    { "type": "stream_event", "event": { "type": "message_start", "message": { "id": "msg_S", "model": "claude-small-1", "role": "assistant", "content": [] } }, "parent_tool_use_id": "toolu_task", "uuid": "a-2", "session_id": "s" },
+    { "type": "stream_event", "event": { "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "Looking" } }, "parent_tool_use_id": "toolu_task", "uuid": "a-3", "session_id": "s" },
+    { "type": "assistant", "message": { "id": "msg_S", "model": "claude-small-1", "role": "assistant", "content": [{ "type": "text", "text": "Looking" }], "usage": { "input_tokens": 50, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0, "output_tokens": 2 } }, "parent_tool_use_id": "toolu_task", "uuid": "a-4", "session_id": "s", "timestamp": "2026-11-11T00:00:03.000Z" },
+    { "type": "assistant", "message": { "id": "msg_S", "model": "claude-small-1", "role": "assistant", "content": [{ "type": "tool_use", "id": "toolu_read", "name": "Read", "input": { "file_path": "/p/a.txt" } }], "usage": { "input_tokens": 50, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0, "output_tokens": 9 } }, "parent_tool_use_id": "toolu_task", "uuid": "a-5", "session_id": "s", "timestamp": "2026-11-11T00:00:04.000Z" },
+    { "type": "user", "message": { "role": "user", "content": [{ "type": "tool_result", "tool_use_id": "toolu_read", "content": "hello" }] }, "parent_tool_use_id": "toolu_task", "uuid": "u-r1", "session_id": "s", "timestamp": "2026-11-11T00:00:05.000Z" },
+    { "type": "user", "message": { "role": "user", "content": [{ "type": "tool_result", "tool_use_id": "toolu_task", "content": [{ "type": "text", "text": "Found a.txt" }, { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "AAAA" } }] }] }, "parent_tool_use_id": null, "uuid": "u-r2", "session_id": "s", "timestamp": "2026-11-11T00:00:06.000Z" }
+  ],
+  "toolError": [
+    { "type": "assistant", "message": { "id": "msg_E", "model": "claude-test-1", "role": "assistant", "content": [{ "type": "tool_use", "id": "toolu_err", "name": "Bash", "input": { "command": "false" } }] }, "parent_tool_use_id": null, "uuid": "e-1", "session_id": "s" },
+    { "type": "user", "message": { "role": "user", "content": [{ "type": "tool_result", "tool_use_id": "toolu_err", "content": [{ "type": "text", "text": "Exit code 1" }], "is_error": true }] }, "parent_tool_use_id": null, "uuid": "e-2", "session_id": "s" }
+  ],
+  "todoWrite": [
+    { "type": "assistant", "message": { "id": "msg_D", "model": "claude-test-1", "role": "assistant", "content": [{ "type": "tool_use", "id": "toolu_todo", "name": "TodoWrite", "input": { "todos": [{ "content": "Read", "status": "completed", "activeForm": "Reading" }, { "content": "Write", "status": "in_progress", "activeForm": "Writing" }, { "content": "bogus", "status": "nope" }] } }] }, "parent_tool_use_id": null, "uuid": "d-1", "session_id": "s" }
+  ],
+  "errorResult": { "type": "result", "subtype": "error_during_execution", "duration_ms": 12, "duration_api_ms": 0, "is_error": true, "num_turns": 0, "stop_reason": null, "total_cost_usd": 0, "usage": {}, "modelUsage": {}, "permission_denials": [], "errors": ["boom", "bang"], "uuid": "r-1", "session_id": "s" },
+  "apiErrorResult": { "type": "result", "subtype": "success", "duration_ms": 30, "duration_api_ms": 20, "is_error": true, "num_turns": 1, "result": "API Error: 500 overloaded", "stop_reason": null, "total_cost_usd": 0.01, "usage": {}, "modelUsage": { "claude-test-1": { "inputTokens": 3, "outputTokens": 0, "cacheReadInputTokens": 0, "cacheCreationInputTokens": 0, "webSearchRequests": 0, "costUSD": 0.01, "contextWindow": 1000, "maxOutputTokens": 100 } }, "permission_denials": [], "uuid": "r-2", "session_id": "s" },
+  "notices": [
+    { "type": "system", "subtype": "api_retry", "attempt": 1, "max_retries": 10, "retry_delay_ms": 2000, "error_status": 529, "error": "overloaded", "uuid": "n-1", "session_id": "s" },
+    { "type": "system", "subtype": "status", "status": "compacting", "uuid": "n-2", "session_id": "s" },
+    { "type": "system", "subtype": "compact_boundary", "compact_metadata": { "trigger": "auto", "pre_tokens": 150000 }, "uuid": "n-3", "session_id": "s" },
+    { "type": "system", "subtype": "status", "status": null, "compact_result": "failed", "compact_error": "too long", "uuid": "n-4", "session_id": "s" },
+    { "type": "rate_limit_event", "rate_limit_info": { "status": "allowed", "rateLimitType": "five_hour" }, "uuid": "n-5", "session_id": "s" },
+    { "type": "rate_limit_event", "rate_limit_info": { "status": "rejected", "rateLimitType": "five_hour", "resetsAt": 1794374400 }, "uuid": "n-6", "session_id": "s" },
+    { "type": "system", "subtype": "status", "status": "requesting", "permissionMode": "acceptEdits", "uuid": "n-7", "session_id": "s" }
+  ]
+}

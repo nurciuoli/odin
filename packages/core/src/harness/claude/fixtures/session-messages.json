@@ -1,0 +1,22 @@
+{
+  "note": "Hand-built getSessionMessages() output (SessionMessage[]) for the session in sdk-recording.json plus an attachment turn and a subagent: one record per stored transcript line, assistant blocks stored one per record sharing message.id, as the CLI writes them.",
+  "messages": [
+    { "type": "user", "uuid": "u-1", "session_id": "s", "parent_tool_use_id": null, "parent_agent_id": null, "timestamp": "2026-11-11T00:35:30.000Z", "message": { "role": "user", "content": "Run ls" } },
+    { "type": "assistant", "uuid": "a-1", "session_id": "s", "parent_tool_use_id": null, "parent_agent_id": null, "timestamp": "2026-11-11T00:35:39.000Z", "message": { "id": "msg_011CgvCmBc3988xk19sWZvDV", "model": "claude-fable-5-2", "role": "assistant", "content": [{ "type": "thinking", "thinking": "Use Bash.", "signature": "x" }] } },
+    { "type": "assistant", "uuid": "a-2", "session_id": "s", "parent_tool_use_id": null, "parent_agent_id": null, "timestamp": "2026-11-11T00:35:39.400Z", "message": { "id": "msg_011CgvCmBc3988xk19sWZvDV", "model": "claude-fable-5-2", "role": "assistant", "content": [{ "type": "tool_use", "id": "toolu_01NXFULWszHTJHLww2fxBTof", "name": "Bash", "input": { "command": "ls", "description": "List files in current directory" } }] } },
+    { "type": "user", "uuid": "u-2", "session_id": "s", "parent_tool_use_id": null, "parent_agent_id": null, "timestamp": "2026-11-11T00:35:39.510Z", "message": { "role": "user", "content": [{ "tool_use_id": "toolu_01NXFULWszHTJHLww2fxBTof", "type": "tool_result", "content": "hello.txt", "is_error": false }] } },
+    { "type": "assistant", "uuid": "a-3", "session_id": "s", "parent_tool_use_id": null, "parent_agent_id": null, "timestamp": "2026-11-11T00:35:41.106Z", "message": { "id": "msg_011CgvCmPac1WmP9JbxG3CCz", "model": "claude-fable-5-2", "role": "assistant", "content": [{ "type": "text", "text": "The output is:\n\n```\nhello.txt\n```" }] } },
+    { "type": "user", "uuid": "u-3", "session_id": "s", "parent_tool_use_id": null, "parent_agent_id": null, "message": { "role": "user", "content": [
+      { "type": "text", "text": "Look at these" },
+      { "type": "text", "text": "<attachment name=\"shot.png\" media-type=\"image/png\" />" },
+      { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "AAAA" } },
+      { "type": "text", "text": "<attachment name=\"a &amp; b.md\" media-type=\"text/markdown\">\n# Notes\n</attachment>" },
+      { "type": "image", "source": { "type": "base64", "media_type": "image/jpeg", "data": "BBBB" } }
+    ] } },
+    { "type": "assistant", "uuid": "a-4", "session_id": "s", "parent_tool_use_id": null, "parent_agent_id": null, "message": { "id": "msg_X", "model": "claude-fable-5-2", "role": "assistant", "content": [{ "type": "tool_use", "id": "toolu_task", "name": "Task", "input": { "prompt": "Check" } }] } },
+    { "type": "assistant", "uuid": "a-5", "session_id": "s", "parent_tool_use_id": "toolu_task", "parent_agent_id": "agent-1", "message": { "id": "msg_Y", "model": "claude-small-1", "role": "assistant", "content": [{ "type": "tool_use", "id": "toolu_grep", "name": "Grep", "input": { "pattern": "x" } }] } },
+    { "type": "user", "uuid": "u-4", "session_id": "s", "parent_tool_use_id": "toolu_task", "parent_agent_id": "agent-1", "message": { "role": "user", "content": [{ "type": "tool_result", "tool_use_id": "toolu_grep", "content": "no matches", "is_error": true }] } },
+    { "type": "user", "uuid": "u-5", "session_id": "s", "parent_tool_use_id": null, "parent_agent_id": null, "message": { "role": "user", "content": [{ "type": "tool_result", "tool_use_id": "toolu_task", "content": [{ "type": "text", "text": "Done" }] }] } },
+    { "type": "system", "uuid": "sys-1", "session_id": "s", "parent_tool_use_id": null, "parent_agent_id": null, "message": { "content": "ignored" } }
+  ]
+}

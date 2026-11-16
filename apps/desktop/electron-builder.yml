@@ -1,0 +1,34 @@
+# Windows x64 NSIS, per-user, unsigned (docs/desktop.md#packaging). Input is staged by build/bundle.ts.
+appId: dev.odin.app
+productName: Odin
+directories:
+  app: stage/app
+  output: dist
+  buildResources: build
+# The app needs no node_modules: everything runtime lives in extraResources. Without this, Yarn 4 makes
+# electron-builder fall back to collecting the apps/desktop workspace itself, including dist/ (old installers).
+files:
+  - "**/*"
+  - "!**/node_modules/**"
+# Core, its SDK (with the platform binary), web, library, theme and adapter scripts live outside app.asar.
+extraResources:
+  - from: stage/resources
+    to: .
+    filter: ["**/*"]
+# Use the installed Electron instead of downloading one.
+electronDist: ../../node_modules/electron/dist
+npmRebuild: false
+nodeGypRebuild: false
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+  executableName: Odin
+  # Skip signing only. signAndEditExecutable would also skip writing this icon into Odin.exe.
+  signExecutable: false
+nsis:
+  oneClick: true
+  perMachine: false
+  allowElevation: false
+  artifactName: Odin-Setup-${version}.${ext}
