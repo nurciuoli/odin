@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { API_KEY } from '@/api'
 import { createMockApi } from '@/api/mock'
@@ -72,6 +72,8 @@ describe('FileDocument', () => {
   })
   it('reads a notebook file as its cells, read-only, with a way to start a kernel', async () => {
     const wrapper = mountFile(createMockApi(), 'experiments/baseline.ipynb')
+    await flushPromises()
+    await vi.dynamicImportSettled()
     await flushPromises()
     expect(wrapper.findAllComponents(NotebookCell)).toHaveLength(2)
     expect(wrapper.text()).toContain('45')

@@ -14,8 +14,9 @@ import type { CsvSelection } from '@/components/CsvViewer/csv'
 import type { MenuItem } from '@/components/Menu'
 import { IuErrorState, IuSkeleton } from '@/components/States'
 import DocumentHeader from './DocumentHeader.vue'
-import NotebookCell from './NotebookCell.vue'
 import { baseName, fileIcon, fileKind, parentPath, parseIpynb } from './documents'
+// only a notebook file needs the cell viewer (and the code editor behind it)
+const NotebookCell = defineAsyncComponent(() => import('./NotebookCell.vue'))
 const IuMarkdownEditor = defineAsyncComponent(
   () => import('@/components/MarkdownEditor/MarkdownEditor.vue'),
 )
