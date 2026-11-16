@@ -1,8 +1,8 @@
 # Odin: overview
 
-Odin is a desktop hub for agentic development: one place to start, resume and organise agent **sessions** across
-all your **projects**, with a shared **library** of the things you reuse (instructions, skills, subagents, commands,
-MCP servers, settings profiles).
+Odin is a harness-agnostic Agentic Development Environment: one place to start, resume and organise agent
+**sessions** across all your **projects**, with a shared **library** of the things you reuse (instructions, skills,
+subagents, commands, MCP servers, settings profiles).
 
 It does not replace the agent runtimes. Each session runs on a real native harness (Claude Agent SDK, Codex
 app-server, Grok, OpenCode, Antigravity) with that runtime's own installation, login, settings and transcripts.
