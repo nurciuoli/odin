@@ -4,6 +4,8 @@
 
 **One desktop hub for all your coding-agent sessions.**
 
+<p align="center"><img src="docs/assets/murmuration.gif" width="720" alt="A murmuration of small strokes flocking and drifting, the animation behind Odin's session composer"></p>
+
 Odin lets you start, resume and organise agent sessions across all your projects and all your agent runtimes
 (Claude Code, Codex, Grok, OpenCode, Antigravity) in one app. Sessions run on each tool's real native harness, so
 your instruction files, skills, MCP servers, hooks and permissions behave the way they always do. Odin adds the
