@@ -126,7 +126,7 @@ async function openTask(id: string) {
 }
 async function closeTask() {
   selectedTask.value = null
-  workbenchTab.value = filesOpen.value ? 'files' : 'artifacts'
+  workbenchTab.value = 'docs'
   await nextTick()
   if (taskOpener?.isConnected) taskOpener.focus()
   taskOpener = null
@@ -301,25 +301,23 @@ const workbench = ref<InstanceType<typeof SessionWorkbench>>()
 function openFile(path: string) {
   previewDismissed.value = false
   filesOpen.value = true
-  workbenchTab.value = 'files'
+  workbenchTab.value = 'docs'
   workbench.value?.openFile(path)
   if (narrow.value || compact.value) setSide(false)
 }
+/** The header's Files button: the document surface, open on whatever was open; pressed again it puts the panel away. */
 function toggleFiles() {
+  if (showWorkbench.value && tab.value === 'docs') {
+    void closePreview()
+    return
+  }
   previewDismissed.value = false
   filesOpen.value = true
-  workbenchTab.value = 'files'
-}
-function openNotebook() {
-  previewDismissed.value = false
-  filesOpen.value = true
-  workbenchTab.value = 'notebook'
-  if (narrow.value || compact.value) setSide(false)
+  workbenchTab.value = 'docs'
 }
 const filesOpen = ref(false)
 const previewDismissed = ref(false)
 const previewWidth = ref(760)
-const artifactPreviewWidth = computed(() => Math.max(480, previewWidth.value - 4))
 const previewAvailable = computed(
   () =>
     !!session.value &&
@@ -338,7 +336,7 @@ watch(
 )
 const workbenchTab = ref<PreviewView | null>(null)
 const tab = computed<PreviewView>({
-  get: () => workbenchTab.value ?? (artifacts.value.length ? 'artifacts' : 'files'),
+  get: () => workbenchTab.value ?? 'docs',
   set: t => (workbenchTab.value = t),
 })
 // a new artifact brings its tab forward (selection only; focus stays where it is)
@@ -346,7 +344,7 @@ watch(
   () => artifacts.value.length,
   (n, before) => {
     if (before !== undefined && n > before && selectedTask.value === null)
-      workbenchTab.value = 'artifacts'
+      workbenchTab.value = 'docs'
   },
 )
 
@@ -354,8 +352,8 @@ watch(
 function openArtifact(id: number, version: number) {
   previewDismissed.value = false
   if (narrow.value || compact.value) setSide(false)
-  if (!narrow.value) workbenchTab.value = 'artifacts'
-  artifactPanel.value?.show(id, version)
+  if (!narrow.value) workbench.value?.showArtifact(id, version)
+  else artifactPanel.value?.show(id, version)
   if (narrow.value && !drawerOpen.value) void openDrawer()
 }
 watch(
@@ -367,9 +365,11 @@ watch(
     await nextTick()
     // A deep link selects the preview without moving focus.
     previewDismissed.value = false
-    workbenchTab.value = 'artifacts'
-    artifactPanel.value?.show(id, artifact.latestVersion)
-    if (narrow.value) drawerOpen.value = true
+    workbenchTab.value = 'docs'
+    if (narrow.value) {
+      artifactPanel.value?.show(id, artifact.latestVersion)
+      drawerOpen.value = true
+    } else workbench.value?.showArtifact(id, artifact.latestVersion)
   },
   { immediate: true },
 )
@@ -387,7 +387,8 @@ watch(narrow, n => {
   if (!n) drawerOpen.value = false
 })
 const cardCurrent = computed(() =>
-  (narrow.value && !drawerOpen.value) || (!narrow.value && tab.value !== 'artifacts')
+  (narrow.value && !drawerOpen.value) ||
+  (!narrow.value && !(tab.value === 'docs' && workbench.value?.activeKind === 'artifact'))
     ? null
     : shownArtifact.value,
 )
@@ -500,15 +501,12 @@ function onDeleted() {
           @deleted="onDeleted"
         >
           <template #actions>
-            <IuButton size="sm" variant="ghost" :aria-pressed="filesOpen" @click="toggleFiles"
-              >Files</IuButton
-            >
             <IuButton
               size="sm"
               variant="ghost"
-              :aria-pressed="showWorkbench && tab === 'notebook'"
-              @click="openNotebook"
-              >Notebook</IuButton
+              :aria-pressed="showWorkbench && tab === 'docs'"
+              @click="toggleFiles"
+              >Files</IuButton
             >
             <IuButton
               v-if="sideThreads.length || asideOpen"
@@ -663,10 +661,14 @@ function onDeleted() {
       v-show="showWorkbench"
       v-model:tab="tab"
       :session="session"
+      :artifacts="narrow ? [] : artifacts"
+      :has-side="asideOpen"
+      :has-activity="previewTask !== null"
       :width="previewWidth"
       :resizable="showWorkbench && !narrow"
       @update:width="previewWidth = $event"
       @close="closePreview"
+      @select-artifact="(id, version) => artifactPanel?.show(id, version)"
     >
       <template #activity
         ><TaskPreview
@@ -694,15 +696,14 @@ function onDeleted() {
           @discarded="side.remove"
         />
       </template>
-      <template #artifacts>
+      <template #artifacts="{ close }">
         <ArtifactPanel
           v-if="artifacts.length && !narrow"
           ref="artifactPanel"
           :artifacts="artifacts"
-          :show-tabs="false"
-          :width="artifactPreviewWidth"
           presentation="inline"
           @answered="setRecord"
+          @close="close"
           @shown="(id, version) => (shownArtifact = { id, version })"
         />
       </template>

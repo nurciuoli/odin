@@ -2,6 +2,7 @@ import type { NotebookExecution, NotebookKernel, NotebookSnapshot } from '@odin/
 import type { ServerEvent } from '@odin/shared/events'
 import type { Api } from './types'
 import { ApiRequestError } from './types'
+import { FIXTURE_SESSION_IDS } from './fixtures'
 
 export function mockNotebooks(options: {
   project: (name: string) => { path: string }
@@ -238,5 +239,72 @@ export function mockNotebooks(options: {
     | 'exportNotebook'
     | 'notebookOutputUrl'
   >
+  // One notebook the idle fixture session already uses, so the surface has something to show.
+  try {
+    const owner = options.session(FIXTURE_SESSION_IDS.idle)
+    const stamp = new Date().toISOString()
+    const text = (
+      id: string,
+      kind: 'code' | 'markdown',
+      source: string,
+      outputs: NotebookSnapshot['cells'][number]['outputs'] = [],
+      n: number | null = null,
+    ) => ({
+      id,
+      kind,
+      source,
+      outputs,
+      executionCount: n,
+      author: { kind: 'agent' as const, sessionId: FIXTURE_SESSION_IDS.idle },
+    })
+    notebooks.set('notebook-seed', {
+      kernel: {
+        id: 'notebook-seed',
+        project: owner.project,
+        name: 'Revenue analysis',
+        cwd: '/home/me/code/odin',
+        interpreter: '.venv/bin/python',
+        location: { kind: 'native' },
+        state: 'idle',
+        createdAt: stamp,
+        updatedAt: stamp,
+        error: null,
+      },
+      revision: '1',
+      editor: 'odin',
+      cells: [
+        text(
+          'c1',
+          'markdown',
+          '# Revenue by quarter\n\nLoad the export, then compare **Q1** against **Q2**.',
+        ),
+        text(
+          'c2',
+          'code',
+          "import pandas as pd\n\ndata = pd.read_csv('data/revenue.csv')\nprint(data.shape)",
+          [{ type: 'stream', name: 'stdout', text: '(128, 4)\n' }],
+          1,
+        ),
+        text(
+          'c3',
+          'code',
+          "data.groupby('quarter').revenue.sum()",
+          [
+            {
+              type: 'display',
+              data: {
+                'text/plain': 'quarter\nQ1    412300\nQ2    468900\nName: revenue, dtype: int64',
+              },
+            },
+          ],
+          2,
+        ),
+        text('c4', 'code', 'data.plot()', [], null),
+      ],
+    })
+    links.set(FIXTURE_SESSION_IDS.idle, new Set(['notebook-seed']))
+  } catch {
+    // a mock without the fixture session has no notebook to seed
+  }
   return methods
 }

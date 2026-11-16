@@ -14,6 +14,7 @@ import { IuMenu, type MenuItem } from '@/components/Menu'
 import { IuSidePanel } from '@/components/SidePanel'
 import { IuTabs, type Tab } from '@/components/Tabs'
 import ArtifactFrame from './ArtifactFrame.vue'
+import DocumentHeader from './DocumentHeader.vue'
 import { artifactOrder, newestArtifact, tabLabel, versionNumbers } from './artifacts'
 import { getDesktop } from '@/app/desktop'
 import { useToast } from '@/components/Toast'
@@ -178,7 +179,7 @@ const menuItems = computed<MenuItem[]>(() => [
   },
   { type: 'separator' },
   { id: 'pdf', label: 'Export PDF / print', disabled: !selected.value },
-  ...(props.width === undefined
+  ...(overlay.value && props.width === undefined
     ? [{ id: 'expand', type: 'check' as const, label: 'Wide panel', checked: expanded.value }]
     : []),
 ])
@@ -227,14 +228,39 @@ defineExpose({ show, focus })
 </script>
 
 <template>
+  <section
+    v-if="!overlay"
+    class="artifact-panel artifact-panel--doc"
+    :aria-label="selected?.title ?? 'Artifacts'"
+  >
+    <DocumentHeader
+      :name="selected?.title ?? 'Output'"
+      icon="board"
+      :status="`v${shown}${numbers.length > 1 ? ` of ${latest}` : ''}`"
+      :menu="menuItems"
+      @select="onMenu"
+      @close="emit('close')"
+    />
+    <template v-for="a in ordered" :key="a.id">
+      <div v-if="mounted.has(a.id)" v-show="a.id === selected?.id" class="artifact-panel__view">
+        <ArtifactFrame
+          :artifact-id="a.id"
+          :version="shownVersion(a)"
+          :title="a.title"
+          @answered="emit('answered', $event)"
+        />
+      </div>
+    </template>
+  </section>
   <IuSidePanel
+    v-else
     ref="panel"
     class="artifact-panel"
     variant="column"
-    :presentation="presentation"
+    presentation="overlay"
     :width="width"
-    :open="!overlay || open"
-    :closable="overlay"
+    :open="open"
+    closable
     aria-label="Artifacts"
     @update:open="open = $event"
     @close="emit('close')"
@@ -320,5 +346,16 @@ defineExpose({ show, focus })
 .artifact-panel__view {
   flex: 1;
   min-height: 0;
+}
+.artifact-panel--doc {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.artifact-panel--doc > .artifact-panel__view {
+  display: flex;
+  flex-direction: column;
 }
 </style>

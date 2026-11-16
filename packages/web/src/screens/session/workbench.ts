@@ -6,8 +6,8 @@ import { filesChanged, type ChangedFile } from './sessionView'
 
 export type WorkbenchTab = 'plan' | 'changes' | 'artifacts' | 'files'
 
-/** What the session screen's preview pane shows: files, artifacts, an agent's activity, or side threads. */
-export type PreviewView = 'files' | 'artifacts' | 'activity' | 'side' | 'notebook'
+/** What the session screen's preview pane shows: the document surface (files, notebooks, artifacts), an agent's activity, or side threads. */
+export type PreviewView = 'docs' | 'activity' | 'side'
 
 export interface FileChange extends ChangedFile {
   /** Lines written and replaced, estimated from the edit inputs (an Edit's new/old strings, a Write's content). */

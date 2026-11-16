@@ -657,6 +657,27 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
     'data/results.csv':
       'id,name,status\n00123,First experiment,complete\n00456,"Second, larger experiment",pending\n',
     'src/example.ts': 'export const greeting = "Hello Odin"\n',
+    'experiments/baseline.ipynb': JSON.stringify({
+      nbformat: 4,
+      nbformat_minor: 5,
+      metadata: {},
+      cells: [
+        {
+          cell_type: 'markdown',
+          id: 'a',
+          metadata: {},
+          source: ['# Baseline\n', 'Saved from an earlier run.'],
+        },
+        {
+          cell_type: 'code',
+          id: 'b',
+          metadata: {},
+          execution_count: 1,
+          source: ['print(sum(range(10)))'],
+          outputs: [{ output_type: 'stream', name: 'stdout', text: ['45\n'] }],
+        },
+      ],
+    }),
   }
   const workspacePaths = (): FileMatch[] => {
     const dirs = new Set<string>()
