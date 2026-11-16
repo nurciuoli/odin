@@ -22,12 +22,7 @@ parts those tools don't have:
 - **Measurement**: time, tokens, cost, diff size, and the outcome of the linked pull request, per session.
 - **Artifacts and notebooks**: agents can post sandboxed interactive HTML and drive Python kernels you can inspect.
 
-Odin runs locally and binds to `127.0.0.1`. It never reads or stores your model credentials: each runtime uses
-its own login.
-
 ## Screenshots
-
-Captured from the app's built-in sample data (`?mock`), so no real sessions or projects appear.
 
 **Home**: start a chat, and see every session that is running, paused for you, or finished.
 
@@ -36,10 +31,6 @@ Captured from the app's built-in sample data (`?mock`), so no real sessions or p
 **Session**: streaming chat with tool calls, terminal output, and a details panel for context, changes, background tasks and plan.
 
 ![A running session with tool calls, a failed build and the details side panel](docs/assets/screenshots/session.png)
-
-**Permission prompt**: allow once, always allow with a scope, or deny, with the exact tool input shown.
-
-![A session paused on a permission prompt for a Bash command](docs/assets/screenshots/permission-prompt.png)
 
 **Project overview**: time, cost, lines changed and commits per project, with a chart over 7 days, 30 days or 12 weeks.
 
