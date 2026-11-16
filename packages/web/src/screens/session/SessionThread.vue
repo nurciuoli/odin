@@ -3,7 +3,9 @@
 // commands, agents) as one rail inside an assistant turn (steps.ts, rail.ts, components/Rail). A step that posted an
 // artifact keeps a card under its line (the artifact itself shows in the artifact column; the card selects it there).
 // New content never takes focus; the list follows the bottom only while the reader is already there (IuMessageList).
-import { computed, ref } from 'vue'
+// A step that touched a file or a notebook cell offers to open the side panel there; the panel can point back at a
+// step (reveal).
+import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import type { TranscriptEntry } from '@odin/shared/harness'
 import { taskKey } from '@odin/shared/harness'
 import type { ChatAuthor, ChatMessage } from '@/components/Chat'
@@ -13,6 +15,8 @@ import { IuEmpty } from '@/components/States'
 import { IuRail } from '@/components/Rail'
 import { IuToolCall } from '@/components/ToolCall'
 import { IuButton } from '@/components/Button'
+import { IuIcon } from '@/components/Icon'
+import type { ToolCallView } from '@/components/ToolCall'
 import { harnessLabel } from '@/screens/shared/format'
 import ArtifactCard from './ArtifactCard.vue'
 import InjectedNotice from './InjectedNotice.vue'
@@ -30,6 +34,8 @@ import {
 } from './steps'
 import { railRun } from './rail'
 import { useElapsed } from './useElapsed'
+import { prefersReducedMotion } from './useMediaQuery'
+import { entryCell, entryFile, type CellRef } from './fileActivity'
 
 const props = withDefaults(
   defineProps<{
@@ -91,7 +97,60 @@ const rails = computed(() => {
 const emit = defineEmits<{
   'open-artifact': [id: number, version: number]
   'open-task': [id: string]
+  /** A step that worked on a file: open the side panel on it (path relative to the working directory). */
+  'open-file': [path: string]
+  /** A step that ran or edited a notebook cell: open the side panel on that cell. */
+  'open-cell': [cell: CellRef]
 }>()
+
+// A step's file or notebook cell, when it has one. The helpers read a tool entry; a rail step has the call's view.
+const asEntry = (call: ToolCallView) =>
+  ({
+    kind: 'tool',
+    id: call.id,
+    name: call.name,
+    input: call.input,
+    ...(call.result
+      ? { result: { ok: true, text: call.result.text, truncated: !!call.result.truncated } }
+      : {}),
+    at: null,
+    parentToolUseId: null,
+  }) as Extract<TranscriptEntry, { kind: 'tool' }>
+const stepFile = (call: ToolCallView) => entryFile(asEntry(call), props.root)
+const stepCell = (call: ToolCallView) => entryCell(asEntry(call))
+
+// The side panel points back: the run holding the step unfolds, scrolls into view and is marked for a moment.
+const runs = new Map<string, HTMLElement>()
+const runRef = (id: string) => (el: unknown) => {
+  if (el instanceof HTMLElement) runs.set(id, el)
+  else runs.delete(id)
+}
+const marked = ref('')
+let markTimer: ReturnType<typeof setTimeout> | undefined
+onBeforeUnmount(() => clearTimeout(markTimer))
+async function reveal(entryId: string) {
+  const run = items.value.find(
+    (i): i is RunItem => i.kind === 'run' && i.rows.some(r => r.id === entryId),
+  )
+  if (!run) return
+  const wasFolded = folded(run)
+  overrides.value[run.id] = false
+  await nextTick()
+  const reduce = prefersReducedMotion()
+  const go = () => {
+    const el = runs.get(run.id)
+    if (!el) return
+    if (typeof el.scrollIntoView === 'function')
+      el.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' })
+    marked.value = run.id
+    clearTimeout(markTimer)
+    markTimer = setTimeout(() => (marked.value = ''), 2400)
+  }
+  // an unfolding run settles first, so the scroll lands where the step ends up
+  if (wasFolded && !reduce) setTimeout(go, 280)
+  else go()
+}
+defineExpose({ reveal })
 
 const YOU: ChatAuthor = { name: 'You', kind: 'person', id: 'you' }
 const author = (): ChatAuthor => ({
@@ -176,63 +235,93 @@ const WORKING = computed<ChatMessage>(() => ({
         :show-header="row.head"
         :actions="false"
       >
-        <IuRail
+        <div
           v-if="rails.get(row.id)"
-          :steps="rails.get(row.id)!.steps"
-          :label="runLabel(row)"
-          :live="isLive(row)"
-          :working="tailWorking(row)"
-          :agents="agentsOut"
-          :flock="runFlock(row, { live: isLive(row) })"
-          :folded="folded(row)"
-          :root="root"
-          :now="clock"
-          @update:folded="v => (overrides[row.id] = v)"
+          :ref="runRef(row.id)"
+          class="session-thread__run"
+          :data-marked="marked === row.id || undefined"
         >
-          <template #body="{ step }">
-            <template v-for="(body, i) in [rails.get(row.id)!.bodies.get(step.id)]" :key="i">
-              <IuToolCall v-if="body?.kind === 'call'" :call="body.call" :root="root" bare />
-              <p v-else-if="body?.kind === 'thinking'" class="session-thread__thought">
-                {{ body.text }}
-              </p>
-              <p v-else-if="body?.kind === 'agent'" class="session-thread__thought">
-                {{ body.summary }}
-              </p>
+          <IuRail
+            :steps="rails.get(row.id)!.steps"
+            :label="runLabel(row)"
+            :live="isLive(row)"
+            :working="tailWorking(row)"
+            :agents="agentsOut"
+            :flock="runFlock(row, { live: isLive(row) })"
+            :folded="folded(row)"
+            :root="root"
+            :now="clock"
+            @update:folded="v => (overrides[row.id] = v)"
+          >
+            <template #body="{ step }">
+              <template v-for="(body, i) in [rails.get(row.id)!.bodies.get(step.id)]" :key="i">
+                <IuToolCall v-if="body?.kind === 'call'" :call="body.call" :root="root" bare />
+                <p v-else-if="body?.kind === 'thinking'" class="session-thread__thought">
+                  {{ body.text }}
+                </p>
+                <p v-else-if="body?.kind === 'agent'" class="session-thread__thought">
+                  {{ body.summary }}
+                </p>
+              </template>
             </template>
-          </template>
-          <template #actions="{ step }">
-            <template v-for="(r, i) in [rails.get(row.id)!.rows.get(step.id)]" :key="i">
-              <IuButton
-                v-if="taskActions && r?.kind === 'task' && r.task.kind === 'agent'"
-                size="sm"
-                variant="ghost"
-                @click="emit('open-task', r.id)"
-                >Open agent</IuButton
-              >
-              <IuButton
-                v-else-if="taskActions && r?.kind === 'tool' && r.task?.kind === 'agent'"
-                size="sm"
-                variant="ghost"
-                @click="emit('open-task', taskKey(r.task))"
-                >Open agent</IuButton
-              >
+            <template #actions="{ step }">
+              <template v-for="(r, i) in [rails.get(row.id)!.rows.get(step.id)]" :key="i">
+                <IuButton
+                  v-if="taskActions && r?.kind === 'task' && r.task.kind === 'agent'"
+                  size="sm"
+                  variant="ghost"
+                  @click="emit('open-task', r.id)"
+                  >Open agent</IuButton
+                >
+                <IuButton
+                  v-else-if="taskActions && r?.kind === 'tool' && r.task?.kind === 'agent'"
+                  size="sm"
+                  variant="ghost"
+                  @click="emit('open-task', taskKey(r.task))"
+                  >Open agent</IuButton
+                >
+                <template v-else-if="r?.kind === 'tool'">
+                  <IuButton
+                    v-if="stepFile(r.call)"
+                    size="sm"
+                    variant="ghost"
+                    icon-only
+                    :aria-label="`Open ${stepFile(r.call)} in the side panel`"
+                    title="Open in side panel"
+                    @click="emit('open-file', stepFile(r.call)!)"
+                  >
+                    <template #icon><IuIcon name="panelRight" :size="14" /></template>
+                  </IuButton>
+                  <IuButton
+                    v-else-if="stepCell(r.call)"
+                    size="sm"
+                    variant="ghost"
+                    icon-only
+                    aria-label="Open this notebook cell in the side panel"
+                    title="Open cell in side panel"
+                    @click="emit('open-cell', stepCell(r.call)!)"
+                  >
+                    <template #icon><IuIcon name="panelRight" :size="14" /></template>
+                  </IuButton>
+                </template>
+              </template>
             </template>
-          </template>
-          <template #after="{ step }">
-            <template v-for="(r, i) in [rails.get(row.id)!.rows.get(step.id)]" :key="i">
-              <ArtifactCard
-                v-if="r?.kind === 'tool' && r.artifact"
-                class="session-thread__card"
-                :artifact="r.artifact"
-                :current="
-                  r.artifact.id === currentArtifact?.id &&
-                  r.artifact.version === currentArtifact?.version
-                "
-                @open="(id, version) => emit('open-artifact', id, version)"
-              />
+            <template #after="{ step }">
+              <template v-for="(r, i) in [rails.get(row.id)!.rows.get(step.id)]" :key="i">
+                <ArtifactCard
+                  v-if="r?.kind === 'tool' && r.artifact"
+                  class="session-thread__card"
+                  :artifact="r.artifact"
+                  :current="
+                    r.artifact.id === currentArtifact?.id &&
+                    r.artifact.version === currentArtifact?.version
+                  "
+                  @open="(id, version) => emit('open-artifact', id, version)"
+                />
+              </template>
             </template>
-          </template>
-        </IuRail>
+          </IuRail>
+        </div>
       </IuMessage>
       <InjectedNotice v-else-if="row.kind === 'injected'" :entry="row.entry" />
       <IuCallout
@@ -273,5 +362,12 @@ const WORKING = computed<ChatMessage>(() => ({
 }
 .session-thread__card {
   margin-top: 6px;
+}
+.session-thread__run {
+  border-radius: var(--iu-radius-sm);
+}
+.session-thread__run[data-marked] {
+  outline: 1px solid var(--iu-accent-border);
+  outline-offset: 4px;
 }
 </style>

@@ -26,8 +26,17 @@ const props = withDefaults(
     locked?: boolean
     /** No kernel behind it: nothing runs and nothing is removed. */
     detached?: boolean
+    /** The thread pointed at this cell: marked for a moment. */
+    marked?: boolean
   }>(),
-  { kernelId: undefined, readonly: false, blocked: false, locked: false, detached: false },
+  {
+    kernelId: undefined,
+    readonly: false,
+    blocked: false,
+    locked: false,
+    detached: false,
+    marked: false,
+  },
 )
 const emit = defineEmits<{ run: []; remove: [] }>()
 const source = defineModel<string>('source', { required: true })
@@ -41,8 +50,9 @@ const prose = () => props.cell.kind === 'markdown' && !editing.value
 <template>
   <article
     class="nb-cell"
-    :class="[`nb-cell--${cell.kind}`, { 'nb-cell--prose': prose() }]"
+    :class="[`nb-cell--${cell.kind}`, { 'nb-cell--prose': prose(), 'nb-cell--marked': marked }]"
     :aria-label="`Cell ${number}`"
+    :data-cell="cell.id"
   >
     <div class="nb-cell__meta">
       <span v-if="cell.kind === 'code'" class="nb-cell__count"
@@ -118,6 +128,11 @@ const prose = () => props.cell.kind === 'markdown' && !editing.value
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+  border-radius: var(--iu-radius-sm);
+}
+.nb-cell--marked {
+  outline: 1px solid var(--iu-accent-border);
+  outline-offset: 4px;
 }
 .nb-cell__meta {
   display: flex;

@@ -2,7 +2,7 @@
 // A notebook on the workspace surface: the file it is (name.ipynb), its cells drawn like the thread draws tool calls,
 // and the kernel's chores (details, JupyterLab hand-off, variables, export) behind the header's menu. One kernel per
 // document; the draft stays here while other documents are on show.
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
 import type { SessionDetail } from '@odin/shared/api'
 import type {
   NotebookDataFrame,
@@ -20,6 +20,7 @@ import { IuErrorState, IuSkeleton } from '@/components/States'
 import type { Status } from '@/styles/status'
 import DocumentHeader from './DocumentHeader.vue'
 import NotebookCell from './NotebookCell.vue'
+import { prefersReducedMotion } from './useMediaQuery'
 import { notebookFileName } from './documents'
 import {
   copyCells,
@@ -35,8 +36,10 @@ const props = withDefaults(
     kernelId: string
     /** Linked to this session already. */
     attached?: boolean
+    /** A cell to show: the thread points at it. A new object asks again. */
+    reveal?: { cell: string } | null
   }>(),
-  { attached: true },
+  { attached: true, reveal: null },
 )
 const emit = defineEmits<{
   close: []
@@ -68,6 +71,31 @@ const kernel = computed(() => draft.value?.base.kernel)
 const dirty = computed(() => (draft.value ? draftDirty(draft.value) : false))
 const locked = computed(() => draft.value?.base.editor === 'jupyterlab')
 watch(dirty, value => emit('update:dirty', value))
+
+// A cell the thread points at: once the notebook is on the page it scrolls there and marks the cell for a moment.
+// Only the scroll and the mark move; focus stays where it is.
+const cellsEl = useTemplateRef<HTMLElement>('cells')
+const marked = ref('')
+let handled: object | null = null
+let markTimer: ReturnType<typeof setTimeout> | undefined
+async function revealCell() {
+  const request = props.reveal
+  if (!request || request === handled || !draft.value) return
+  handled = request
+  await nextTick()
+  const cell = [...(cellsEl.value?.querySelectorAll<HTMLElement>('[data-cell]') ?? [])].find(
+    el => el.dataset.cell === request.cell,
+  )
+  if (!cell) return
+  if (typeof cell.scrollIntoView === 'function')
+    cell.scrollIntoView({ block: 'center', behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
+  marked.value = request.cell
+  clearTimeout(markTimer)
+  markTimer = setTimeout(() => (marked.value = ''), 2400)
+}
+watch(() => props.reveal, revealCell)
+watch(draft, revealCell)
+onBeforeUnmount(() => clearTimeout(markTimer))
 const kernelStatus = computed<Status>(() => {
   const state = kernel.value?.state
   return state === 'busy' || state === 'starting'
@@ -532,7 +560,7 @@ onBeforeUnmount(() => unsubscribe?.())
         </template>
       </div>
 
-      <div class="nb-doc__cells">
+      <div ref="cells" class="nb-doc__cells">
         <NotebookCell
           v-for="(cell, index) in draft.cells"
           :key="cell.id"
@@ -544,6 +572,7 @@ onBeforeUnmount(() => unsubscribe?.())
           :readonly="locked"
           :blocked="busy || locked || !!draft.remote"
           :locked="busy || locked"
+          :marked="marked === cell.id"
           @run="run(cell.id)"
           @remove="removeCell(index)"
         />

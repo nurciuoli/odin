@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import type { TaskActivity, TranscriptEntry } from '@odin/shared/harness'
 import { taskKey } from '@odin/shared/harness'
@@ -242,5 +242,62 @@ describe('the rail in the thread', () => {
     card.vm.$emit('open', 3, 2)
     expect(wrapper.emitted('open-artifact')?.[0]).toEqual([3, 2])
     wrapper.unmount()
+  })
+})
+
+describe('the panel links', () => {
+  const edit: TranscriptEntry = {
+    kind: 'tool',
+    id: 'edit-1',
+    name: 'Edit',
+    input: { file_path: '/repo/src/a.ts', old_string: 'a', new_string: 'b' },
+    result: { ok: true, text: 'Edited', truncated: false },
+    at: null,
+    parentToolUseId: null,
+  }
+  const cell: TranscriptEntry = {
+    kind: 'tool',
+    id: 'cell-1',
+    name: 'mcp__odin__notebook_execute',
+    input: { kernel_id: 'k1', cell_id: 'c2' },
+    result: { ok: true, text: 'Executed', truncated: false },
+    at: null,
+    parentToolUseId: null,
+  }
+  const entries = [edit, cell]
+  const rows = () =>
+    buildRows(entries, { pending: [], streaming: [], running: false, artifacts: [] })
+
+  it('opens the side panel at the file or the cell a step worked on', async () => {
+    const wrapper = mount(SessionThread, {
+      props: { rows: rows(), entries, working: false, root: '/repo' },
+    })
+    await wrapper.find('button[aria-label="Open src/a.ts in the side panel"]').trigger('click')
+    expect(wrapper.emitted('open-file')).toEqual([['src/a.ts']])
+    await wrapper
+      .find('button[aria-label="Open this notebook cell in the side panel"]')
+      .trigger('click')
+    expect(wrapper.emitted('open-cell')).toEqual([[{ kernelId: 'k1', cellId: 'c2' }]])
+    wrapper.unmount()
+  })
+
+  it('reveals a step: unfolds its run and marks it, without focus moving', async () => {
+    vi.useFakeTimers()
+    try {
+      const wrapper = mount(SessionThread, {
+        props: { rows: rows(), entries, working: false, root: '/repo' },
+        attachTo: document.body,
+      })
+      const focused = document.activeElement
+      const reveal = wrapper.vm as unknown as { reveal(entryId: string): Promise<void> }
+      await reveal.reveal('edit-1')
+      // the step's run unfolds (280ms) and is marked until the mark wears off (2.4s)
+      await vi.advanceTimersByTimeAsync(300)
+      expect(wrapper.find('.session-thread__run[data-marked]').exists()).toBe(true)
+      expect(document.activeElement).toBe(focused)
+      wrapper.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
