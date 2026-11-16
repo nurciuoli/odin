@@ -3,78 +3,10 @@
 How the types in `packages/shared/src/` behave. The types are the source of truth; this file explains the rules
 around them. `docs/overview.md` says what Odin is for. Changes here, in `packages/shared/`, in
 `packages/core/src/services.ts`, `packages/core/src/harness/types.ts`, `db/schema.sql` or
-`packages/web/src/api/types.ts` are **contract changes**: own commit, called out in the PR. Builders don't make them;
-they ask in their report or PR.
+`packages/web/src/api/types.ts` are **contract changes**: own commit, called out in the PR. If you need one,
+say so in the PR.
 
 ## Processes
-
-### Session continuity and capabilities
-
-- `SessionDetail.streaming` contains the IDs of live partial assistant/thinking entries. A fetched partial entry
-  continues accepting deltas until a complete entry or turn boundary; missing means empty for older clients.
-  Core adds a UTF-16 `offset` to each delta before folding it. Replaying a delta already reflected in a REST
-  partial trims its covered prefix; gaps are ignored until authoritative history/refetch restores continuity.
-- Outbox receipt identity (`sequence`) is global; `sort_order` is independent and ordered within a session, with
-  `sequence` as tie-breaker. Prioritizing one session must not collide with another session's receipts.
-- Session `launch_config` stores selected library MCP IDs only, never resolved environment/header secrets.
-  Start, resume and fork resolve those IDs using current library configuration. Missing/broken selections fail
-  explicitly rather than silently removing tools; historical sessions with no recorded selection remain supported.
-- Messages allow at most 10 attachments, 5 MiB decoded per file, 20 MiB decoded total. Session-message JSON has
-  a separate 32 MiB transport ceiling (including escaping/base64); text is bounded at 1 MiB. Start, follow-up,
-  fork, queue edits and Send now use the same validation. Unsupported harness attachments are rejected before dispatch.
-- Harness capabilities declare supplemental `instructions`, `additionalDirectories` and `attachments` support.
-  False additionalDirectories rejects multi-project launches before side effects. Unsupported instructions are
-  reported explicitly; native project instruction discovery remains the runtime's responsibility.
-- Drivers accept service-owned outbox dispatch at idle boundaries. They are not durable message queues. Failed
-  boundaries/exit leave receipts uncertain; interruption must not release a second invisible user message.
-- Native permission scope choices may be narrowed, never broadened.
-
-| Capability | Claude | Codex / WSL | Grok |
-|---|---|---|---|
-| Additional repositories | Supported | Supported | Rejected |
-| Supplemental instructions | Supported | Supported | Explicit warning, unsupported |
-| Attachments | Images/text | Images/text | Images/text |
-| Selected MCP on resume/fork | Rebuilt from library IDs | Rebuilt from library IDs | Rebuilt from library IDs |
-| Project/worktree discovery | Supported | Supported | Supported |
-
-This is the current capability baseline; optional capability fields omitted by older/fake drivers retain their
-previous behavior. GitHub integration only reads PRs, with no remote writes.
-
-### Project file map
-
-`GET /api/projects/:name/files/map` returns a `ProjectFileMap` for the project's Files tab: every file git tracks or
-would add (`git ls-files --cached --others --exclude-standard`, so `.gitignore` applies; a bounded walk when the
-folder is not a repo), at most 20,000 (`truncated` beyond), each with its byte `size`. Text files up to 2 MiB also
-carry `lines`. `added`/`removed` are the working tree against HEAD (`git diff --numstat --no-renames HEAD`); an
-untracked text file counts as all added, a binary file has no counts, an unchanged file omits them, and a repo with
-no commits has none. Deleted files are left out. Read-only git, argv only, cached per project for 10 seconds.
-404 unknown project; a missing folder gives an empty map.
-
-`GET /api/projects/:name/file?path=` reads one file of that map as a `SessionTextFile` (read-only; there is no
-project save). It has the session viewer's confinement and limits: relative paths inside the project folder, no
-`.git`, symlinks, binary or non-UTF-8 files (415) or files above 2 MiB (413). 404 unknown project or file.
-
-### Session file workbench
-
-`GET /api/sessions/:id/files?path=` lists a relative directory as `SessionFileListing` (at most 1000 entries,
-with an explicit `truncated` flag). `GET /api/sessions/:id/file?path=` reads a `SessionTextFile` containing
-the path, UTF-8 content, byte size and SHA-256 version. `PUT /api/sessions/:id/file` accepts
-`{ path, content, version }` and returns the saved snapshot. A stale version returns 409 without saving the draft.
-
-Paths are confined to the session's working directory. Absolute paths, parent traversal, `.git`, symlinks,
-binary/non-UTF-8 files and files above 2 MiB are refused. Saves only replace existing regular files,
-refuse hard links, preserve mode bits and use a sibling temporary file followed by rename. The version is
-checked again before rename; this is optimistic conflict detection, not an operating-system lock against
-uncooperative concurrent writers. No model calls, watchers, file creation or arbitrary filesystem access.
-Line endings and UTF-8 BOM remain part of the authoritative content. Existing local host/origin checks apply.
-
-`GET /api/sessions/:id/files/search?q=` and `GET /api/projects/:name/files/search?q=` return a `FileSearchResult`
-for the composer's `@` file references: fuzzy path matches (files, and the directories that contain them) in the
-session's working directory or the project's folder, best first, at most 50. The index is `git ls-files --cached
---others --exclude-standard` (so `.gitignore` applies), else a bounded walk that skips dot folders and
-`node_modules`; at most 20,000 paths (`truncated` beyond), cached per folder for 10 seconds. An empty query returns
-top-level entries. The composer inserts `@<path>`; Claude expands it natively (verified in SDK mode); Codex reads the
-path from the text.
 
 - **odin-core** (`packages/core`, Node 24 running TS directly; 22.18+ works) binds `127.0.0.1:8790`, serves the
   built web app from `packages/web/dist`, the API under `/api`, sandboxed artifact pages under `/a/`, and runs agent
@@ -84,30 +16,12 @@ path from the text.
 - **apps/desktop** (Electron) starts core as a child process and loads the web app from it. The web app never
   depends on Electron: everything also works in a plain browser. See [Desktop shell](#desktop-shell).
 - State: `~/.odin/` (`ODIN_HOME`) holds `state.db`, `env` (the ingest token, mode 600), `pricing.json`,
-  `library/` (plain files) and `worktrees/`. The v1 `odin.db` is never read (no migration). Projects live wherever
+  `library/` (plain files) and `worktrees/`. Projects live wherever
   they were registered; Odin never moves them.
 - Conversations live in the harness's own store (Claude: `~/.claude/projects/…/*.jsonl`). Odin keeps metadata and
   metrics only.
 
 ## Security model (single user, local)
-
-Imported sessions may expose optional harness `measurements()`: stable, timestamped usage, turn and tool facts,
-or null when native measurements cannot be recovered. On detail load, an unattached external session's native
-history replaces its harness measurement facts atomically; hook facts prevent replacement to avoid duplicate
-accounting. Repeated reads are idempotent. Never apply this replacement to Odin-origin sessions or while a
-live handle is attached. Codex reads only measurement/model fields from its own app-server-reported JSONL
-history and paginates stored turns without resuming or running the model. Unavailable cost remains null;
-reasoning output is already included in output tokens, and cached input is counted separately from fresh input.
-`SessionMetrics.contextWindow` and usage-event `contextWindow` optionally carry the runtime's reported capacity;
-the UI prefers this to its model fallback. Activity boundary facts provide wall time; missing turn durations
-remain unknown instead of being represented as zero active time.
-
-`POST /api/project-folders { path? }` returns `ProjectFolders`: the absolute current path, parent
-(null at a filesystem root), and sorted immediate subdirectories. Dot folders and files are omitted;
-symlinks to directories are included. Paths must be absolute (or `~` / `~/…`); omitting the path starts
-beside an existing project, or in the user's home. This read-only operation uses POST
-so the API's origin check applies. It browses the server's filesystem, including accessible Windows UNC
-paths, and never reads file contents, starts git, or creates anything.
 
 - **Host check** on every request: `Host` must be `127.0.0.1`, `localhost`, `[::1]` (any port), or a hostname
   listed in `ODIN_EXTRA_HOSTS`, else 421. The extra list is for Tailscale Serve, which connects to loopback but
@@ -152,6 +66,43 @@ optional dependency, `@anthropic-ai/claude-agent-sdk-<os>-<arch>`):
   `packages/core/src/harness/claude/fixtures/sdk-recording.json`.
 
 ## Harness
+
+### Interface and event stream
+
+`packages/core/src/harness/types.ts` (`Harness`, `SessionHandle`, `StartOptions`, `HostTool`) and
+`@odin/shared/harness` (`HarnessEvent`, `TranscriptEntry`, `PermissionRequest`).
+
+- Only `src/harness/<id>/**` may import a harness SDK. Everything above sees only these types.
+- `Deps.harnesses` maps id → driver. Production: Claude, Codex (and Codex WSL on Windows), Grok, OpenCode
+  and Antigravity, or the fake drivers when
+  `ODIN_FAKE_HARNESS=1`. Tests: `fakeHarness()` from `harness/fake.ts` (scriptable turns, permission prompts that
+  block until answered, host tools, usage, a store so `list`/`messages` work, `seed()` for external sessions).
+- **Event stream rules:** `init` first (once per handle); `state` running/waiting/idle; `delta`s then the whole
+  `entry` with the same id; `tool.result` after its `entry`; `permission.request` → `state waiting` → (answer) →
+  `permission.resolved` → `state running`; `usage`; `turn.end` closes a turn, then `state idle`; exactly one `exit`.
+- **User-ended tool calls:** a tool result the user refused or stopped carries `status: "denied" | "interrupted"`
+  (`ok` stays false, `text` is a short label). Drivers set it; clients show it as stopped, not as a tool failure.
+  Harness-written interrupt markers (for example Claude's `[Request interrupted by user]`) are not user entries.
+- `applyHarnessEvent` (`@odin/shared/transcript`) folds events into a transcript. Core and web use the same
+  function, so live and reloaded views match.
+
+### Capabilities
+
+- Harness capabilities declare supplemental `instructions`, `additionalDirectories` and `attachments` support.
+  False additionalDirectories rejects multi-project launches before side effects. Unsupported instructions are
+  reported explicitly; native project instruction discovery remains the runtime's responsibility.
+- Drivers accept service-owned outbox dispatch at idle boundaries. They are not durable message queues. Failed
+  boundaries/exit leave receipts uncertain; interruption must not release a second invisible user message.
+- Native permission scope choices may be narrowed, never broadened.
+
+| Capability | Claude | Codex / WSL | Grok | OpenCode | Antigravity |
+|---|---|---|---|---|---|
+| Additional repositories | Supported | Supported | Rejected | Supported | Supported |
+| Supplemental instructions | Supported | Supported | Warning, unsupported | Supported | Supported |
+| Attachments | Images/text | Images/text | Images/text | Supported | Supported |
+
+Claude, Codex and Grok rebuild selected MCP servers from library IDs on resume and fork, and discover project and
+worktree sessions. Optional capability fields omitted by a driver keep their default behaviour.
 
 ### Native runtime controls
 
@@ -221,7 +172,49 @@ server resources after live sessions close during server shutdown.
 - Live and stored history give the same entry (id = the message uuid), so old sessions re-render correctly on
   reload; nothing is migrated.
 
-### Multi-harness extension
+### Claude driver
+
+`harness/claude/driver.ts` keeps one `query()` per live handle in streaming-input mode.
+
+- Options: `cwd`, `sessionId` (new sessions and the new id of a fork), `resume` (+ `forkSession: true`), `model`,
+  `permissionMode` (always passed explicitly; when omitted the CLI may pick `auto`), `canUseTool`,
+  `includePartialMessages: true`, `settingSources: ["user", "project", "local"]` (CLAUDE.md, skills, agents, hooks,
+  permissions load as in Claude Code), `agent`, `agents`, `mcpServers` (plus an in-process `createSdkMcpServer` named
+  `odin` for `hostTools`; tools appear as `mcp__odin__<name>`), `additionalDirectories`, `title`,
+  `env: process.env`, `stderr` (logged, never returned).
+- Mapping: `system/init` → `init` once (later inits → `model`/`permission.mode` when they changed); a sent message or
+  `system/status requesting` → `state running`; `stream_event` text/thinking deltas → `delta` with entry id
+  `<message.id>:<content block index>`; `assistant` content blocks → `entry` (text → assistant, thinking → thinking,
+  tool_use → tool with its `id`; `parent_tool_use_id` → `parentToolUseId`); `user` tool_result blocks → `tool.result`
+  (`is_error` → `ok: false`, text via `toolResult()`); TodoWrite input → `todos`; `result` → `usage` per model with the **turn's own** usage
+  (`cumulative: false`): the difference between this and the previous `modelUsage` in the same process (`costUsd`
+  likewise from `costUSD`); for the first result of a resumed/forked process, the sum of the turn's assistant
+  message `usage` (deduped by message id) with `costUsd` = `costUSD` × its share by token weight (input 1, output 5,
+  cache read 0.1, cache write 1.25); models with nothing new are skipped; `contextTokens` from the last main-thread
+  assistant usage; then `turn.end` (`duration_ms`, `is_error`, errors joined) then `state idle`; `api_retry`, compaction, rate-limit
+  rejections → `notice`; `system/local_command_output` (output of `/context`, `/usage`…) → assistant `entry`;
+  `system/commands_changed` → `commands`; `conversation_reset` → warning `notice`; process exit/error → `exit`.
+  `init.slashCommands` from the SDK's `SlashCommand` (`builtin` → `source: "builtin"`, else `custom`).
+- `canUseTool(tool, input, opts)` → `PermissionRequest` { `id`: `opts.requestId`, `kind`: plan for `ExitPlanMode`,
+  question for `AskUserQuestion`, else tool; `title`, `description`, `canAlwaysAllow: !opts.suppressAlwaysAllowRule`,
+  `defaultToDeny: !!opts.defaultToNo` }; the promise waits for `answer()`. `opts.signal` abort → `permission.resolved`
+  cancelled.
+- `answer` → `PermissionResult`: allow once → `{ behavior: "allow", updatedInput: updatedInput ?? input,
+  decisionClassification: "user_temporary" }`; allow with a scope → also `updatedPermissions`: the `addRules`
+  suggestions re-targeted to the scope (session → `session`, project → `projectSettings`, local → `localSettings`,
+  user → `userSettings`), or `{ type: "addRules", rules: [{ toolName }], behavior: "allow", destination }` when
+  there are none; `setMode` suggestions only for scope session; classification `user_permanent`. Deny →
+  `{ behavior: "deny", message, interrupt, decisionClassification: "user_reject" }`.
+- History: `listSessions({ dir, includeWorktrees: true })`, `getSessionInfo`, `getSessionMessages` (mapped with
+  the same entry rules, tool results attached), `renameSession`, `forkSession`, `deleteSession`.
+- `models()`: `supportedModels()` from the latest live query, cached; before any session ran, the aliases
+  `default`, `opus`, `sonnet`, `haiku` with `resolved: null`.
+- `check()`: available when the platform binary package resolves; the note says auth comes from the environment.
+- Tests: a contract test feeds the recorded messages (and hand-built shapes for what the recording lacks: thinking,
+  subagent `parent_tool_use_id`, errors, compaction) through the mapping and asserts the event stream. No test
+  spawns `claude`.
+
+### Other runtimes
 
 Claude and Codex are first-class local runtimes. `codex` uses the local installation and login;
 `codex-wsl` uses Codex and its login in the default WSL distribution. A session retains its runtime on resume
@@ -288,61 +281,6 @@ for Gemini models (`gemini-3.8-flash`, `gemini-3.8-pro`, `gemini-3.8-flash-lite`
 via an in-process stdio MCP server named `odin`. Caller MCP servers and additional project directories are passed through.
 Subagents (`invoke_subagent`) and background tasks map to Odin task activities. Tests use a fake transport and do not spawn `agy`.
 
-
-`packages/core/src/harness/types.ts` (`Harness`, `SessionHandle`, `StartOptions`, `HostTool`) and
-`@odin/shared/harness` (`HarnessEvent`, `TranscriptEntry`, `PermissionRequest`).
-
-- Only `src/harness/<id>/**` may import a harness SDK. Everything above sees only these types.
-- `Deps.harnesses` maps id → driver. Production: Claude, Codex, and Grok, or the fake drivers when
-  `ODIN_FAKE_HARNESS=1`. Tests: `fakeHarness()` from `harness/fake.ts` (scriptable turns, permission prompts that
-  block until answered, host tools, usage, a store so `list`/`messages` work, `seed()` for external sessions).
-- **Event stream rules:** `init` first (once per handle); `state` running/waiting/idle; `delta`s then the whole
-  `entry` with the same id; `tool.result` after its `entry`; `permission.request` → `state waiting` → (answer) →
-  `permission.resolved` → `state running`; `usage`; `turn.end` closes a turn, then `state idle`; exactly one `exit`.
-- **User-ended tool calls:** a tool result the user refused or stopped carries `status: "denied" | "interrupted"`
-  (`ok` stays false, `text` is a short label). Drivers set it; clients show it as stopped, not as a tool failure.
-  Harness-written interrupt markers (for example Claude's `[Request interrupted by user]`) are not user entries.
-- `applyHarnessEvent` (`@odin/shared/transcript`) folds events into a transcript. Core and web use the same
-  function, so live and reloaded views match.
-- **Claude driver** (`harness/claude/driver.ts`). One `query()` per live handle in streaming-input mode:
-  - Options: `cwd`, `sessionId` (new sessions and the new id of a fork), `resume` (+ `forkSession: true`), `model`,
-    `permissionMode` (always passed explicitly; when omitted the CLI may pick `auto`), `canUseTool`,
-    `includePartialMessages: true`, `settingSources: ["user", "project", "local"]` (CLAUDE.md, skills, agents, hooks,
-    permissions load as in Claude Code), `agent`, `agents`, `mcpServers` (plus an in-process `createSdkMcpServer` named
-    `odin` for `hostTools`; tools appear as `mcp__odin__<name>`), `additionalDirectories`, `title`,
-    `env: process.env`, `stderr` (logged, never returned).
-  - Mapping: `system/init` → `init` once (later inits → `model`/`permission.mode` when they changed); a sent message or
-    `system/status requesting` → `state running`; `stream_event` text/thinking deltas → `delta` with entry id
-    `<message.id>:<content block index>`; `assistant` content blocks → `entry` (text → assistant, thinking → thinking,
-    tool_use → tool with its `id`; `parent_tool_use_id` → `parentToolUseId`); `user` tool_result blocks → `tool.result`
-    (`is_error` → `ok: false`, text via `toolResult()`); TodoWrite input → `todos`; `result` → `usage` per model with the **turn's own** usage
-    (`cumulative: false`): the difference between this and the previous `modelUsage` in the same process (`costUsd`
-    likewise from `costUSD`); for the first result of a resumed/forked process, the sum of the turn's assistant
-    message `usage` (deduped by message id) with `costUsd` = `costUSD` × its share by token weight (input 1, output 5,
-    cache read 0.1, cache write 1.25); models with nothing new are skipped; `contextTokens` from the last main-thread
-    assistant usage; then `turn.end` (`duration_ms`, `is_error`, errors joined) then `state idle`; `api_retry`, compaction, rate-limit
-    rejections → `notice`; `system/local_command_output` (output of `/context`, `/usage`…) → assistant `entry`;
-    `system/commands_changed` → `commands`; `conversation_reset` → warning `notice`; process exit/error → `exit`.
-    `init.slashCommands` from the SDK's `SlashCommand` (`builtin` → `source: "builtin"`, else `custom`).
-  - `canUseTool(tool, input, opts)` → `PermissionRequest` { `id`: `opts.requestId`, `kind`: plan for `ExitPlanMode`,
-    question for `AskUserQuestion`, else tool; `title`, `description`, `canAlwaysAllow: !opts.suppressAlwaysAllowRule`,
-    `defaultToDeny: !!opts.defaultToNo` }; the promise waits for `answer()`. `opts.signal` abort → `permission.resolved`
-    cancelled.
-  - `answer` → `PermissionResult`: allow once → `{ behavior: "allow", updatedInput: updatedInput ?? input,
-    decisionClassification: "user_temporary" }`; allow with a scope → also `updatedPermissions`: the `addRules`
-    suggestions re-targeted to the scope (session → `session`, project → `projectSettings`, local → `localSettings`,
-    user → `userSettings`), or `{ type: "addRules", rules: [{ toolName }], behavior: "allow", destination }` when
-    there are none; `setMode` suggestions only for scope session; classification `user_permanent`. Deny →
-    `{ behavior: "deny", message, interrupt, decisionClassification: "user_reject" }`.
-  - History: `listSessions({ dir, includeWorktrees: true })`, `getSessionInfo`, `getSessionMessages` (mapped with
-    the same entry rules, tool results attached), `renameSession`, `forkSession`, `deleteSession`.
-  - `models()`: `supportedModels()` from the latest live query, cached; before any session ran, the aliases
-    `default`, `opus`, `sonnet`, `haiku` with `resolved: null`.
-  - `check()`: available when the platform binary package resolves; the note says auth comes from the environment.
-  - Tests: a contract test feeds the recorded messages (and hand-built shapes for what the recording lacks: thinking,
-    subagent `parent_tool_use_id`, errors, compaction) through the mapping and asserts the event stream. No test
-    spawns `claude`.
-
 ## Projects
 
 - A project is a registered directory, normally a git repo. `POST /api/projects { path, name?, init? }`; a non-repo
@@ -394,6 +332,35 @@ Subagents (`invoke_subagent`) and background tasks map to Odin task activities. 
   has its `cwd` inside the worktree (a session in state `idle`, `running` or `waiting` counts as live), or when the
   tree is dirty (`git status` shows any change; `git worktree remove` without `--force`). The branch
   is kept. A path that no longer exists is pruned and answers 204. 404 unknown project.
+
+### Folder browsing
+
+`POST /api/project-folders { path? }` returns `ProjectFolders`: the absolute current path, parent
+(null at a filesystem root), and sorted immediate subdirectories. Dot folders and files are omitted;
+symlinks to directories are included. Paths must be absolute (or `~` / `~/…`); omitting the path starts
+beside an existing project, or in the user's home. This read-only operation uses POST
+so the API's origin check applies. It browses the server's filesystem, including accessible Windows UNC
+paths, and never reads file contents, starts git, or creates anything.
+
+### Project files
+
+`GET /api/projects/:name/files/map` returns a `ProjectFileMap` for the project's Files tab: every file git tracks or
+would add (`git ls-files --cached --others --exclude-standard`, so `.gitignore` applies; a bounded walk when the
+folder is not a repo), at most 20,000 (`truncated` beyond), each with its byte `size`. Text files up to 2 MiB also
+carry `lines`. `added`/`removed` are the working tree against HEAD (`git diff --numstat --no-renames HEAD`); an
+untracked text file counts as all added, a binary file has no counts, an unchanged file omits them, and a repo with
+no commits has none. Deleted files are left out. Read-only git, argv only, cached per project for 10 seconds.
+404 unknown project; a missing folder gives an empty map.
+
+`GET /api/projects/:name/file?path=` reads one file of that map as a `SessionTextFile` (read-only; there is no
+project save). It has the session viewer's confinement and limits: relative paths inside the project folder, no
+`.git`, symlinks, binary or non-UTF-8 files (415) or files above 2 MiB (413). 404 unknown project or file.
+
+### Project worktree default
+
+`ProjectSettings.defaultWorktree` (optional boolean, saved override only, `null` clears it) sets whether new sessions in the
+project run in a worktree when the launch request omits `worktree`. Resolution: `req.worktree ?? project.defaultWorktree ??
+AppSettings.defaultWorktree`.
 
 ## Sessions
 
@@ -483,6 +450,76 @@ Subagents (`invoke_subagent`) and background tasks map to Odin task activities. 
   (origin external, state idle, title from the harness); it runs on `POST /api/projects/:name/discover`, on the
   `projectsRescanMs` timer, and when a project is registered. Ingest creates them too (`ensureExternal`).
 - `counts(project?)`: running, waiting, total (not archived).
+
+### Continuity and limits
+
+- `SessionDetail.streaming` contains the IDs of live partial assistant/thinking entries. A fetched partial entry
+  continues accepting deltas until a complete entry or turn boundary; missing means empty for older clients.
+  Core adds a UTF-16 `offset` to each delta before folding it. Replaying a delta already reflected in a REST
+  partial trims its covered prefix; gaps are ignored until authoritative history/refetch restores continuity.
+- Outbox receipt identity (`sequence`) is global; `sort_order` is independent and ordered within a session, with
+  `sequence` as tie-breaker. Prioritizing one session must not collide with another session's receipts.
+- Session `launch_config` stores selected library MCP IDs only, never resolved environment/header secrets.
+  Start, resume and fork resolve those IDs using current library configuration. Missing/broken selections fail
+  explicitly rather than silently removing tools; historical sessions with no recorded selection remain supported.
+- Messages allow at most 10 attachments, 5 MiB decoded per file, 20 MiB decoded total. Session-message JSON has
+  a separate 32 MiB transport ceiling (including escaping/base64); text is bounded at 1 MiB. Start, follow-up,
+  fork, queue edits and Send now use the same validation. Unsupported harness attachments are rejected before dispatch.
+
+### Session files
+
+`GET /api/sessions/:id/files?path=` lists a relative directory as `SessionFileListing` (at most 1000 entries,
+with an explicit `truncated` flag). `GET /api/sessions/:id/file?path=` reads a `SessionTextFile` containing
+the path, UTF-8 content, byte size and SHA-256 version. `PUT /api/sessions/:id/file` accepts
+`{ path, content, version }` and returns the saved snapshot. A stale version returns 409 without saving the draft.
+
+Paths are confined to the session's working directory. Absolute paths, parent traversal, `.git`, symlinks,
+binary/non-UTF-8 files and files above 2 MiB are refused. Saves only replace existing regular files,
+refuse hard links, preserve mode bits and use a sibling temporary file followed by rename. The version is
+checked again before rename; this is optimistic conflict detection, not an operating-system lock against
+uncooperative concurrent writers. No model calls, watchers, file creation or arbitrary filesystem access.
+Line endings and UTF-8 BOM remain part of the authoritative content. Existing local host/origin checks apply.
+
+`GET /api/sessions/:id/files/search?q=` and `GET /api/projects/:name/files/search?q=` return a `FileSearchResult`
+for the composer's `@` file references: fuzzy path matches (files, and the directories that contain them) in the
+session's working directory or the project's folder, best first, at most 50. The index is `git ls-files --cached
+--others --exclude-standard` (so `.gitignore` applies), else a bounded walk that skips dot folders and
+`node_modules`; at most 20,000 paths (`truncated` beyond), cached per folder for 10 seconds. An empty query returns
+top-level entries. The composer inserts `@<path>`; Claude expands it natively (verified in SDK mode); Codex reads the
+path from the text.
+
+### Workspace sessions
+
+Sessions are top-level conversations with one or more configured repositories, not project navigation children.
+`Session.projects` is an ordered list of project names; `Session.project` remains the working repository for
+cwd, worktree, branch, artifacts and legacy metrics attribution. `StartSessionRequest.projects` optionally
+supplies the full list and must include `project`; omission means `[project]`. Names are deduplicated, working
+repository first; unknown or missing repositories fail before launch. Existing rows migrate to `[project]`.
+Additional repositories are passed as harness `additionalDirectories` on every start/resume/fork and identified
+in instructions, including their AGENTS.md. Only the working repository gets a worktree; the others use checkouts.
+Project filters/counts match any configured repository. Metrics grouped by project retain working-project attribution
+so workspace totals are not double counted. Removing a project used by a session is refused; remove its sessions first.
+Projects retain an overview of related sessions, library and settings. The overview's Start chat
+opens the global launcher with that project preselected. Old project Sessions URLs redirect to the overview.
+The global session list is `/sessions`; `/history` remains an alias.
+
+### Session effort
+
+`Session.effort`, `StartSessionRequest.effort` and `UpdateSessionRequest.effort` are optional named reasoning
+levels (`none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`); null restores the harness default. Migration
+0010 stores the selection on the session. Resume and fork inherit it. Updates apply to subsequent turns and
+are returned through the existing session response and `session.updated` event. No conversation turn is sent.
+
+`ModelInfo.effortLevels` advertises available choices; absent/empty means the control is unavailable. Start and
+update reject levels outside the selected model's list with 400. Model changes clear an incompatible effort.
+The optional `SessionHandle.setEffort` changes the live session; `StartOptions.effort` supplies the stored value.
+Claude uses the SDK effort option and session-only `applyFlagSettings`; its initial fallback catalog offers
+low/medium/high until the SDK supplies a richer model catalog. Codex sends `turn/start.effort` and plan-mode
+`collaborationMode.settings.reasoning_effort`. Grok uses `session/set_model` with `_meta.reasoningEffort`,
+and its advertised default level when resetting. Permission mode remains independent.
+
+The composer offers `/effort <level>` and `/effort default` for models with advertised effort levels, with the
+same behavior as its effort selector. Unsupported commands remain native harness commands.
 
 ## Launch
 
@@ -624,12 +661,6 @@ models; POST `/api/notebooks/:id/comm` sends a validated callback. POST `/handof
   are not accepted by IPC. The browser fallback `/api/artifacts/:id/print/:version` prints a trusted wrapper;
   report HTML remains in an opaque sandbox at `/a/:id/:version/print`, without allow-modals or allow-same-origin.
 
-## Project worktree default
-
-`ProjectSettings.defaultWorktree` (optional boolean, saved override only, `null` clears it) sets whether new sessions in the
-project run in a worktree when the launch request omits `worktree`. Resolution: `req.worktree ?? project.defaultWorktree ??
-AppSettings.defaultWorktree`.
-
 ## GitHub sync
 
 Optional, read-only. `ProjectSettings.githubEnabled` defaults to false. When enabled with a repo and credentials,
@@ -642,7 +673,6 @@ the directory is absent, not non-git.
 - **Session ↔ PR**: on `sync.onPull`, every session in the project whose `branch` is the PR's head gets `pull` and
   `metrics.prOutcome` (open; merged with 0 review rounds → merged; merged after ≥ 1 → merged-after-changes; closed
   unmerged → closed) and `reviewRounds`, via `sessions.patch`.
-
 
 ## Ingest
 
@@ -673,6 +703,19 @@ Hook events from sessions run outside Odin (`claude` in a terminal), through the
     (latest cumulative per model, or the sum of incremental ones, minus the baseline); else null.
   - `contextTokens` = the latest reported. `diff`, `commits`, `prOutcome`, `reviewRounds` come from
     `metrics.refreshOutput` and sync; never overwritten by events.
+
+### Imported session measurements
+
+Imported sessions may expose optional harness `measurements()`: stable, timestamped usage, turn and tool facts,
+or null when native measurements cannot be recovered. On detail load, an unattached external session's native
+history replaces its harness measurement facts atomically; hook facts prevent replacement to avoid duplicate
+accounting. Repeated reads are idempotent. Never apply this replacement to Odin-origin sessions or while a
+live handle is attached. Codex reads only measurement/model fields from its own app-server-reported JSONL
+history and paginates stored turns without resuming or running the model. Unavailable cost remains null;
+reasoning output is already included in output tokens, and cached input is counted separately from fresh input.
+`SessionMetrics.contextWindow` and usage-event `contextWindow` optionally carry the runtime's reported capacity;
+the UI prefers this to its model fallback. Activity boundary facts provide wall time; missing turn durations
+remain unknown instead of being represented as zero active time.
 
 ## Claude Code adapter
 
@@ -777,7 +820,7 @@ is a client like a browser, holds no application state, and the web app never re
   requests are denied.
 - **Quit**: stops an owned core only. When sessions are running or waiting it asks first ("2 sessions are live. Quit
   and stop them?"). Graceful stop: SIGTERM on macOS/Linux; on Windows the shell spawns core with a Node IPC channel
-  and sends `{ type: "shutdown" }`. Either way core closes live handles, flushes work commits and exits 0; the shell
+  and sends `{ type: "shutdown" }`. Either way core closes live handles, and exits 0; the shell
   waits up to 10 s, then kills. Core ignores IPC disconnect (an orphaned core keeps running).
 - **Tray**: tooltip "Odin: 2 running, 1 needs you"; a distinct needs-you icon (shape, not only colour). Menu: Open
   Odin · New session (`/?launch=1`) · up to 5 waiting sessions by title (`/s/<id>`) · Quit. Counts come from the
@@ -807,53 +850,53 @@ is a client like a browser, holds no application state, and the web app never re
 
 ## REST
 
-All JSON. Errors: `{ error }` with a 4xx/5xx status. `204` for empty bodies.
+The main routes; each module's `routes.ts` has the full list. All JSON. Errors: `{ error }` with a 4xx/5xx status. `204` for empty bodies.
 
-| Route | Returns | Owner |
-|---|---|---|
-| GET `/api/health` | `{ ok: true, app: "odin", version, instance, now }` | 0 |
-| GET `/api/projects` | `ProjectSummary[]` | 1b |
-| POST `/api/projects` (`CreateProjectRequest`) | `ProjectDetail` (201) | 1b |
-| GET `/api/projects/:name` | `ProjectDetail` | 1b |
-| PATCH `/api/projects/:name/settings` (`UpdateProjectSettingsRequest`) | `ProjectDetail` | 1b |
-| PATCH `/api/projects/:name/sources` (`UpdateProjectSourcesRequest` or `null`) | `ProjectDetail` | — |
-| POST `/api/projects/:name/refresh` | 204 | 1b |
-| DELETE `/api/projects/:name` | 204 (unregisters; never deletes files) | 1b |
-| GET `/api/projects/:name/branches` | `ProjectBranch[]` | 1b |
-| DELETE `/api/projects/:name/worktrees` (`RemoveWorktreeRequest`) | 204; 400 not a Odin worktree of the project; 409 a live session's cwd is inside it, or the tree is dirty | 1b |
-| GET `/api/sessions?project=&state=a,b&tag=&model=&origin=&q=&archived=&pinned=&since=&limit=` | `Session[]` (newest `updatedAt` first; `archived` defaults to false) | 1a |
-| POST `/api/sessions` (`StartSessionRequest`) | `Session` (201) | 1a |
-| GET `/api/sessions/:id` | `SessionDetail` | 1a |
-| PATCH `/api/sessions/:id` (`UpdateSessionRequest`) | `Session` | 1a |
-| DELETE `/api/sessions/:id` | 204 | 1a |
-| POST `/api/sessions/:id/messages` (`UserMessage`) | `Session` | 1a |
-| POST `/api/sessions/:id/permissions/:requestId` (`PermissionAnswer`) | 204 | 1a |
-| POST `/api/sessions/:id/interrupt` | 204 | 1a |
-| POST `/api/sessions/:id/end` | `Session` | 1a |
-| POST `/api/sessions/:id/fork` (`ForkSessionRequest`) | `Session` (201) | 1a |
-| POST `/api/projects/:name/discover` | `{ added }` | 1a |
-| GET `/api/models?harness=claude` | `ModelInfo[]` | 1a |
-| GET `/api/artifacts/:id` | `ArtifactDetail` | 2h |
-| GET `/api/projects/:name/artifacts?limit=` | `Artifact[]` (newest first) | 2h |
-| POST `/api/artifacts/:id/submit` (`ArtifactSubmitRequest`) | `Session` | 2h |
-| GET `/a/:id/:version` | the sandboxed page (text/html), bridge injected | 2h |
-| GET `/api/library?kind=` | `LibraryAsset[]` | 2f |
-| GET `/api/library/:kind/:id` | `AssetDetail` | 2f |
-| GET `/api/library/:kind/:id/versions/:version` | `AssetFiles` | 2f |
-| PUT `/api/library/:kind/:id` (`SaveAssetRequest`) | `LibraryAsset` (201 when new) | 2f |
-| DELETE `/api/library/:kind/:id` | 204 | 2f |
-| POST `/api/library/rescan` | 204 | 2f |
-| GET `/api/projects/:name/library` | `Installation[]` | 2f |
-| POST `/api/projects/:name/library` (`InstallRequest`) | `InstallResult` | 2f |
-| GET `/api/projects/:name/library/:kind/:id/files` | `AssetFiles` (404 when missing) | 2f |
-| POST `/api/projects/:name/sync` | 204; 409 when sync is off; 502 when the run fails (scrubbed) | 2j |
-| POST `/api/ingest` | `IngestResponse` | 1c |
-| GET/POST `/api/projects/:name/tracking/claude-code` | `ClaudeCodeTrackingStatus` | 1c |
-| GET `/api/metrics?groupBy=&project=&since=&until=` | `MetricsRow[]` | 1c |
-| GET `/api/projects/:name/activity?days=` | `ProjectActivity` (`days` default 84, 1–168) | 1c |
-| GET `/api/settings` | `SettingsResponse` | 1c |
-| GET `/api/readiness` | `ReadinessResponse` | 0 |
-| PATCH `/api/settings` (`UpdateSettingsRequest`) | `SettingsResponse` | 1c |
+| Route | Returns |
+|---|---|
+| GET `/api/health` | `{ ok: true, app: "odin", version, instance, now }` |
+| GET `/api/projects` | `ProjectSummary[]` |
+| POST `/api/projects` (`CreateProjectRequest`) | `ProjectDetail` (201) |
+| GET `/api/projects/:name` | `ProjectDetail` |
+| PATCH `/api/projects/:name/settings` (`UpdateProjectSettingsRequest`) | `ProjectDetail` |
+| PATCH `/api/projects/:name/sources` (`UpdateProjectSourcesRequest` or `null`) | `ProjectDetail` |
+| POST `/api/projects/:name/refresh` | 204 |
+| DELETE `/api/projects/:name` | 204 (unregisters; never deletes files) |
+| GET `/api/projects/:name/branches` | `ProjectBranch[]` |
+| DELETE `/api/projects/:name/worktrees` (`RemoveWorktreeRequest`) | 204; 400 not a Odin worktree of the project; 409 a live session's cwd is inside it, or the tree is dirty |
+| GET `/api/sessions?project=&state=a,b&tag=&model=&origin=&q=&archived=&pinned=&since=&limit=` | `Session[]` (newest `updatedAt` first; `archived` defaults to false) |
+| POST `/api/sessions` (`StartSessionRequest`) | `Session` (201) |
+| GET `/api/sessions/:id` | `SessionDetail` |
+| PATCH `/api/sessions/:id` (`UpdateSessionRequest`) | `Session` |
+| DELETE `/api/sessions/:id` | 204 |
+| POST `/api/sessions/:id/messages` (`UserMessage`) | `Session` |
+| POST `/api/sessions/:id/permissions/:requestId` (`PermissionAnswer`) | 204 |
+| POST `/api/sessions/:id/interrupt` | 204 |
+| POST `/api/sessions/:id/end` | `Session` |
+| POST `/api/sessions/:id/fork` (`ForkSessionRequest`) | `Session` (201) |
+| POST `/api/projects/:name/discover` | `{ added }` |
+| GET `/api/models?harness=claude` | `ModelInfo[]` |
+| GET `/api/artifacts/:id` | `ArtifactDetail` |
+| GET `/api/projects/:name/artifacts?limit=` | `Artifact[]` (newest first) |
+| POST `/api/artifacts/:id/submit` (`ArtifactSubmitRequest`) | `Session` |
+| GET `/a/:id/:version` | the sandboxed page (text/html), bridge injected |
+| GET `/api/library?kind=` | `LibraryAsset[]` |
+| GET `/api/library/:kind/:id` | `AssetDetail` |
+| GET `/api/library/:kind/:id/versions/:version` | `AssetFiles` |
+| PUT `/api/library/:kind/:id` (`SaveAssetRequest`) | `LibraryAsset` (201 when new) |
+| DELETE `/api/library/:kind/:id` | 204 |
+| POST `/api/library/rescan` | 204 |
+| GET `/api/projects/:name/library` | `Installation[]` |
+| POST `/api/projects/:name/library` (`InstallRequest`) | `InstallResult` |
+| GET `/api/projects/:name/library/:kind/:id/files` | `AssetFiles` (404 when missing) |
+| POST `/api/projects/:name/sync` | 204; 409 when sync is off; 502 when the run fails (scrubbed) |
+| POST `/api/ingest` | `IngestResponse` |
+| GET/POST `/api/projects/:name/tracking/claude-code` | `ClaudeCodeTrackingStatus` |
+| GET `/api/metrics?groupBy=&project=&since=&until=` | `MetricsRow[]` |
+| GET `/api/projects/:name/activity?days=` | `ProjectActivity` (`days` default 84, 1–168) |
+| GET `/api/settings` | `SettingsResponse` |
+| GET `/api/readiness` | `ReadinessResponse` |
+| PATCH `/api/settings` (`UpdateSettingsRequest`) | `SettingsResponse` |
 
 ## SSE (`GET /api/events`)
 
@@ -865,10 +908,10 @@ All JSON. Errors: `{ error }` with a 4xx/5xx status. `204` for empty bodies.
 ## SQLite
 
 - `node:sqlite` `DatabaseSync`, WAL, foreign keys on. `db/schema.sql` is version 1 of `state.db`; changes are new
-  numbered files in `db/migrations/` (`0002_…sql`). Never edit a migration once merged. Current version: 10
-  (`0002_session_slash_commands.sql`: `sessions.slash_commands`). … `0006_work_queue.sql`: work queue index, leases,
-  inbox. `0011_remove_work_queue.sql` drops them again with the backlog tables and `sessions.item_id`.
-- JSON columns are TEXT; each module owns its tables and goes through the owning service to change others:
+  numbered files in `db/migrations/` (`0002_…sql`). Never edit a migration once merged. `schema.sql` plus the
+  migrations is the current shape.
+- JSON columns are TEXT; each module owns its tables and goes through the owning service to change others.
+  Main tables by module:
 
 | Module | Tables |
 |---|---|
@@ -896,36 +939,3 @@ All JSON. Errors: `{ error }` with a 4xx/5xx status. `204` for empty bodies.
 - Tests sit next to the code: `node:test` in core/shared/adapters, vitest in web. Temp dirs, `:memory:` databases,
   `fakeHarness()`, fake GitHub, no network; never the real `~/.odin` or `~/.claude` (`testDeps()`, `startApp()`).
 - Session worktree branches are `odin/<slug>-<id8>` unless the request names one.
-
-## Workspace sessions
-
-Sessions are top-level conversations with one or more configured repositories, not project navigation children.
-`Session.projects` is an ordered list of project names; `Session.project` remains the working repository for
-cwd, worktree, branch, artifacts and legacy metrics attribution. `StartSessionRequest.projects` optionally
-supplies the full list and must include `project`; omission means `[project]`. Names are deduplicated, working
-repository first; unknown or missing repositories fail before launch. Existing rows migrate to `[project]`.
-Additional repositories are passed as harness `additionalDirectories` on every start/resume/fork and identified
-in instructions, including their AGENTS.md. Only the working repository gets a worktree; the others use checkouts.
-Project filters/counts match any configured repository. Metrics grouped by project retain working-project attribution
-so workspace totals are not double counted. Removing a project used by a session is refused; remove its sessions first.
-Projects retain an overview of related sessions, library and settings. The overview's Start chat
-opens the global launcher with that project preselected. Old project Sessions URLs redirect to the overview.
-The global session list is `/sessions`; `/history` remains an alias.
-## Session effort
-
-`Session.effort`, `StartSessionRequest.effort` and `UpdateSessionRequest.effort` are optional named reasoning
-levels (`none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`); null restores the harness default. Migration
-0010 stores the selection on the session. Resume and fork inherit it. Updates apply to subsequent turns and
-are returned through the existing session response and `session.updated` event. No conversation turn is sent.
-
-`ModelInfo.effortLevels` advertises available choices; absent/empty means the control is unavailable. Start and
-update reject levels outside the selected model's list with 400. Model changes clear an incompatible effort.
-The optional `SessionHandle.setEffort` changes the live session; `StartOptions.effort` supplies the stored value.
-Claude uses the SDK effort option and session-only `applyFlagSettings`; its initial fallback catalog offers
-low/medium/high until the SDK supplies a richer model catalog. Codex sends `turn/start.effort` and plan-mode
-`collaborationMode.settings.reasoning_effort`. Grok uses `session/set_model` with `_meta.reasoningEffort`,
-and its advertised default level when resetting. Permission mode remains independent.
-
-The composer offers `/effort <level>` and `/effort default` for models with advertised effort levels, with the
-same behavior as its effort selector. Unsupported commands remain native harness commands.
-
