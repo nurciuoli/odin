@@ -2,14 +2,21 @@
 
 # Odin
 
-**One desktop hub for all your coding-agent sessions.**
+**A bird's-eye view of every coding agent.**
 
 <p align="center"><img src="docs/assets/murmuration.gif" width="720" alt="A murmuration of small strokes flocking and drifting, the animation behind Odin's session composer"></p>
 
-Odin lets you start, resume and organise agent sessions across all your projects and all your agent runtimes
-(Claude Code, Codex, Grok, OpenCode, Antigravity) in one app. Sessions run on each tool's real native harness, so
-your instruction files, skills, MCP servers, hooks and permissions behave the way they always do. Odin adds the
-parts those tools don't have:
+Odin is a harness-agnostic Agentic Development Environment. Start, resume and organise agent sessions across all
+your projects and runtimes (Claude Code, Codex, Grok, OpenCode, Antigravity) from one calm, curated desktop app
+that you can shape to the way you work.
+
+- **Any harness, one view.** Every session runs on its tool's real native harness, so your instruction files,
+  skills, MCP servers, hooks and permissions behave the way they always do.
+- **Calm by design.** A curated interface that stays quiet until a session needs you.
+- **Yours to shape.** A shared library of instructions, skills, subagents, commands and settings profiles, kept as
+  plain files and adapted to each harness at launch.
+
+Odin adds the parts those tools don't have:
 
 - **One place for every session**: streaming chat, tool calls, diffs, permission prompts and plan approval, with a
   tray badge and a notification when a session needs you. Sessions you start in a terminal show up too, and you

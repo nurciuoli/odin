@@ -1,7 +1,7 @@
 ---
 name: odin
 title: Odin
-description: A desktop hub for coding-agent sessions across projects and runtimes, with a shared library.
+description: A harness-agnostic Agentic Development Environment. A bird's-eye view of every coding agent, with a shared library.
 repo: nurciuoli/odin
 default_branch: main
 commands:
