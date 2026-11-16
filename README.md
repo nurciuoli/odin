@@ -4,6 +4,8 @@
 
 **One desktop hub for all your coding-agent sessions.**
 
+<p align="center"><img src="docs/assets/murmuration.gif" width="720" alt="A murmuration of small strokes flocking and drifting, the animation behind Odin's session composer"></p>
+
 Odin lets you start, resume and organise agent sessions across all your projects and all your agent runtimes
 (Claude Code, Codex, Grok, OpenCode, Antigravity) in one app. Sessions run on each tool's real native harness, so
 your instruction files, skills, MCP servers, hooks and permissions behave the way they always do. Odin adds the
@@ -22,6 +24,26 @@ parts those tools don't have:
 
 Odin runs locally and binds to `127.0.0.1`. It never reads or stores your model credentials: each runtime uses
 its own login.
+
+## Screenshots
+
+Captured from the app's built-in sample data (`?mock`), so no real sessions or projects appear.
+
+**Home**: start a chat, and see every session that is running, paused for you, or finished.
+
+![Odin home: the composer above a list of in-progress sessions, one paused for permission](docs/assets/screenshots/home.png)
+
+**Session**: streaming chat with tool calls, terminal output, and a details panel for context, changes, background tasks and plan.
+
+![A running session with tool calls, a failed build and the details side panel](docs/assets/screenshots/session.png)
+
+**Permission prompt**: allow once, always allow with a scope, or deny, with the exact tool input shown.
+
+![A session paused on a permission prompt for a Bash command](docs/assets/screenshots/permission-prompt.png)
+
+**Project overview**: time, cost, lines changed and commits per project, with a chart over 7 days, 30 days or 12 weeks.
+
+![Project overview with metric tiles and a sessions-per-day chart](docs/assets/screenshots/project-overview.png)
 
 > **Status:** early. Windows (including WSL runtimes) is the most-tested platform; the server and web app run
 > anywhere Node 24 does, and prebuilt installers are not published yet.
