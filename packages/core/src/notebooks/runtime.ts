@@ -1,8 +1,7 @@
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { randomBytes, randomUUID, createHash } from "node:crypto";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { createServer as createNetServer, type Socket } from "node:net";
-import { createServer as createHttpServer, request as httpRequest, type Server, type IncomingMessage } from "node:http";
+import { createServer as createNetServer } from "node:net";
 import { join } from "node:path";
 import type { KernelLocation, NotebookComm } from "@odin/shared/notebooks";
 export type { NotebookComm } from "@odin/shared/notebooks";
@@ -19,8 +18,6 @@ export interface NotebookRuntime {
   interrupt(kernelId: string): Promise<void>;
   stop(kernelId: string): Promise<void>;
   close(): Promise<void>;
-  openLab(options: { notebookPath: string; kernelId: string }): Promise<{ url: string }>;
-  closeLab(): Promise<void>;
   subscribeComms(kernelId: string, listener: (message: NotebookComm) => void): () => void;
   sendComm(kernelId: string, message: NotebookComm): Promise<void>;
 }
@@ -122,95 +119,12 @@ export function createNotebookRuntime(options: NotebookRuntimeOptions): Notebook
       clearTimeout(pending.timer); pending.reject(new Error("Notebook widget channel closed")); commWaits.delete(id);
     }
   }
-  let labServer: Server | null = null;
-  let labPort = 0;
-  const labConnections = new Set<Socket>();
-  const upstreamConnections = new Set<Socket>();
-  const cleanToken = (value: string) => value.split(token).join("");
-  function validLabRequest(req: IncomingMessage): boolean {
-    if (req.headers.host !== `127.0.0.1:${labPort}` && req.headers.host !== `localhost:${labPort}`) return false;
-    const origin = req.headers.origin;
-    if (origin && origin !== `http://127.0.0.1:${labPort}` && origin !== `http://localhost:${labPort}`) return false;
-    // Fetch metadata also rejects cross-origin navigation-less GET requests that lack Origin.
-    if (req.headers["sec-fetch-site"] === "cross-site" && req.headers["sec-fetch-mode"] !== "navigate") return false;
-    return !!req.url?.startsWith("/") && !req.url.startsWith("//") && !/[\0\r\n]/.test(req.url);
-  }
-  function upstreamHeaders(req: IncomingMessage) {
-    const headers = { ...req.headers, host: new URL(base).host, authorization: `token ${token}`, origin: base, "accept-encoding": "identity" };
-    delete headers.cookie;
-    return headers;
-  }
-  async function closeLab() {
-    const server = labServer;
-    labServer = null;
-    labPort = 0;
-    for (const socket of labConnections) socket.destroy();
-    for (const socket of upstreamConnections) socket.destroy();
-    labConnections.clear(); upstreamConnections.clear();
-    if (server) await new Promise<void>(resolve => server.close(() => resolve()));
-  }
-  async function labProxy() {
-    if (labServer) return;
-    const server = createHttpServer((req, res) => {
-      if (!validLabRequest(req)) { res.writeHead(403); res.end("Forbidden"); return; }
-      const upstream = httpRequest({ hostname: "127.0.0.1", port: Number(new URL(base).port), path: req.url, method: req.method, headers: upstreamHeaders(req) }, response => {
-        const headers = { ...response.headers };
-        delete headers["set-cookie"];
-        delete headers["content-length"];
-        delete headers["content-encoding"];
-        if (headers.location) headers.location = cleanToken(headers.location).replace(base, `http://127.0.0.1:${labPort}`);
-        headers["referrer-policy"] = "no-referrer";
-        // JupyterLab can embed server auth in page-config JSON. Never pass that token to its client.
-        const textual = /(?:text\/|json|javascript|xml)/i.test(String(headers["content-type"] ?? ""));
-        if (!textual) { res.writeHead(response.statusCode ?? 502, headers); response.pipe(res); return; }
-        const chunks: Buffer[] = []; let bytes = 0;
-        response.on("data", (chunk: Buffer) => {
-          bytes += chunk.length;
-          if (bytes > 32 * 1024 * 1024) { response.destroy(); res.destroy(); return; }
-          chunks.push(Buffer.from(chunk));
-        });
-        response.once("end", () => { if (!res.destroyed) { res.writeHead(response.statusCode ?? 502, headers); res.end(cleanToken(Buffer.concat(chunks).toString("utf8"))); } });
-        response.once("error", () => res.destroy());
-      });
-      upstream.setTimeout(options.requestTimeoutMs ?? 30_000, () => upstream.destroy());
-      upstream.once("error", () => { if (!res.headersSent) res.writeHead(502); res.end("Notebook proxy unavailable"); });
-      req.once("aborted", () => upstream.destroy());
-      req.pipe(upstream);
-    });
-    server.on("connection", socket => { labConnections.add(socket); socket.once("close", () => labConnections.delete(socket)); });
-    server.on("upgrade", (req, socket, head) => {
-      if (!validLabRequest(req)) { socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n"); return; }
-      const upstream = httpRequest({ hostname: "127.0.0.1", port: Number(new URL(base).port), path: req.url, method: "GET", headers: upstreamHeaders(req) });
-      upstream.once("upgrade", (response, remote, remoteHead) => {
-        upstreamConnections.add(remote); remote.once("close", () => upstreamConnections.delete(remote));
-        const headers = Object.entries(response.headers).filter(([name]) => name !== "set-cookie").map(([name, value]) => `${name}: ${cleanToken(Array.isArray(value) ? value.join(", ") : String(value))}`).join("\r\n");
-        socket.write(`HTTP/1.1 101 Switching Protocols\r\n${headers}\r\n\r\n`);
-        if (remoteHead.length) socket.write(remoteHead);
-        if (head.length) remote.write(head);
-        socket.pipe(remote); remote.pipe(socket);
-        socket.once("error", () => remote.destroy()); remote.once("error", () => socket.destroy());
-        socket.once("close", () => remote.destroy()); remote.once("close", () => socket.destroy());
-      });
-      upstream.once("response", response => { response.resume(); socket.end("HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n"); });
-      upstream.once("error", () => socket.destroy());
-      upstream.setTimeout(options.requestTimeoutMs ?? 10_000, () => upstream.destroy());
-      upstream.end();
-    });
-    await new Promise<void>((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(0, "127.0.0.1", () => {
-        const address = server.address();
-        if (!address || typeof address === "string") { reject(new Error("Could not open JupyterLab proxy")); return; }
-        labPort = address.port; labServer = server; resolve();
-      });
-    });
-  }
   function clearIdle() { if (idleTimer) clearTimeout(idleTimer); idleTimer = null; }
   function armIdle() {
     clearIdle();
     if (!closed && sockets.size === 0 && (options.idleTimeoutMs ?? 3_600_000) > 0) {
       idleTimer = setTimeout(() => {
-        // JupyterLab may execute directly through its leased WebSocket connection.
+        // Kernels may be executing outside Odin-tracked sockets.
         void request("/api/kernels").then((active: unknown) => {
           if (Array.isArray(active) && active.some(kernel => kernel?.execution_state === "busy")) armIdle();
           else void shutdown();
@@ -272,7 +186,6 @@ export function createNotebookRuntime(options: NotebookRuntimeOptions): Notebook
         exited = true;
         if (child !== proc) return;
         child = null;
-        void closeLab();
         for (const pending of sockets.values()) pending.reject(new Error("Notebook host exited"));
         sockets.clear();
         for (const connection of comms.values()) connection.socket.close();
@@ -294,7 +207,6 @@ export function createNotebookRuntime(options: NotebookRuntimeOptions): Notebook
   }
   async function shutdown() {
     clearIdle();
-    await closeLab();
     for (const pending of [...sockets.values()]) pending.reject(new Error("Notebook runtime stopped"));
     sockets.clear();
     for (const comm of comms.values()) comm.socket.close();
@@ -386,20 +298,6 @@ export function createNotebookRuntime(options: NotebookRuntimeOptions): Notebook
         catch { clearTimeout(timer); commWaits.delete(id); reject(new Error("Notebook widget send failed")); }
       });
     },
-    async openLab({ notebookPath, kernelId }) {
-      if (!kernels.has(kernelId)) throw new Error("Notebook kernel is stopped");
-      if (!/^[a-zA-Z0-9_-]{1,100}\.ipynb$/.test(notebookPath)) throw new Error("Invalid notebook path");
-      const sessions = await request("/api/sessions");
-      const existing = Array.isArray(sessions) ? sessions.find(session => session?.path === notebookPath && typeof session.id === "string") : null;
-      const session = existing
-        ? await request(`/api/sessions/${encodeURIComponent(existing.id)}`, { method: "PATCH", body: JSON.stringify({ kernel: { id: kernelId } }) })
-        : await request("/api/sessions", { method: "POST", body: JSON.stringify({ path: notebookPath, name: notebookPath, type: "notebook", kernel: { id: kernelId } }) });
-      if (session?.kernel?.id !== kernelId) throw new Error("JupyterLab did not attach to the selected kernel");
-      await labProxy();
-      clearIdle();
-      return { url: `http://127.0.0.1:${labPort}/lab/tree/${encodeURIComponent(notebookPath)}` };
-    },
-    async closeLab() { await closeLab(); armIdle(); },
     async createKernel({ id, cwd, interpreter }) {
       if (!/^[a-zA-Z0-9_-]{1,100}$/.test(id) || !interpreter || !cwd) throw new Error("Invalid notebook kernel configuration");
       await start();

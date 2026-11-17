@@ -354,7 +354,7 @@ describe('SessionScreen', () => {
     await row.find('button').trigger('click')
     await vi.waitFor(() => expect(read).toHaveBeenCalledWith(session.id, 'README.md'))
     expect(wrapper!.find('.session-workbench').isVisible()).toBe(true)
-    expect(wrapper!.find('.session-workbench [role="tablist"]').exists()).toBe(false)
+    expect(wrapper!.find('.session-workbench__topbar [role="tablist"]').exists()).toBe(false)
   })
   it('shows tool paths relative to the session working directory', async () => {
     const { api } = await mountSession(FIXTURE_SESSION_IDS.idle)

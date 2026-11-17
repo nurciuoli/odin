@@ -62,8 +62,6 @@ export function createHttpApi(options: HttpApiOptions = {}): Api {
   return {
     notebookWidgetState: id => get(`/api/notebooks/${seg(id)}/widgets`),
     sendNotebookComm: (id, message) => send('POST', `/api/notebooks/${seg(id)}/comm`, message),
-    handoffNotebook: id => send('POST', `/api/notebooks/${seg(id)}/handoff`),
-    reclaimNotebook: id => send('POST', `/api/notebooks/${seg(id)}/reclaim`),
     notebookVariables: id => send('POST', `/api/notebooks/${seg(id)}/variables`, {}),
     notebookDataFrame: (id, name, query) =>
       send('POST', `/api/notebooks/${seg(id)}/dataframe`, { name, ...query }),
@@ -72,7 +70,7 @@ export function createHttpApi(options: HttpApiOptions = {}): Api {
     setupNotebookEnvironment: (name, location) =>
       send('POST', `${project(name)}/notebook-environment/setup`, { location }),
     listNotebooks: name => get(`${project(name)}/notebooks`),
-    createNotebook: (name, req) => send('POST', `${project(name)}/notebooks`, req),
+    openNotebook: (name, req) => send('POST', `${project(name)}/notebooks/open`, req),
     getNotebook: id => get(`/api/notebooks/${seg(id)}`),
     saveNotebook: (id, revision, cells) =>
       send('PUT', `/api/notebooks/${seg(id)}`, { revision, cells }),
@@ -84,8 +82,6 @@ export function createHttpApi(options: HttpApiOptions = {}): Api {
     interruptNotebook: id => send('POST', `/api/notebooks/${seg(id)}/interrupt`),
     stopNotebook: id => send('POST', `/api/notebooks/${seg(id)}/stop`),
     removeNotebook: id => send('DELETE', `/api/notebooks/${seg(id)}`),
-    exportNotebook: (id, path) =>
-      send('POST', `/api/notebooks/${seg(id)}/save-to-project`, { path }),
     notebookOutputUrl: (id, cellId, index) =>
       `${base}/a/notebooks/${seg(id)}/${seg(cellId)}/${index}`,
     listProjects: () => get('/api/projects'),

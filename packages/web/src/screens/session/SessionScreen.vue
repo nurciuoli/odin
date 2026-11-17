@@ -310,12 +310,6 @@ function toggleFiles() {
   filesOpen.value = true
   workbenchTab.value = 'files'
 }
-function openNotebook() {
-  previewDismissed.value = false
-  filesOpen.value = true
-  workbenchTab.value = 'notebook'
-  if (narrow.value || compact.value) setSide(false)
-}
 const filesOpen = ref(false)
 const previewDismissed = ref(false)
 const previewWidth = ref(760)
@@ -502,13 +496,6 @@ function onDeleted() {
           <template #actions>
             <IuButton size="sm" variant="ghost" :aria-pressed="filesOpen" @click="toggleFiles"
               >Files</IuButton
-            >
-            <IuButton
-              size="sm"
-              variant="ghost"
-              :aria-pressed="showWorkbench && tab === 'notebook'"
-              @click="openNotebook"
-              >Notebook</IuButton
             >
             <IuButton
               v-if="sideThreads.length || asideOpen"

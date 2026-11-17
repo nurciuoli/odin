@@ -4,7 +4,6 @@ import { EventEmitter } from "node:events";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createServer, request } from "node:http";
 import type { ChildProcess, SpawnOptions } from "node:child_process";
 import type { KernelLocation } from "@odin/shared/notebooks";
 import { createNotebookRuntime, decodeKernelMessage, encodeKernelMessage, type NotebookSocket, type JupyterOutput, type NotebookComm } from "./runtime.ts";
@@ -114,55 +113,6 @@ test("disconnect fails instead of hanging and transport errors never expose URLs
     const rejected = assert.rejects(pending, /disconnected before completion/);
     s.socket().emit("close", {}); await rejected;
   } finally { await s.cleanup(); }
-});
-test("JupyterLab hand-off binds the existing kernel and isolates the token behind a separate origin", async () => {
-  const home = mkdtempSync(join(tmpdir(), "odin-notebook-lab-"));
-  const upstream = createServer((req, res) => {
-    res.setHeader("content-type", "application/json");
-    res.end(JSON.stringify({ token: req.headers.authorization?.slice(6), origin: req.headers.origin }));
-  });
-  upstream.on("upgrade", (req, socket) => {
-    socket.write(`HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nX-Test-Token: ${req.headers.authorization?.slice(6)}\r\n\r\n`);
-  });
-  const upstreamSockets = new Set<import("node:net").Socket>();
-  upstream.on("connection", socket => { upstreamSockets.add(socket); socket.once("close", () => upstreamSockets.delete(socket)); });
-  await new Promise<void>(resolve => upstream.listen(0, "127.0.0.1", resolve));
-  const address = upstream.address(); assert.ok(address && typeof address !== "string");
-  let sessionBody: any;
-  const child = new EventEmitter() as ChildProcess;
-  child.kill = (() => { queueMicrotask(() => child.emit("exit", 0)); return true; }) as ChildProcess["kill"];
-  const runtime = createNotebookRuntime({ home, project: "test", location: { kind: "native" }, hostPython: "python", port: address.port, idleTimeoutMs: 0,
-    spawn: () => child,
-    fetch: (async (url, init) => {
-      const path = new URL(String(url)).pathname;
-      if (path === "/api/kernels" && init?.method === "POST") return Response.json({ id: "native" });
-      if (path === "/api/sessions" && init?.method !== "POST") return Response.json([]);
-      if (path === "/api/sessions") { sessionBody = JSON.parse(String(init?.body)); return Response.json({ id: "jupyter-session", kernel: { id: "native" } }); }
-      if (path === "/api/kernels") return Response.json([]);
-      return new Response(null, { status: 204 });
-    }) as typeof fetch,
-  });
-  try {
-    await runtime.createKernel({ id: "id", cwd: "/repo", interpreter: "python" });
-    const { url } = await runtime.openLab({ notebookPath: "id.ipynb", kernelId: "native" });
-    const lab = new URL(url);
-    assert.notEqual(lab.port, String(address.port)); assert.equal(lab.search, "");
-    assert.deepEqual(sessionBody.kernel, { id: "native" }); assert.equal(sessionBody.path, "id.ipynb");
-    const config = await (await fetch(url)).json(); assert.equal(config.token, "");
-    assert.equal((await fetch(url, { headers: { origin: "https://attacker.invalid" } })).status, 403);
-    await new Promise<void>((resolve, reject) => {
-      const req = request(url, { headers: { connection: "Upgrade", upgrade: "websocket" } });
-      req.once("upgrade", (res, socket) => { try { assert.equal(res.headers["x-test-token"], ""); socket.destroy(); resolve(); } catch (error) { socket.destroy(); reject(error); } });
-      req.once("error", reject); req.end();
-    });
-    await runtime.closeLab();
-    await assert.rejects(fetch(url));
-  } finally {
-    await runtime.close();
-    for (const socket of upstreamSockets) socket.destroy();
-    await new Promise<void>(resolve => upstream.close(() => resolve()));
-    rmSync(home, { recursive: true, force: true });
-  }
 });
 test("Jupyter binary frames round-trip buffers and reject malformed offsets/oversized payloads", () => {
   const binary = encodeKernelMessage({ header: { msg_type: "comm_msg" }, content: { comm_id: "widget" } }, ["AAH/"]);
