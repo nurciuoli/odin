@@ -29,6 +29,7 @@ ODIN_FAKE_HARNESS=1 yarn dev:core   # core with the scripted fake harness: no mo
 yarn dev:web                        # Vite on :5190, proxies /api to core; add ?mock to run on fixtures only
 yarn start                          # core alone, serving the built web app (yarn build:web first)
 yarn build:web && yarn dev          # the desktop shell from source
+yarn dev:desktop                    # same, but strips ODIN_* and ELECTRON_RUN_AS_NODE, so it works from a terminal inside the installed Odin
 ```
 
 PowerShell sets the variable with `$env:ODIN_FAKE_HARNESS=1; yarn dev:core`.
