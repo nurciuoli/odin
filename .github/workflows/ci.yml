@@ -24,8 +24,6 @@ jobs:
         suite: [core, web]
     name: ${{ matrix.suite }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    # Windows runners use an 8.3 temp path (RUNNER~1) that three core tests do not normalise yet; report, do not block.
-    continue-on-error: ${{ matrix.os == 'windows-latest' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

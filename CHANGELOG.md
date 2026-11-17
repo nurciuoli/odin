@@ -5,6 +5,8 @@ follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Hand edits to `pricing.json` are picked up even when written within the same timestamp tick (Windows).
+
 ## [0.1.0]
 
 First public release.
