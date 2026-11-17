@@ -46,6 +46,15 @@ Odin adds the parts those tools don't have:
 > **Status:** early. Windows (including WSL runtimes) is the most-tested platform; the server and web app run
 > anywhere Node 24 does, and prebuilt installers are not published yet.
 
+## Jupyter support
+
+Notebooks are ordinary `.ipynb` files in the project. Open one from a session's Files tab to read its cells and
+outputs, edit and save them, or create a new notebook from the New menu. Running a cell starts a Python kernel for
+that notebook on first use, in the environment you choose: detect the project's Python, or set one up natively or
+in WSL. Opening a notebook starts nothing.
+
+![A Jupyter notebook open in the session's preview beside the chat, with the Markdown and Python cells of analysis.ipynb](docs/assets/screenshots/session-notebook.png)
+
 ## Quick start
 
 You need Node 24 (22.18+ works), git, and at least one agent CLI installed and logged in.
