@@ -12,3 +12,9 @@ export function useMediaQuery(query: string): Ref<boolean> {
   onBeforeUnmount(() => mq?.removeEventListener?.('change', onChange))
   return matches
 }
+
+/** The user asked for less motion. False where there's no `matchMedia` (tests, SSR). */
+export const prefersReducedMotion = (): boolean =>
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches

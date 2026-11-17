@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, writeFileSync, unlinkSync, lstatSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, readFileSync, renameSync, writeFileSync, unlinkSync, lstatSync, statSync, realpathSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import { HttpError } from "../http/util.ts";
 
 export interface IpynbCell {
@@ -23,21 +23,48 @@ export interface NotebookSnapshot { document: IpynbDocument; revision: string }
 export const NOTEBOOK_MAX_BYTES = 32 * 1024 * 1024;
 const revision = (raw: string) => createHash("sha256").update(raw).digest("hex");
 
-/** Files are addressed by generated IDs, never user-supplied paths. The notebook remains authoritative. */
-export function createNotebookStorage(home: string) {
-  const root = join(home, "notebooks");
-  function path(id: string) {
-    if (!/^[a-zA-Z0-9_-]{1,100}$/.test(id)) throw new HttpError(400, "invalid notebook ID");
-    mkdirSync(root, { recursive: true });
-    if (lstatSync(root).isSymbolicLink()) throw new HttpError(400, "notebook directory cannot be a symbolic link");
-    const target = join(root, `${id}.ipynb`);
-    try { const entry = lstatSync(target); if (!entry.isFile() || entry.isSymbolicLink() || entry.nlink > 1) throw new HttpError(400, "notebook must be a regular unlinked file"); }
+export const EMPTY_NOTEBOOK = (): IpynbDocument => ({ nbformat: 4, nbformat_minor: 5, metadata: { kernelspec: { name: "python3", display_name: "Python 3", language: "python" }, language_info: { name: "python" } }, cells: [] });
+
+/** Normalises a project-relative notebook path (forward slashes) or throws 400. */
+export function normalizeNotebookPath(path: unknown): string {
+  if (typeof path !== "string" || !path.endsWith(".ipynb") || path.includes("\u0000") || path.includes(":") || isAbsolute(path) || path.startsWith("\\") || path.startsWith("/")) throw new HttpError(400, "choose a project-relative .ipynb path");
+  const parts = path.replaceAll("\\", "/").split("/");
+  if (parts.some(part => !part || part === "." || part === ".." || part.toLowerCase() === ".git" || /[. ]$/.test(part)) || parts.at(-1) === ".ipynb") throw new HttpError(400, "invalid notebook path");
+  return parts.join("/");
+}
+
+/**
+ * Notebooks are ordinary project files addressed by (project root, relative path). The file stays authoritative;
+ * every access re-validates the path against the root, refusing symlinks and non-regular files.
+ */
+export function createNotebookStorage() {
+  function path(root: string, rel: string, makeDirectories = false) {
+    const clean = normalizeNotebookPath(rel);
+    const parts = clean.split("/");
+    let target = realpathSync(root);
+    for (const part of parts.slice(0, -1)) {
+      target = join(target, part);
+      try {
+        const entry = lstatSync(target);
+        if (!entry.isDirectory() || entry.isSymbolicLink()) throw new HttpError(403, "notebook directory must be a regular project directory");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        if (!makeDirectories) throw new HttpError(404, "notebook file is missing");
+        mkdirSync(target);
+      }
+    }
+    target = join(target, parts.at(-1)!);
+    try { const entry = lstatSync(target); if (!entry.isFile() || entry.isSymbolicLink()) throw new HttpError(400, "notebook must be a regular file"); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     return target;
   }
-  function read(id: string): NotebookSnapshot {
+  function exists(root: string, rel: string): boolean {
+    try { lstatSync(path(root, rel)); return true; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT" || (error instanceof HttpError && error.status === 404)) return false; throw error; }
+  }
+  function read(root: string, rel: string): NotebookSnapshot {
     let raw: string;
-    try { const target = path(id); if (statSync(target).size > NOTEBOOK_MAX_BYTES) throw new HttpError(413, "notebook is too large"); raw = readFileSync(target, "utf8"); }
+    try { const target = path(root, rel); if (statSync(target).size > NOTEBOOK_MAX_BYTES) throw new HttpError(413, "notebook is too large"); raw = readFileSync(target, "utf8"); }
     catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new HttpError(404, "notebook file is missing"); throw error; }
     if (Buffer.byteLength(raw) > NOTEBOOK_MAX_BYTES) throw new HttpError(413, "notebook is too large");
     let document: IpynbDocument;
@@ -66,10 +93,10 @@ export function createNotebookStorage(home: string) {
     }
     return { document, revision: revision(raw) };
   }
-  function write(id: string, document: IpynbDocument, expectedRevision: string | null): NotebookSnapshot {
-    const target = path(id);
+  function write(root: string, rel: string, document: IpynbDocument, expectedRevision: string | null): NotebookSnapshot {
+    const target = path(root, rel, expectedRevision === null);
     if (expectedRevision !== null) {
-      if (read(id).revision !== expectedRevision) throw new HttpError(409, "notebook changed; reload before saving");
+      if (read(root, rel).revision !== expectedRevision) throw new HttpError(409, "notebook changed; reload before saving");
     } else {
       try { lstatSync(target); throw new HttpError(409, "notebook already exists"); }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
@@ -79,11 +106,13 @@ export function createNotebookStorage(home: string) {
     const temporary = target + "." + randomUUID() + ".tmp";
     try {
       writeFileSync(temporary, raw, { flag: "wx", mode: 0o600 });
-      if (expectedRevision !== null && read(id).revision !== expectedRevision) throw new HttpError(409, "notebook changed; reload before saving");
+      if (expectedRevision !== null && read(root, rel).revision !== expectedRevision) throw new HttpError(409, "notebook changed; reload before saving");
       renameSync(temporary, target);
     }
     finally { try { unlinkSync(temporary); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; } }
     return { document, revision: revision(raw) };
   }
-  return { path, read, write };
+  /** Writes an empty notebook; 409 if the file exists. */
+  function create(root: string, rel: string): NotebookSnapshot { return write(root, rel, EMPTY_NOTEBOOK(), null); }
+  return { path, exists, read, write, create };
 }

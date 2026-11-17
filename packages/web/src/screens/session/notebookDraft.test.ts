@@ -6,7 +6,8 @@ const snapshot = (revision = '1', source = 'a = 1'): NotebookSnapshot => ({
   kernel: {
     id: 'kernel',
     project: 'odin',
-    name: 'Analysis',
+    path: 'Analysis.ipynb',
+    name: 'Analysis.ipynb',
     cwd: '/repo',
     interpreter: '/repo/.venv/bin/python',
     location: { kind: 'native' },
@@ -16,7 +17,6 @@ const snapshot = (revision = '1', source = 'a = 1'): NotebookSnapshot => ({
     error: null,
   },
   revision,
-  editor: 'odin',
   cells: [
     {
       id: 'cell',

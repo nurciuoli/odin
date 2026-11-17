@@ -5,21 +5,12 @@ import { IuButton } from '@/components/Button'
 import type SessionFilesType from './SessionFiles.vue'
 import type { PreviewView } from './workbench'
 const SessionFiles = defineAsyncComponent(() => import('./SessionFiles.vue'))
-const NotebookPanel = defineAsyncComponent(() => import('./NotebookPanel.vue'))
 const props = withDefaults(
   defineProps<{ session: SessionDetail; width: number; resizable?: boolean }>(),
   { resizable: false },
 )
 const emit = defineEmits<{ close: []; 'update:width': [width: number] }>()
 const tab = defineModel<PreviewView>('tab', { required: true })
-const notebookVisited = ref(false)
-watch(
-  tab,
-  value => {
-    if (value === 'notebook') notebookVisited.value = true
-  },
-  { immediate: true },
-)
 const filePanel = ref<InstanceType<typeof SessionFilesType>>()
 const pendingPath = ref<string | null>(null)
 watch(filePanel, panel => {
@@ -157,11 +148,13 @@ defineExpose({ openFile })
         >
       </div>
       <div class="session-workbench__content">
-        <div v-if="notebookVisited" v-show="tab === 'notebook'" class="session-workbench__notebook">
-          <NotebookPanel :key="session.id" :session="session" />
-        </div>
         <div v-show="tab === 'files'" class="session-workbench__file-panel">
-          <SessionFiles :key="session.id" ref="filePanel" :session-id="session.id" />
+          <SessionFiles
+            :key="session.id"
+            ref="filePanel"
+            :session="session"
+            @hide="emit('close')"
+          />
         </div>
         <div v-show="tab === 'artifacts'" class="session-workbench__artifacts">
           <slot name="artifacts" />
@@ -213,7 +206,6 @@ defineExpose({ openFile })
   display: flex;
 }
 .session-workbench__file-panel,
-.session-workbench__notebook,
 .session-workbench__activity,
 .session-workbench__side,
 .session-workbench__artifacts {

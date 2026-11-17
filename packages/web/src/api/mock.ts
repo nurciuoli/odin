@@ -657,6 +657,25 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
     'data/results.csv':
       'id,name,status\n00123,First experiment,complete\n00456,"Second, larger experiment",pending\n',
     'src/example.ts': 'export const greeting = "Hello Odin"\n',
+    'analysis.ipynb': JSON.stringify({
+      cells: [
+        {
+          cell_type: 'markdown',
+          id: 'intro',
+          source: '# Analysis\n\nA first look at the results.',
+        },
+        {
+          cell_type: 'code',
+          id: 'load',
+          execution_count: null,
+          source: 'import pandas as pd\ndata = pd.read_csv("data/results.csv")\ndata.head()',
+          outputs: [],
+        },
+      ],
+      metadata: {},
+      nbformat: 4,
+      nbformat_minor: 5,
+    }),
   }
   const workspacePaths = (): FileMatch[] => {
     const dirs = new Set<string>()
@@ -676,7 +695,17 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
   })
 
   const api: MockApi = {
-    ...mockNotebooks({ project: projectOf, session: sessionOf, emit }),
+    ...mockNotebooks({
+      project: projectOf,
+      session: sessionOf,
+      emit,
+      files: {
+        read: path => workspaceFiles[path],
+        write: (path, text) => {
+          workspaceFiles[path] = text
+        },
+      },
+    }),
     searchSessionFiles: (id, query) =>
       respond(() => {
         sessionOf(id)
