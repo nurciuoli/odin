@@ -706,7 +706,10 @@ Hook events from sessions run outside Odin (`claude` in a terminal), through the
   - `wallMs` = last event ts − first; `activeMs` = Σ turn `durationMs`; `turns`, `toolCalls` = counts.
   - `tokensByModel`: `cumulative: true` replaces earlier usage for that model, otherwise adds; minus the baseline for
     forks (`recordBaseline`, applied only to cumulative reports: the Claude driver reports per turn, so a fork counts
-    only its own turns without one); `tokens` = the sum; `model` on the record = the model with most output tokens.
+    only its own turns without one); `tokens` = the sum.
+  - The record's `model` is the selected or initial model (the user's PATCH, the harness's `init`/`model` events, or
+    the start event of an ingested session). Usage never rewrites it. An ingested session with no model yet takes the
+    model with most output tokens, so it gets one. Per-model totals live in `tokensByModel`.
   - `costUsd` = Σ `costOf(tokens, model, pricing)` when every model is priced; else the harness's reported cost
     (latest cumulative per model, or the sum of incremental ones, minus the baseline); else null.
   - `contextTokens` = the latest reported. `diff`, `commits`, `prOutcome`, `reviewRounds` come from

@@ -5,6 +5,7 @@ follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- The session model selector no longer switches to another model after a turn.
 - Hand edits to `pricing.json` are picked up even when written within the same timestamp tick (Windows).
 - Notebooks open from the Files tab as project files.
 - `yarn dev:desktop` launches the Odin Dev desktop app from a terminal, including one inside Odin.
