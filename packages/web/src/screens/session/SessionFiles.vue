@@ -19,8 +19,10 @@ import type { CsvSelection } from '@/components/CsvViewer/csv'
 import { IuButton } from '@/components/Button'
 import { IuCallout } from '@/components/Callout'
 import { IuIcon } from '@/components/Icon'
-import type { MenuItem } from '@/components/Menu'
-import { IuEmpty, IuErrorState, IuSkeleton } from '@/components/States'
+import { IuMenu, type MenuItem } from '@/components/Menu'
+import { IuErrorState, IuSkeleton } from '@/components/States'
+import { IuField } from '@/components/Fields'
+import { IuDialog } from '@/components/Modal'
 const IuMarkdownEditor = defineAsyncComponent(
   () => import('@/components/MarkdownEditor/MarkdownEditor.vue'),
 )
@@ -196,6 +198,100 @@ async function open(path: string) {
   if (target.kind === 'notebook') await openNotebookDoc(path)
   else await openText(path)
 }
+/** The New menu. Notebooks use the notebook open call with `create`; the other types use the create-file endpoint. */
+const newFileItems: MenuItem[] = [
+  { id: 'notebook', label: 'Notebook (.ipynb)' },
+  { type: 'separator' },
+  { id: 'markdown', label: 'Markdown (.md)' },
+  { id: 'text', label: 'Text (.txt)' },
+  { id: 'json', label: 'JSON (.json)' },
+  { id: 'html', label: 'HTML (.html)' },
+  { type: 'separator' },
+  { id: 'other', label: 'Other…' },
+]
+const newFileTypes = {
+  markdown: { ext: '.md', content: '' },
+  text: { ext: '.txt', content: '' },
+  json: { ext: '.json', content: '{}' },
+  html: { ext: '.html', content: '' },
+} as const
+type NewFileType = keyof typeof newFileTypes
+/** The first free `untitled<ext>`, then `untitled-2<ext>`, ... among the names already in the folder. */
+function untitledFile(taken: Iterable<string>, ext: string): string {
+  const names = new Set([...taken].map(n => n.toLowerCase()))
+  let name = `untitled${ext}`
+  for (let n = 2; names.has(name.toLowerCase()); n++) name = `untitled-${n}${ext}`
+  return name
+}
+function onNewFile(id: string) {
+  if (id === 'notebook') void newNotebook()
+  else if (id === 'other') openOther()
+  else if (id in newFileTypes) void newTextFile(id as NewFileType)
+}
+/** Create-only on the server (409 when the path exists), then show the file's folder again and open the file. */
+async function createAndOpen(path: string, content: string) {
+  await api.createSessionFile(sessionId.value, path, content)
+  await browse(parentPath(path))
+  await openText(path)
+}
+async function newTextFile(type: NewFileType) {
+  error.value = ''
+  const { ext, content } = newFileTypes[type]
+  const folder = listing.value.path
+  try {
+    const fresh = await api.listSessionFiles(sessionId.value, folder)
+    const name = untitledFile(
+      fresh.entries.map(e => e.name),
+      ext,
+    )
+    await createAndOpen(folder ? `${folder}/${name}` : name, content)
+  } catch (e) {
+    error.value = message(e)
+  }
+}
+/** Other…: a file name relative to the folder on show. Returns the problem to show, or '' when it is usable. */
+function nameProblem(name: string): string {
+  if (!name) return 'Enter a file name.'
+  if (/^\//.test(name) || name.includes(':') || name.endsWith('/'))
+    return 'Use a path relative to this folder.'
+  const parts = name.split('/')
+  if (parts.some(p => p === '..')) return 'Paths cannot contain “..”.'
+  if (parts.some(p => !p)) return 'Remove the empty folder names.'
+  if (/\.ipynb$/i.test(name)) return 'Create notebooks with Notebook (.ipynb).'
+  return ''
+}
+const otherOpen = ref(false)
+const otherName = ref('')
+const otherNameError = ref('')
+const otherCreateError = ref('')
+const otherBusy = ref(false)
+function openOther() {
+  error.value = ''
+  otherName.value = untitledFile(
+    listing.value.entries.map(e => e.name),
+    '.txt',
+  )
+  otherNameError.value = ''
+  otherCreateError.value = ''
+  otherOpen.value = true
+}
+async function createOther() {
+  if (otherBusy.value) return
+  const name = otherName.value.trim().replace(/\\/g, '/')
+  otherNameError.value = nameProblem(name)
+  if (otherNameError.value) return
+  const folder = listing.value.path
+  otherBusy.value = true
+  otherCreateError.value = ''
+  try {
+    await createAndOpen(folder ? `${folder}/${name}` : name, '')
+    otherOpen.value = false
+  } catch (e) {
+    otherCreateError.value = message(e)
+  } finally {
+    otherBusy.value = false
+  }
+}
 /** Write `Untitled.ipynb` (or `Untitled-2.ipynb`, ...) in the folder on show, and open it. */
 async function newNotebook() {
   error.value = ''
@@ -332,7 +428,10 @@ defineExpose({ open })
 <template>
   <section
     class="session-files"
-    :class="{ 'session-files--expanded': expanded }"
+    :class="{
+      'session-files--expanded': expanded,
+      'session-files--browse-only': !docs.docs.length,
+    }"
     aria-label="Workspace files"
   >
     <aside
@@ -362,10 +461,20 @@ defineExpose({ open })
             >Up</IuButton
           >
           <span class="session-files__spacer" />
-          <IuButton size="sm" variant="ghost" @click="newNotebook">
-            <template #icon><IuIcon name="plus" :size="14" /></template>
-            New notebook
-          </IuButton>
+          <IuMenu :items="newFileItems" placement="bottom-end" fixed @select="onNewFile">
+            <template #trigger="{ toggle, open }">
+              <IuButton
+                size="sm"
+                variant="ghost"
+                aria-haspopup="menu"
+                :aria-expanded="open"
+                @click="toggle"
+              >
+                <template #icon><IuIcon name="plus" :size="14" /></template>
+                New
+              </IuButton>
+            </template>
+          </IuMenu>
         </div>
         <div class="session-files__location">{{ listing.path || 'Working directory' }}</div>
         <div v-if="!listed" class="session-files__state" aria-busy="true">
@@ -410,7 +519,7 @@ defineExpose({ open })
       </div>
     </aside>
 
-    <div class="session-files__main">
+    <div v-if="docs.docs.length" class="session-files__main">
       <div class="session-files__tabs">
         <div
           class="session-files__tablist"
@@ -570,14 +679,33 @@ defineExpose({ open })
           </template>
         </template>
       </div>
-
-      <IuEmpty
-        v-if="!docs.docs.length"
-        class="session-files__empty"
-        title="No files open"
-        body="Select a file from the browser to view or edit it, or start a new notebook."
-      />
     </div>
+
+    <IuDialog v-model:open="otherOpen" size="sm">
+      <template #header>
+        <h2 class="session-files__dialog-title">New file</h2>
+      </template>
+      <form class="session-files__dialog" @submit.prevent="createOther">
+        <IuField
+          v-model="otherName"
+          label="File name"
+          mono
+          :hint="`In ${listing.path || 'the working directory'}. Use a path such as notes/todo.txt.`"
+          :error="otherNameError"
+        />
+        <IuCallout v-if="otherCreateError" intent="danger" variant="inline" live>
+          {{ otherCreateError }}
+        </IuCallout>
+      </form>
+      <template #footer>
+        <IuButton variant="secondary" size="sm" :disabled="otherBusy" @click="otherOpen = false"
+          >Cancel</IuButton
+        >
+        <IuButton variant="primary" size="sm" :loading="otherBusy" @click="createOther"
+          >Create</IuButton
+        >
+      </template>
+    </IuDialog>
   </section>
 </template>
 
@@ -678,10 +806,17 @@ defineExpose({ open })
 .session-files__state {
   padding: 8px 10px;
 }
+/* With no document open the browser takes the whole panel; the preview area is only rendered once a file is open. */
+.session-files--browse-only .session-files__sidebar:not(.session-files__sidebar--collapsed) {
+  flex: 1 1 auto;
+  border-bottom: 0;
+}
 .session-files__listing {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--iu-border-strong) transparent;
   padding: 0 6px;
 }
 .session-files__entry {
@@ -834,7 +969,14 @@ defineExpose({ open })
 .session-files__conflict {
   padding: 12px;
 }
-.session-files__empty {
-  flex: 1;
+.session-files__dialog-title {
+  margin: 0;
+  font-size: var(--iu-font-size-14);
+  font-weight: var(--iu-font-weight-semibold);
+}
+.session-files__dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 </style>

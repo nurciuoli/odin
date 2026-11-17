@@ -142,7 +142,6 @@ defineExpose({ openFile })
     <div v-if="drag" class="session-workbench__drag-shield" aria-hidden="true" />
     <aside class="session-workbench" :data-tab="tab" aria-label="Content preview">
       <div class="session-workbench__topbar">
-        <span>Content preview</span>
         <IuButton variant="ghost" size="sm" aria-label="Close preview" @click="emit('close')"
           >Close preview</IuButton
         >
@@ -193,7 +192,7 @@ defineExpose({ openFile })
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding: 0 10px 0 14px;
   border-bottom: 1px solid var(--iu-border-quiet);
   color: var(--iu-text-muted);

@@ -15,8 +15,10 @@ const props = withDefaults(
     /**
      * `column`: a full-height app column. The header is the 48px band IuHeader draws, so it lines up with the
      * neighbouring column headers, and the body has no padding: the content (an iframe, a list) fills it edge to edge.
+     * `compact`: a 36px header with a quiet divider, the height of a section header such as a file browser's, so the
+     * two dividers line up when they sit side by side. Its title is one line; the body keeps its padding.
      */
-    variant?: 'default' | 'column'
+    variant?: 'default' | 'column' | 'compact'
   }>(),
   { width: 320, closable: true, presentation: 'inline', variant: 'default' },
 )
@@ -60,6 +62,7 @@ defineExpose({ focus })
       'is-closed': !open,
       'iu-side-panel--overlay': overlay,
       'iu-side-panel--column': variant === 'column',
+      'iu-side-panel--compact': variant === 'compact',
     }"
     :style="{ '--iu-side-panel-w': `${width}px` }"
     :inert="!open"
@@ -262,6 +265,27 @@ defineExpose({ focus })
   overflow: hidden;
   gap: 0;
   padding: 0;
+}
+
+/* Compact: a 36px header, the height of a file browser's section header, with the same quiet divider. */
+.iu-side-panel--compact .iu-side-panel__header {
+  align-items: center;
+  height: 36px;
+  min-height: 0;
+  padding: 0 6px 0 16px;
+  border-bottom-color: var(--iu-border-quiet);
+}
+.iu-side-panel--compact .iu-side-panel__heading {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.iu-side-panel--compact .iu-side-panel__title {
+  -webkit-line-clamp: 1;
+  line-height: var(--iu-leading-snug);
+}
+.iu-side-panel--compact .iu-side-panel__actions {
+  gap: 4px;
 }
 
 @media (prefers-reduced-motion: reduce) {

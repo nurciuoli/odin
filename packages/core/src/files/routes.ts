@@ -1,4 +1,4 @@
-import { HttpError, readBody } from "../http/util.ts";
+import { HttpError, readBody, send } from "../http/util.ts";
 import type { RegisterRoutes } from "../services.ts";
 import { MAX_FILE_BYTES } from "./service.ts";
 
@@ -18,5 +18,15 @@ export const registerFilesRoutes: RegisterRoutes = (router, _deps, services) => 
     const value = body as Record<string, unknown>;
     if (typeof value.path !== "string" || typeof value.content !== "string" || typeof value.version !== "string") throw new HttpError(400, "Path, content and version are required");
     return services.files.save(params.id!, value.path, value.content, value.version);
+  });
+  router.post("/api/sessions/:id/files", async ({ params, req, res }) => {
+    const raw = await readBody(req, MAX_FILE_BYTES * 6 + 4096);
+    let body: unknown;
+    try { body = JSON.parse(raw.toString("utf8")); } catch { throw new HttpError(400, "Invalid JSON body"); }
+    if (!body || typeof body !== "object") throw new HttpError(400, "A file creation request is required");
+    const value = body as Record<string, unknown>;
+    if (typeof value.path !== "string") throw new HttpError(400, "Path is required");
+    if (value.content !== undefined && typeof value.content !== "string") throw new HttpError(400, "Content must be text");
+    send(res, 201, services.files.create(params.id!, value.path, value.content ?? ""));
   });
 };

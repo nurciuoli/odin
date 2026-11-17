@@ -327,6 +327,8 @@ export interface FilesService {
   list(sessionId: string, path?: string): import("@odin/shared/api").SessionFileListing;
   read(sessionId: string, path: string): import("@odin/shared/api").SessionTextFile;
   save(sessionId: string, path: string, content: string, version: string): import("@odin/shared/api").SessionTextFile;
+  /** Create-only: a new regular file in an existing folder of the session. 409 when the path already exists. */
+  create(sessionId: string, path: string, content?: string): import("@odin/shared/api").SessionTextFile;
   /** Fuzzy `@` file-reference search in the session's working directory. */
   search(sessionId: string, query: string): import("@odin/shared/api").FileSearchResult;
   /** The same search in a registered project's folder (composing a new session). */

@@ -477,7 +477,16 @@ Paths are confined to the session's working directory. Absolute paths, parent tr
 binary/non-UTF-8 files and files above 2 MiB are refused. Saves only replace existing regular files,
 refuse hard links, preserve mode bits and use a sibling temporary file followed by rename. The version is
 checked again before rename; this is optimistic conflict detection, not an operating-system lock against
-uncooperative concurrent writers. No model calls, watchers, file creation or arbitrary filesystem access.
+uncooperative concurrent writers. No model calls, watchers or arbitrary filesystem access.
+
+`POST /api/sessions/:id/files` creates a new file from `{ path, content? }` (content defaults to `""`, at most 2 MiB,
+valid UTF-8 without NUL) and returns `201` with the same `SessionTextFile` a read returns. It is create-only: an
+existing file, folder or link at the path is `409` and nothing is overwritten (the create is an exclusive open, so
+the check and the create are one step). The same confinement as reads applies: relative paths only, no `..`, `.git`,
+or links in the path, and the final path must stay inside the session's working directory. The parent folder must
+already exist; the endpoint never creates folders, so a missing one is `404`. Unknown sessions are `404`, malformed
+bodies `400`, and a path that leaves the session `403`. A created file is recorded as written for the project's
+dirty files, like a save.
 Line endings and UTF-8 BOM remain part of the authoritative content. Existing local host/origin checks apply.
 
 `GET /api/sessions/:id/files/search?q=` and `GET /api/projects/:name/files/search?q=` return a `FileSearchResult`
