@@ -52,7 +52,7 @@ function realPathLoose(p: string): string {
   let cur = resolve(p);
   for (;;) {
     try {
-      return join(realpathSync(cur), ...tail.reverse());
+      return join(realpathSync.native(cur), ...tail.reverse());
     } catch {
       const parent = dirname(cur);
       if (parent === cur) return resolve(p);
@@ -411,7 +411,7 @@ export function createProjectsService(deps: Deps, services?: Services): Projects
         const existing = parseWorktrees(await git(row.path, ["worktree", "list", "--porcelain"]));
         const mine = existing.find((w) => w.branch === branch);
         if (mine) {
-          if (isInside(rootReal, realPathLoose(mine.path)) && existsSync(mine.path)) return { path: resolve(mine.path), branch };
+          if (isInside(rootReal, realPathLoose(mine.path)) && existsSync(mine.path)) return { path: realPathLoose(mine.path), branch };
           throw new HttpError(409, `branch "${branch}" is already checked out at ${mine.path}`);
         }
         const slug = slugify(branch) || "branch";
@@ -433,7 +433,7 @@ export function createProjectsService(deps: Deps, services?: Services): Projects
               : "HEAD";
           await git(row.path, ["worktree", "add", "--no-track", "-b", branch, path, base]);
         }
-        return { path, branch };
+        return { path: realPathLoose(path), branch };
       } catch (err) {
         throw gitFailure(err);
       }

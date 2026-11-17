@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ArtifactDetail, LibraryAsset, Session, SessionDetail } from "@odin/shared/api";
@@ -144,7 +144,7 @@ test("seams: a worktree session runs in a real worktree; refreshOutput measures 
     assert.equal((await post(app, "/api/projects", { path: repo.path })).status, 201);
     const s = (await (await post(app, "/api/sessions", { project: "demo", prompt: { text: "first" }, worktree: true })).json()) as Session;
     assert.equal(s.workspace.kind, "worktree");
-    assert.ok(s.cwd.startsWith(app.config.worktreesDir), s.cwd);
+    assert.ok(s.cwd.startsWith(realpathSync.native(app.config.worktreesDir)), s.cwd);
     assert.match(s.branch ?? "", /^odin\/first-[0-9a-f]{8}$/);
     assert.equal(git(s.cwd, "rev-parse", "--abbrev-ref", "HEAD").trim(), s.branch);
     await until(stateIs(app, s.id, "idle"), "idle");

@@ -1,4 +1,4 @@
-// pricing.json loader. Re-reads when the file's mtime changes; a missing or broken file falls back to DEFAULT_PRICING.
+// pricing.json loader. Re-reads when the file's mtime (ns) or size changes; a missing or broken file falls back to DEFAULT_PRICING.
 import { statSync, readFileSync } from "node:fs";
 import type { ModelPrice } from "@odin/shared/api";
 import { DEFAULT_PRICING, normaliseModel } from "@odin/shared/pricing";
@@ -14,19 +14,21 @@ export function validPrice(p: unknown): p is ModelPrice {
 export type PricingLoader = (() => Record<string, ModelPrice>) & { /** Forget the cache (after writing the file ourselves). */ reset(): void };
 
 export function createPricingLoader(path: string): PricingLoader {
-  let mtimeMs = -1;
+  // mtime alone misses a rewrite within the same timestamp tick (seen on Windows), so size is part of the key.
+  let stamp = "";
   let cached: Record<string, ModelPrice> = { ...DEFAULT_PRICING };
   const load = (): Record<string, ModelPrice> => {
-    let m: number;
+    let m: string;
     try {
-      m = statSync(path).mtimeMs;
+      const st = statSync(path, { bigint: true });
+      m = `${st.mtimeNs}:${st.size}`;
     } catch {
-      mtimeMs = -1;
+      stamp = "";
       cached = { ...DEFAULT_PRICING };
       return cached;
     }
-    if (m === mtimeMs) return cached;
-    mtimeMs = m;
+    if (m === stamp) return cached;
+    stamp = m;
     const next: Record<string, ModelPrice> = { ...DEFAULT_PRICING };
     try {
       const parsed = JSON.parse(readFileSync(path, "utf8"));
@@ -39,5 +41,5 @@ export function createPricingLoader(path: string): PricingLoader {
     cached = next;
     return cached;
   };
-  return Object.assign(load, { reset: () => { mtimeMs = -1; } });
+  return Object.assign(load, { reset: () => { stamp = ""; } });
 }

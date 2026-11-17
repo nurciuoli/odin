@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { git, makeRepo, root, setup, status } from "./test-repo.ts";
 
@@ -17,7 +17,7 @@ describe("worktrees", () => {
 
     const wt = await projects.createWorktree("wt", "item/12-fix-login");
     assert.equal(wt.branch, "item/12-fix-login");
-    assert.equal(wt.path, join(deps.config.worktreesDir, "wt", "item-12-fix-login"));
+    assert.equal(wt.path, join(realpathSync.native(deps.config.worktreesDir), "wt", "item-12-fix-login"));
     assert.equal(git(wt.path, "rev-parse", "HEAD").trim(), originSha);
     assert.equal(git(wt.path, "symbolic-ref", "--short", "HEAD").trim(), "item/12-fix-login");
     assert.throws(() => git(wt.path, "rev-parse", "--abbrev-ref", "@{upstream}"));

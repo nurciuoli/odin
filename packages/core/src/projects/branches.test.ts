@@ -28,7 +28,7 @@ function makeRepo(): string {
   mkdirSync(dir, { recursive: true });
   git(dir, "init", "--quiet", "--initial-branch=main");
   commit(dir, "README.md");
-  return dir;
+  return realpathSync.native(dir); // the long form git reports, not an 8.3 short name
 }
 
 function setup(pulls: Record<string, PullInfo> = {}) {
