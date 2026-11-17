@@ -302,12 +302,11 @@ export const SERVICE_NAMES: ServiceName[] = ["notebooks", "files", "projects", "
 export interface NotebooksService extends Closeable {
   widgetState(kernelId: string): import("@odin/shared/notebooks").NotebookComm[];
   sendComm(kernelId: string, message: import("@odin/shared/notebooks").NotebookComm): Promise<void>;
-  handoff(kernelId: string): Promise<{ url: string }>;
-  reclaim(kernelId: string): Promise<import("@odin/shared/notebooks").NotebookSnapshot>;
   variables(kernelId: string): Promise<import("@odin/shared/notebooks").NotebookVariable[]>;
   dataframe(kernelId: string, name: string, query: import("@odin/shared/notebooks").DataFrameQuery): Promise<import("@odin/shared/notebooks").NotebookDataFrame>;
   list(project: string): import("@odin/shared/notebooks").NotebookKernel[];
-  create(project: string, request: import("@odin/shared/notebooks").CreateKernelRequest): Promise<import("@odin/shared/notebooks").NotebookKernel>;
+  /** Returns the existing record for request.path or creates one (writing the file if `create`). Starts no process. */
+  open(project: string, request: import("@odin/shared/notebooks").OpenNotebookRequest): Promise<import("@odin/shared/notebooks").NotebookKernel>;
   snapshot(kernelId: string): import("@odin/shared/notebooks").NotebookSnapshot;
   save(kernelId: string, revision: string, cells: import("@odin/shared/notebooks").NotebookCell[], sessionId?: string): import("@odin/shared/notebooks").NotebookSnapshot;
   attach(sessionId: string, kernelId: string): void;
@@ -318,7 +317,6 @@ export interface NotebooksService extends Closeable {
   interrupt(kernelId: string): Promise<void>;
   stop(kernelId: string): Promise<void>;
   remove(kernelId: string): Promise<void>;
-  exportToProject(kernelId: string, path: string): Promise<{ path: string }>;
   hostTools(sessionId: string): HostTool[];
   notices(sessionId: string): import("@odin/shared/notebooks").NotebookNotice[];
   acknowledgeNotices(sessionId: string, ids: string[]): void;

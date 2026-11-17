@@ -49,8 +49,6 @@ export interface Api {
     kernelId: string,
     message: import('@odin/shared/notebooks').NotebookComm,
   ): Promise<void>
-  handoffNotebook(kernelId: string): Promise<{ url: string }>
-  reclaimNotebook(kernelId: string): Promise<import('@odin/shared/notebooks').NotebookSnapshot>
   notebookVariables(kernelId: string): Promise<import('@odin/shared/notebooks').NotebookVariable[]>
   notebookDataFrame(
     kernelId: string,
@@ -66,9 +64,9 @@ export interface Api {
     location?: import('@odin/shared/notebooks').KernelLocation,
   ): Promise<import('@odin/shared/notebooks').NotebookEnvironment>
   listNotebooks(project: string): Promise<import('@odin/shared/notebooks').NotebookKernel[]>
-  createNotebook(
+  openNotebook(
     project: string,
-    request: import('@odin/shared/notebooks').CreateKernelRequest,
+    request: import('@odin/shared/notebooks').OpenNotebookRequest,
   ): Promise<import('@odin/shared/notebooks').NotebookKernel>
   getNotebook(kernelId: string): Promise<import('@odin/shared/notebooks').NotebookSnapshot>
   saveNotebook(
@@ -86,7 +84,6 @@ export interface Api {
   interruptNotebook(kernelId: string): Promise<void>
   stopNotebook(kernelId: string): Promise<void>
   removeNotebook(kernelId: string): Promise<void>
-  exportNotebook(kernelId: string, path: string): Promise<{ path: string }>
   notebookOutputUrl(kernelId: string, cellId: string, index: number): string
   getNativeCatalog(
     harness: string,
