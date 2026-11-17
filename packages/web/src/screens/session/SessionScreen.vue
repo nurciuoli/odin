@@ -458,7 +458,7 @@ function onDeleted() {
 </script>
 
 <template>
-  <div class="session-screen">
+  <div class="session-screen" :class="{ 'session-screen--docked': showWorkbench && !narrow }">
     <div class="session-screen__center">
       <div v-if="phase === 'loading'" class="session-screen__state" aria-busy="true">
         <IuSkeleton shape="row" :rows="1" />
@@ -628,6 +628,7 @@ function onDeleted() {
             v-model:open="sideOpen"
             :width="420"
             :presentation="narrow || (showWorkbench && compact) ? 'overlay' : 'inline'"
+            variant="compact"
             title="Details"
             aria-label="Session details"
           >
@@ -718,6 +719,11 @@ function onDeleted() {
   height: 100%;
   min-height: 0;
   display: flex;
+}
+/* Desktop: the window buttons sit over the workbench's top bar when it is docked, so the chat header's actions
+   belong flush against the chat column, not inset for buttons that are not above them. */
+html.is-desktop-shell .session-screen--docked .session-header > .iu-header {
+  padding-right: 14px;
 }
 .session-screen__center {
   flex: 1;

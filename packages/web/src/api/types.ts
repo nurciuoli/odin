@@ -128,6 +128,8 @@ export interface Api {
   /** A text file in the project folder (read-only; 413/415 for large or binary files). */
   readProjectFile(project: string, path: string): Promise<SessionTextFile>
   readSessionFile(id: string, path: string): Promise<SessionTextFile>
+  /** Create-only: a new file in an existing folder of the session. 409 when the path exists. */
+  createSessionFile(id: string, path: string, content?: string): Promise<SessionTextFile>
   saveSessionFile(
     id: string,
     path: string,

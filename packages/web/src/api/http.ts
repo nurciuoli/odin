@@ -122,6 +122,8 @@ export function createHttpApi(options: HttpApiOptions = {}): Api {
     getProjectFileMap: name => get(`${project(name)}/files/map`),
     searchProjectFiles: (name, q) => get(`${project(name)}/files/search${query({ q })}`),
     readSessionFile: (id, path) => get(`${session(id)}/file${query({ path })}`),
+    createSessionFile: (id, path, content) =>
+      send('POST', `${session(id)}/files`, { path, content: content ?? '' }),
     saveSessionFile: (id, path, content, version) =>
       send('PUT', `${session(id)}/file`, { path, content, version }),
     startSession: req => send('POST', '/api/sessions', req),

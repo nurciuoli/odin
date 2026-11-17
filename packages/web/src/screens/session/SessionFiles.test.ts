@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { API_KEY } from '@/api'
@@ -7,7 +7,17 @@ import { FIXTURE_SESSION_IDS } from '@/api/fixtures'
 import SessionFiles from './SessionFiles.vue'
 import { useDrafts } from '@/app/drafts'
 import { IuCsvViewer } from '@/components/CsvViewer'
+import { IuDialog } from '@/components/Modal'
 const editorStub = { props: ['modelValue', 'mode', 'label'], template: '<div />' }
+beforeAll(() => {
+  // jsdom has no <dialog> modal API; IuDialog calls these when it opens
+  HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+    this.setAttribute('open', '')
+  }
+  HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+    this.removeAttribute('open')
+  }
+})
 
 describe('SessionFiles', () => {
   it('adds selected CSV rows and original references to the existing composer draft', async () => {
@@ -99,7 +109,15 @@ describe('SessionFiles', () => {
     })
     await flushPromises()
     const button = (text: string) => wrapper.findAll('button').find(b => b.text() === text)!
-    return { api, session, wrapper, button }
+    const menuItem = (text: string) =>
+      wrapper.findAll('[role="menuitem"]').find(b => b.text().startsWith(text))!
+    /** New → Notebook: the one file type the existing create flow can write. */
+    const newNotebook = async () => {
+      await button('New').trigger('click')
+      await menuItem('Notebook').trigger('click')
+      await flushPromises()
+    }
+    return { api, session, wrapper, button, menuItem, newNotebook }
   }
   it('opens a .ipynb from the browser as a notebook document in the same tab strip', async () => {
     const { api, session, wrapper, button } = await mountFiles()
@@ -138,9 +156,9 @@ describe('SessionFiles', () => {
     wrapper.unmount()
   })
   it('writes Untitled.ipynb in the folder on show, then Untitled-2, and opens it', async () => {
-    const { api, session, wrapper, button } = await mountFiles()
+    const { api, session, wrapper, button, newNotebook } = await mountFiles()
     const open = vi.spyOn(api, 'openNotebook')
-    await button('New notebook').trigger('click')
+    await newNotebook()
     await flushPromises()
     expect(open).toHaveBeenLastCalledWith(session.project, {
       path: 'Untitled.ipynb',
@@ -148,8 +166,7 @@ describe('SessionFiles', () => {
       sessionId: session.id,
     })
     expect(button('Untitled.ipynb')).toBeDefined()
-    await button('New notebook').trigger('click')
-    await flushPromises()
+    await newNotebook()
     expect(open).toHaveBeenLastCalledWith(session.project, {
       path: 'Untitled-2.ipynb',
       create: true,
@@ -158,8 +175,7 @@ describe('SessionFiles', () => {
     expect(wrapper.findAll('[role="tab"]')).toHaveLength(2)
     await button('data').trigger('click')
     await flushPromises()
-    await button('New notebook').trigger('click')
-    await flushPromises()
+    await newNotebook()
     expect(open).toHaveBeenLastCalledWith(session.project, {
       path: 'data/Untitled.ipynb',
       create: true,
@@ -167,8 +183,10 @@ describe('SessionFiles', () => {
     })
     wrapper.unmount()
   })
-  it('gives the sidebar toggle its own icons, and keeps full screen with nothing open', async () => {
-    const { wrapper } = await mountFiles()
+  it('gives the sidebar toggle its own icons, and keeps full screen with a file open', async () => {
+    const { wrapper, button } = await mountFiles()
+    await button('README.md').trigger('click')
+    await flushPromises()
     const toggle = () => wrapper.find('.session-files__sidebar-toggle')
     const before = toggle().html()
     await toggle().trigger('click')
@@ -176,6 +194,112 @@ describe('SessionFiles', () => {
     expect(toggle().attributes('aria-expanded')).toBe('false')
     await wrapper.find('[aria-label="Full screen"]').trigger('click')
     expect(wrapper.find('[aria-label="Exit full screen"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('renders no preview area until a file is open, and the browser fills the panel', async () => {
+    const { wrapper, button } = await mountFiles()
+    expect(wrapper.text()).not.toContain('No files open')
+    expect(wrapper.find('.session-files__main').exists()).toBe(false)
+    expect(wrapper.find('.session-files--browse-only').exists()).toBe(true)
+    await button('README.md').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.session-files__main').exists()).toBe(true)
+    expect(wrapper.find('.session-files--browse-only').exists()).toBe(false)
+    wrapper.unmount()
+  })
+  it('offers every file type in the New menu', async () => {
+    const { wrapper, button } = await mountFiles()
+    await button('New').trigger('click')
+    const items = wrapper.findAll('[role="menuitem"]')
+    expect(items.map(b => b.text())).toEqual([
+      'Notebook (.ipynb)',
+      'Markdown (.md)',
+      'Text (.txt)',
+      'JSON (.json)',
+      'HTML (.html)',
+      'Other…',
+    ])
+    expect(items.some(b => b.attributes('disabled') !== undefined)).toBe(false)
+    wrapper.unmount()
+  })
+  it('creates Markdown and JSON files as untitled names in the folder on show, and opens them', async () => {
+    const { api, session, wrapper, button, menuItem } = await mountFiles()
+    const create = vi.spyOn(api, 'createSessionFile')
+    await button('New').trigger('click')
+    await menuItem('Markdown').trigger('click')
+    await flushPromises()
+    expect(create).toHaveBeenLastCalledWith(session.id, 'untitled.md', '')
+    expect(wrapper.findAll('[role="tab"]').map(t => t.attributes('aria-label'))).toContain(
+      'untitled.md',
+    )
+    await button('New').trigger('click')
+    await menuItem('Markdown').trigger('click')
+    await flushPromises()
+    expect(create).toHaveBeenLastCalledWith(session.id, 'untitled-2.md', '')
+    await button('New').trigger('click')
+    await menuItem('JSON').trigger('click')
+    await flushPromises()
+    expect(create).toHaveBeenLastCalledWith(session.id, 'untitled.json', '{}')
+    expect((await api.readSessionFile(session.id, 'untitled.json')).content).toBe('{}')
+    wrapper.unmount()
+  })
+  it('creates the new file in the folder being browsed', async () => {
+    const { api, session, wrapper, button, menuItem } = await mountFiles()
+    await button('data').trigger('click')
+    await flushPromises()
+    const create = vi.spyOn(api, 'createSessionFile')
+    await button('New').trigger('click')
+    await menuItem('Text').trigger('click')
+    await flushPromises()
+    expect(create).toHaveBeenLastCalledWith(session.id, 'data/untitled.txt', '')
+    expect(wrapper.findAll('button').some(b => b.text() === 'untitled.txt')).toBe(true)
+    wrapper.unmount()
+  })
+  it('Other… takes a relative name, shows validation and server errors inline, then creates', async () => {
+    const { api, session, wrapper, button, menuItem } = await mountFiles()
+    const create = vi.spyOn(api, 'createSessionFile')
+    await button('New').trigger('click')
+    await menuItem('Other').trigger('click')
+    await flushPromises()
+    const input = wrapper.find('.session-files__dialog input')
+    expect((input.element as HTMLInputElement).value).toBe('untitled.txt')
+    await input.setValue('../escape.txt')
+    await button('Create').trigger('click')
+    await flushPromises()
+    expect(create).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Paths cannot contain “..”.')
+    await input.setValue('README.md')
+    await button('Create').trigger('click')
+    await flushPromises()
+    expect(create).toHaveBeenLastCalledWith(session.id, 'README.md', '')
+    expect(wrapper.find('.session-files__dialog').exists()).toBe(true)
+    expect(wrapper.text()).toContain('A file or folder already exists at this path')
+    await input.setValue('missing/notes.txt')
+    await button('Create').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('The folder for this file does not exist')
+    await input.setValue('todo.txt')
+    await button('Create').trigger('click')
+    await flushPromises()
+    expect(create).toHaveBeenLastCalledWith(session.id, 'todo.txt', '')
+    expect(wrapper.findComponent(IuDialog).props('open')).toBe(false)
+    expect(wrapper.findAll('[role="tab"]').map(t => t.attributes('aria-label'))).toContain(
+      'todo.txt',
+    )
+    wrapper.unmount()
+  })
+  it('Other… refuses notebook names and points to the Notebook entry', async () => {
+    const { api, wrapper, button, menuItem } = await mountFiles()
+    const create = vi.spyOn(api, 'createSessionFile')
+    await button('New').trigger('click')
+    await menuItem('Other').trigger('click')
+    await flushPromises()
+    await wrapper.find('.session-files__dialog input').setValue('analysis.ipynb')
+    await button('Create').trigger('click')
+    await flushPromises()
+    expect(create).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Create notebooks with Notebook (.ipynb).')
     wrapper.unmount()
   })
 })

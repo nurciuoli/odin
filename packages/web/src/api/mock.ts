@@ -763,6 +763,27 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
           size: new TextEncoder().encode(content).length,
         }
       }),
+    createSessionFile: (id, path, content = '') =>
+      respond(() => {
+        sessionOf(id)
+        const slash = path.lastIndexOf('/')
+        const folder = slash < 0 ? '' : path.slice(0, slash)
+        const folderExists =
+          !folder || Object.keys(workspaceFiles).some(key => key.startsWith(`${folder}/`))
+        if (!folderExists) throw new ApiRequestError(404, 'The folder for this file does not exist')
+        if (
+          workspaceFiles[path] !== undefined ||
+          Object.keys(workspaceFiles).some(key => key.startsWith(`${path}/`))
+        )
+          throw new ApiRequestError(409, 'A file or folder already exists at this path')
+        workspaceFiles[path] = content
+        return {
+          path,
+          content,
+          version: fakeHash(content),
+          size: new TextEncoder().encode(content).length,
+        }
+      }),
     saveSessionFile: (id, path, content, version) =>
       respond(() => {
         sessionOf(id)

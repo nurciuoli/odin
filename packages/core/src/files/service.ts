@@ -155,5 +155,41 @@ export function createFilesService(_deps: Deps, services: Services): FilesServic
       } catch (err) { return translateError(err); }
       finally { if (temporary) { try { unlinkSync(temporary); } catch { /* Best-effort cleanup of our temporary file. */ } } }
     },
+    create(sessionId, input, content = "") {
+      try {
+        if (typeof content !== "string" || content.includes("\0") || !content.isWellFormed()) throw new HttpError(400, "Content must be valid UTF-8 text");
+        const bytes = Buffer.from(content, "utf8");
+        if (bytes.length > MAX_FILE_BYTES) throw new HttpError(413, "Text files are limited to 2 MiB");
+        const session = services.sessions.get(sessionId);
+        if (!session) throw new HttpError(404, "Unknown session");
+        const path = cleanPath(input);
+        // Folders are never created: the parent must already exist inside the session, reached without links.
+        const slash = path.lastIndexOf("/");
+        let folder: string;
+        try { folder = within(session.cwd, slash < 0 ? "" : path.slice(0, slash), true).absolute; }
+        catch (err) {
+          if ((err as NodeJS.ErrnoException).code === "ENOENT") throw new HttpError(404, "The folder for this file does not exist");
+          throw err;
+        }
+        if (!lstatSync(folder).isDirectory()) throw new HttpError(400, "Choose a folder for this file");
+        const absolute = join(folder, path.slice(slash + 1));
+        // `wx` fails on any existing entry, including a link, so the check and the create are one step.
+        let fd: number;
+        try { fd = openSync(absolute, "wx", 0o644); }
+        catch (err) {
+          if ((err as NodeJS.ErrnoException).code === "EEXIST") throw new HttpError(409, "A file or folder already exists at this path");
+          throw err;
+        }
+        let written = false;
+        try { writeFileSync(fd, bytes); fsyncSync(fd); written = true; }
+        finally {
+          closeSync(fd);
+          if (!written) { try { unlinkSync(absolute); } catch { /* Nothing partial is left behind when we can help it. */ } }
+        }
+        const project = services.projects.get(session.project);
+        if (project) services.projects.noteWritten(session.project, [relative(resolve(project.path), absolute).replaceAll("\\", "/")]);
+        return { path, content, version: versionOf(bytes), size: bytes.length };
+      } catch (err) { return translateError(err); }
+    },
   };
 }
