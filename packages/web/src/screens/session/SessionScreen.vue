@@ -48,6 +48,7 @@ import SessionHeader from './SessionHeader.vue'
 import SessionPrompts from './SessionPrompts.vue'
 import SessionSide from './SessionSide.vue'
 import SessionThread from './SessionThread.vue'
+import type { CellRef } from './fileActivity'
 import SessionWorkbench from './SessionWorkbench.vue'
 import SideThreadPane from './SideThreadPane.vue'
 import { useSideThreads } from './SideThreads'
@@ -303,6 +304,13 @@ function openFile(path: string) {
   filesOpen.value = true
   workbenchTab.value = 'files'
   workbench.value?.openFile(path)
+  if (narrow.value || compact.value) setSide(false)
+}
+function openCell(cell: CellRef) {
+  previewDismissed.value = false
+  filesOpen.value = true
+  workbenchTab.value = 'files'
+  workbench.value?.openCell(cell)
   if (narrow.value || compact.value) setSide(false)
 }
 function toggleFiles() {
@@ -572,6 +580,8 @@ function onDeleted() {
               :current-artifact="cardCurrent"
               @open-artifact="openArtifact"
               @open-task="openTask"
+              @open-file="openFile"
+              @open-cell="openCell"
             />
             <div class="session-screen__dock">
               <NativeControls

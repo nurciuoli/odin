@@ -244,3 +244,41 @@ describe('the rail in the thread', () => {
     wrapper.unmount()
   })
 })
+
+describe('opening a step in Files', () => {
+  const edit: TranscriptEntry = {
+    kind: 'tool',
+    id: 'edit-1',
+    name: 'Edit',
+    input: { file_path: '/repo/src/a.ts', old_string: 'a', new_string: 'b' },
+    result: { ok: true, text: 'Edited', truncated: false },
+    at: null,
+    parentToolUseId: null,
+  }
+  const cell: TranscriptEntry = {
+    kind: 'tool',
+    id: 'cell-1',
+    name: 'mcp__odin__notebook_execute',
+    input: { kernel_id: 'k1', cell_id: 'c2' },
+    result: { ok: true, text: 'Executed', truncated: false },
+    at: null,
+    parentToolUseId: null,
+  }
+  const entries = [edit, cell]
+
+  it('opens the file or the cell a step worked on', async () => {
+    const wrapper = mount(SessionThread, {
+      props: {
+        rows: buildRows(entries, { pending: [], streaming: [], running: false, artifacts: [] }),
+        entries,
+        working: false,
+        root: '/repo',
+      },
+    })
+    await wrapper.find('button[aria-label="Open src/a.ts in Files"]').trigger('click')
+    expect(wrapper.emitted('open-file')).toEqual([['src/a.ts']])
+    await wrapper.find('button[aria-label="Open this notebook cell in Files"]').trigger('click')
+    expect(wrapper.emitted('open-cell')).toEqual([[{ kernelId: 'k1', cellId: 'c2' }]])
+    wrapper.unmount()
+  })
+})

@@ -4,6 +4,7 @@ import type { SessionDetail } from '@odin/shared/api'
 import { IuButton } from '@/components/Button'
 import type SessionFilesType from './SessionFiles.vue'
 import type { PreviewView } from './workbench'
+import type { CellRef } from './fileActivity'
 const SessionFiles = defineAsyncComponent(() => import('./SessionFiles.vue'))
 const props = withDefaults(
   defineProps<{ session: SessionDetail; width: number; resizable?: boolean }>(),
@@ -13,12 +14,22 @@ const emit = defineEmits<{ close: []; 'update:width': [width: number] }>()
 const tab = defineModel<PreviewView>('tab', { required: true })
 const filePanel = ref<InstanceType<typeof SessionFilesType>>()
 const pendingPath = ref<string | null>(null)
+const pendingCell = ref<CellRef | null>(null)
 watch(filePanel, panel => {
   if (panel && pendingPath.value !== null) {
     void panel.open(pendingPath.value)
     pendingPath.value = null
   }
+  if (panel && pendingCell.value) {
+    void panel.openCell(pendingCell.value)
+    pendingCell.value = null
+  }
 })
+function openCell(cell: CellRef) {
+  tab.value = 'files'
+  if (filePanel.value) void filePanel.value.openCell(cell)
+  else pendingCell.value = cell
+}
 function openFile(path: string) {
   tab.value = 'files'
   const root = props.session.cwd.replaceAll('\\', '/').replace(/\/$/, '')
@@ -113,7 +124,7 @@ watch(
   },
 )
 onBeforeUnmount(stopDrag)
-defineExpose({ openFile })
+defineExpose({ openFile, openCell })
 </script>
 <template>
   <div
