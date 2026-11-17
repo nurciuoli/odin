@@ -8,6 +8,7 @@ follow [Semantic Versioning](https://semver.org/).
 - Hand edits to `pricing.json` are picked up even when written within the same timestamp tick (Windows).
 - Notebooks open from the Files tab as project files.
 - `yarn dev:desktop` launches the Odin Dev desktop app from a terminal, including one inside Odin.
+- Sessions started in a terminal take the harness's generated name instead of staying "Untitled session".
 
 ## [0.1.0]
 

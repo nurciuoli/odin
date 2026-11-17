@@ -26,6 +26,8 @@ import { hostToolApprovals } from "./host-tools.ts";
 export const IDLE_CLOSE_MS = 10 * 60_000;
 const SESSION_STATES: SessionState[] = ["idle", "running", "waiting", "ended", "failed"];
 const ORIGINS = ["odin", "external"] as const;
+/** Titles that mean "no name yet": Odin's and the harness drivers' fallbacks. */
+const PLACEHOLDER_TITLES = new Set(["Untitled session", "Untitled"]);
 
 export interface SessionsOptions {
   /** Live handles idle this long are closed (the session stays resumable). Default 10 minutes. */
@@ -806,7 +808,21 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         continue;
       }
       for (const info of infos) {
-        if (row(info.sessionId)) continue;
+        const known = get(info.sessionId);
+        if (known) {
+          // Hook-created sessions start untitled; adopt the harness's generated name once it has one, unless
+          // the user renamed the session (only placeholder or first-prompt fallback titles are replaced).
+          const next = info.title?.trim().slice(0, 200);
+          const placeholder = (t: string) => PLACEHOLDER_TITLES.has(t) || (!!info.firstPrompt && t === info.firstPrompt.trim().slice(0, 200));
+          if (known.origin === "external" && next && !PLACEHOLDER_TITLES.has(next) && next !== known.title && placeholder(known.title)) {
+            try {
+              patchAndEmit(known.id, { title: next });
+            } catch (err) {
+              console.error(`retitling session ${known.id} failed:`, errorMessage(err));
+            }
+          }
+          continue;
+        }
         try {
           importExternal({
             id: info.sessionId,
