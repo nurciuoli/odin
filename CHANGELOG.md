@@ -5,6 +5,9 @@ follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Notebooks open from the Files tab as project files.
+- `yarn dev:desktop` launches the Odin Dev desktop app from a terminal, including one inside Odin.
+
 ## [0.1.0]
 
 First public release.
