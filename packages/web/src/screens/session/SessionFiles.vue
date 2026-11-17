@@ -51,7 +51,7 @@ import {
 import { SURFACE } from './surface'
 
 const props = defineProps<{ session: SessionDetail }>()
-const emit = defineEmits<{ hide: [] }>()
+const emit = defineEmits<{ hide: []; 'open-environment': [] }>()
 const api = useApi()
 const sessionId = computed(() => props.session.id)
 const composerDrafts = useDrafts()
@@ -620,6 +620,7 @@ defineExpose({ open })
               :kernel-id="nb.kernel.id"
               @update:dirty="nb.dirty = $event"
               @close="close(doc)"
+              @open-environment="emit('open-environment')"
             />
             <template v-else>
               <DocumentHeader
