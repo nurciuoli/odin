@@ -11,7 +11,9 @@ import * as sdk from "@anthropic-ai/claude-agent-sdk";
 import type {
   AgentDefinition,
   CanUseTool,
+  EffortLevel,
   McpServerConfig,
+  ModelInfo as SdkModelInfo,
   Options,
   PermissionResult,
   PermissionUpdate,
@@ -58,12 +60,30 @@ export interface ClaudeHarnessOptions {
   toolOverride?: (name: "claude") => string | null;
 }
 
-const DEFAULT_MODELS: ModelInfo[] = [
-  { value: "default", effortLevels: ["low", "medium", "high"], displayName: "Default", description: "The account's default model", resolved: null },
-  { value: "opus", effortLevels: ["low", "medium", "high"], displayName: "Opus", description: "", resolved: null },
-  { value: "sonnet", effortLevels: ["low", "medium", "high"], displayName: "Sonnet", description: "", resolved: null },
+/**
+ * Only when the CLI can't report its catalog (not installed, failed to start). The CLI's own list (versions, resolved
+ * ids, per-model effort levels) is the source of truth; this stays deliberately bare so it never goes stale.
+ */
+const FALLBACK_MODELS: ModelInfo[] = [
+  { value: "default", displayName: "Default", description: "The account's default model", resolved: null },
+  { value: "opus", displayName: "Opus", description: "", resolved: null },
+  { value: "sonnet", displayName: "Sonnet", description: "", resolved: null },
   { value: "haiku", displayName: "Haiku", description: "", resolved: null },
 ];
+
+/** How long models() waits for the CLI's catalog when nothing is cached yet. */
+const CATALOG_TIMEOUT_MS = 20_000;
+
+/** The CLI's model rows as Odin's catalog. */
+function catalog(models: SdkModelInfo[]): ModelInfo[] {
+  return models.map((m) => ({
+    value: m.value,
+    displayName: m.displayName,
+    description: m.description,
+    resolved: m.resolvedModel ?? null,
+    ...(m.supportedEffortLevels?.length ? { effortLevels: [...m.supportedEffortLevels] } : {}),
+  }));
+}
 
 /** The platform binary packages the SDK may use here, most specific first. */
 export function binaryPackages(platform: string = process.platform, arch: string = process.arch): string[] {
@@ -132,11 +152,34 @@ export function createClaudeHarness(options: ClaudeHarnessOptions = {}): Harness
     q.supportedModels().then(
       (models) => {
         if (models.length) {
-          modelCache = models.map((m) => ({ value: m.value, displayName: m.displayName, description: m.description, resolved: m.resolvedModel ?? null, effortLevels: m.supportedEffortLevels }));
+          modelCache = catalog(models);
         }
       },
       (err) => log(`[claude] supportedModels failed: ${errorText(err)}`),
     );
+  }
+
+  let probing: Promise<void> | null = null;
+  /** Ask an idle CLI (no prompt sent, so no model call) for its catalog. One at a time; a failure retries next call. */
+  function probeModels(): Promise<void> {
+    probing ??= (async () => {
+      const executable = claudeExecutable();
+      let q: Query | null = null;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        q = api.query({ prompt: new InputQueue<SDKUserMessage>(), options: { ...(executable ? { pathToClaudeCodeExecutable: executable } : {}), stderr: (l) => log(`[claude models] ${l.trimEnd()}`) } });
+        const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("timed out")), CATALOG_TIMEOUT_MS); });
+        const models = await Promise.race([q.supportedModels(), timeout]);
+        if (models.length && !modelCache) modelCache = catalog(models);
+      } catch (err) {
+        log(`[claude] reading the model catalog failed: ${errorText(err)}`);
+      } finally {
+        clearTimeout(timer);
+        try { q?.close(); } catch { /* already gone */ }
+        probing = null;
+      }
+    })();
+    return probing;
   }
 
   function start(opts: StartOptions): SessionHandle {
@@ -246,7 +289,7 @@ export function createClaudeHarness(options: ClaudeHarnessOptions = {}): Harness
       ...(opts.resume ? { resume: opts.resume } : {}),
       ...(opts.resume && opts.fork ? { forkSession: true } : {}),
       ...(opts.model ? { model: opts.model } : {}),
-      ...(opts.effort ? { effort: opts.effort as "low" | "medium" | "high" | "xhigh" | "max" } : {}),
+      ...(opts.effort ? { effort: opts.effort as EffortLevel } : {}),
       permissionMode: opts.permissionMode ?? "default",
       // Lets the session switch to bypassPermissions later (the CLI refuses it otherwise). It doesn't change the mode.
       allowDangerouslySkipPermissions: true,
@@ -347,7 +390,7 @@ export function createClaudeHarness(options: ClaudeHarnessOptions = {}): Harness
           }));
           if (!turnActive) emitAll(setState(state, "idle"));
           if (r?.models?.length && !modelCache) {
-            modelCache = r.models.map((m) => ({ value: m.value, displayName: m.displayName, description: m.description, resolved: m.resolvedModel ?? null, effortLevels: m.supportedEffortLevels }));
+            modelCache = catalog(r.models);
           }
         },
         (err) => log(`${tag} initialize failed: ${errorText(err)}`),
@@ -376,7 +419,7 @@ export function createClaudeHarness(options: ClaudeHarnessOptions = {}): Harness
       },
       async setEffort(effort) {
         if (closed) throw new Error("session is closed");
-        await q.applyFlagSettings({ effortLevel: effort as "low" | "medium" | "high" | "xhigh" | "max" | null });
+        await q.applyFlagSettings({ effortLevel: effort as EffortLevel | null });
       },
       async setModel(model) {
         if (closed) throw new Error("session is closed");
@@ -465,7 +508,8 @@ export function createClaudeHarness(options: ClaudeHarnessOptions = {}): Harness
       }
     },
     async models() {
-      return (modelCache ?? DEFAULT_MODELS).map((m) => ({ ...m }));
+      if (!modelCache) await probeModels();
+      return (modelCache ?? FALLBACK_MODELS).map((m) => ({ ...m }));
     },
   };
 }

@@ -10,6 +10,7 @@ import type {
   PermissionMode,
   Session,
 } from '@odin/shared/api'
+import { findModel } from '@odin/shared/api'
 import { useApi } from '@/api'
 import { useDrafts } from '@/app/drafts'
 import { useProjects } from '@/app/projects'
@@ -130,7 +131,11 @@ async function loadModels(harness: string | undefined) {
   models.value = []
   try {
     const next = await api.listModels(harness)
-    if (request === modelRequest) models.value = next
+    if (request !== modelRequest) return
+    models.value = next
+    // A remembered or configured concrete id ("claude-opus-5-5") is the alias row that covers it.
+    const known = findModel(next, form.model)
+    if (known && form.model !== 'default') form.model = known.value
   } catch {
     if (request === modelRequest)
       loadNote.value = 'Models could not be loaded. The runtime default is still available.'
@@ -230,7 +235,7 @@ const composerModels = computed(() => {
   const options = models.value
     .filter(m => m.value !== 'default')
     .map(m => ({ id: m.value, label: m.displayName, hint: m.description, ...pickerExtras(m) }))
-  if (form.model && form.model !== 'default' && !options.some(m => m.id === form.model))
+  if (form.model && form.model !== 'default' && !findModel(models.value, form.model))
     options.unshift({ id: form.model, label: form.model, hint: 'Configured default' })
   // the runtime default stands for the first catalog entry, so it shows that entry's price and effort levels
   const first = models.value[0]

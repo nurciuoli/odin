@@ -27,6 +27,7 @@ import type {
   Session,
   SessionState,
 } from '@odin/shared/api'
+import { findModel } from '@odin/shared/api'
 import type { SlashCommand } from '@odin/shared/harness'
 import { useRouter } from 'vue-router'
 import { useApi } from '@/api'
@@ -122,20 +123,12 @@ const composerModels = computed(() => {
     ...pickerExtras(m),
   }))
   const current = props.model
-  if (
-    current &&
-    !options.some(
-      m => m.id === current || props.models.find(x => x.value === m.id)?.resolved === current,
-    )
-  )
+  if (current && !findModel(props.models, current))
     options.unshift({ id: current, label: current, hint: 'Current model' })
   return options
 })
 const currentModel = computed(
-  () =>
-    props.models.find(m => m.value === props.model || m.resolved === props.model)?.value ??
-    props.model ??
-    '',
+  () => findModel(props.models, props.model)?.value ?? props.model ?? '',
 )
 async function updateSettings(request: {
   effort?: import('@odin/shared/api').Effort | null

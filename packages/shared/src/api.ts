@@ -867,6 +867,16 @@ export interface ModelInfo {
   resolved: string | null;
 }
 
+/**
+ * The catalog entry a session's model refers to: an exact `value` first, else the alias whose `resolved` id it is
+ * (sessions often report the concrete id, e.g. "claude-opus-5-5" for "opus"). Case-insensitive.
+ */
+export function findModel<T extends ModelInfo>(models: readonly T[], model: string | null | undefined): T | undefined {
+  const id = model?.trim().toLowerCase();
+  if (!id) return undefined;
+  return models.find((m) => m.value.toLowerCase() === id) ?? models.find((m) => m.resolved?.toLowerCase() === id);
+}
+
 export interface HarnessInfo {
   id: HarnessId;
   name: string;

@@ -162,7 +162,6 @@ test("resume and fork options; a plain resume keeps the resumed id", async () =>
 test("a turn: init first, the sent message as a user entry, the recorded stream, idle; messages queue until the turn ends", async () => {
   const fq = fakeQuery();
   const h = harness(fq);
-  assert.deepEqual((await h.models()).map((m) => [m.value, m.resolved]), [["default", null], ["opus", null], ["sonnet", null], ["haiku", null]]);
   const handle = h.start({ cwd: "/fixture/proj", resume: SID, prompt: { text: "Run ls" } });
   const ev = collect(handle.events);
   await tick();
@@ -204,6 +203,24 @@ test("a turn: init first, the sent message as a user entry, the recorded stream,
   await tick();
   assert.deepEqual(ev.list.at(-1), { type: "exit", outcome: "closed", error: null });
   assert.equal(ev.ended(), true);
+});
+
+test("models() with nothing cached asks an idle CLI for its catalog, sends no prompt and closes it", async () => {
+  const fq = fakeQuery();
+  const cold = await harness(fq).models();
+  assert.equal(cold.find((m) => m.value === "opus")!.resolved, "claude-opus-5-5");
+  assert.ok(cold.every((m) => m.resolved));
+  assert.equal(fq.received.length, 0);
+  assert.equal(fq.closed, true);
+});
+
+test("models() falls back to bare aliases when the CLI can't report its catalog", async () => {
+  const logs: string[] = [];
+  const h = harness(fakeQuery({ throwOnStart: "no claude here" }), {}, logs);
+  assert.deepEqual((await h.models()).map((m) => [m.value, m.resolved, m.effortLevels]), [
+    ["default", null, undefined], ["opus", null, undefined], ["sonnet", null, undefined], ["haiku", null, undefined],
+  ]);
+  assert.ok(logs.some((l) => l.includes("model catalog failed")));
 });
 
 test("Claude accepts the next service-dispatched message at the idle boundary", async () => {

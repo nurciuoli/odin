@@ -1,9 +1,8 @@
-import type { Effort, ModelInfo } from '@odin/shared/api'
+import { findModel, type Effort, type ModelInfo } from '@odin/shared/api'
 import { costTier } from './costTier'
 
 export function effortChoices(models: ModelInfo[], model?: string | null) {
-  const selected =
-    models.find(m => m.value === model || m.resolved === model) ?? (!model ? models[0] : undefined)
+  const selected = findModel(models, model) ?? (!model ? models[0] : undefined)
   return (
     selected?.effortLevels?.map(id => ({ id, label: id[0]!.toUpperCase() + id.slice(1) })) ?? []
   )
