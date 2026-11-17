@@ -1,8 +1,16 @@
-/** Cells and outputs live in .ipynb; SQLite holds resource identities and execution receipts. */
+/**
+ * A notebook is an ordinary .ipynb file in the project, addressed by a project-relative path; cells and outputs live
+ * in that file. SQLite holds one kernel record per (root, path), where root is the project root or a session cwd plus execution receipts. The kernel process starts
+ * lazily on first execute.
+ */
 export type KernelLocation = { kind: "native" } | { kind: "wsl"; distro: string };
 export type KernelState = "stopped" | "starting" | "idle" | "busy" | "failed";
 export interface NotebookKernel {
-  id: string; project: string; name: string; cwd: string; interpreter: string;
+  id: string; project: string;
+  /** Project-relative, forward slashes, ends in .ipynb. */
+  path: string;
+  /** Display name: the file basename. */
+  name: string; cwd: string; interpreter: string;
   location: KernelLocation; state: KernelState; createdAt: string; updatedAt: string; error: string | null;
 }
 export type NotebookOutput =
@@ -16,11 +24,16 @@ export interface NotebookCell {
 }
 export interface NotebookSnapshot {
   kernel: NotebookKernel; revision: string; cells: NotebookCell[];
-  /** Hand-off is exclusive; Odin cannot edit/run while JupyterLab owns the notebook. */
-  editor: "odin" | "jupyterlab";
 }
-export interface CreateKernelRequest {
-  name: string; cwd?: string; interpreter?: string; location?: KernelLocation;
+/** Open (or register) the notebook at a project-relative path. Does not start a kernel process. */
+export interface OpenNotebookRequest {
+  path: string;
+  /** Resolve `path` against this session's cwd (same project) instead of the project root. */
+  sessionId?: string;
+  /** Write an empty nbformat-4 file when the path does not exist; otherwise a missing file is 404. */
+  create?: boolean;
+  interpreter?: string;
+  location?: KernelLocation;
 }
 export interface NotebookEnvironment {
   kind: "venv" | "uv" | "poetry" | "conda" | "missing";

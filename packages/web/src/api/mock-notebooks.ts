@@ -1,12 +1,40 @@
-import type { NotebookExecution, NotebookKernel, NotebookSnapshot } from '@odin/shared/notebooks'
+import type {
+  NotebookCell,
+  NotebookExecution,
+  NotebookKernel,
+  NotebookSnapshot,
+} from '@odin/shared/notebooks'
 import type { ServerEvent } from '@odin/shared/events'
 import type { Api } from './types'
 import { ApiRequestError } from './types'
+
+const EMPTY_NOTEBOOK = JSON.stringify({ cells: [], metadata: {}, nbformat: 4, nbformat_minor: 5 })
+
+/** Cells of an .ipynb file's text (code and Markdown cells; the mock keeps no outputs). */
+function cellsOf(source: string): NotebookCell[] {
+  try {
+    const cells = (JSON.parse(source) as { cells?: Record<string, unknown>[] }).cells ?? []
+    return cells
+      .filter(c => c.cell_type === 'code' || c.cell_type === 'markdown')
+      .map((c, i) => ({
+        id: typeof c.id === 'string' ? c.id : `cell-${i}`,
+        kind: c.cell_type === 'code' ? ('code' as const) : ('markdown' as const),
+        source: Array.isArray(c.source) ? c.source.join('') : String(c.source ?? ''),
+        outputs: [],
+        executionCount: null,
+        author: { kind: 'human' as const },
+      }))
+  } catch {
+    return []
+  }
+}
 
 export function mockNotebooks(options: {
   project: (name: string) => { path: string }
   session: (id: string) => { project: string }
   emit: (event: ServerEvent) => void
+  /** The project's files: notebooks are .ipynb files in it. */
+  files: { read: (path: string) => string | undefined; write: (path: string, text: string) => void }
 }) {
   const notebooks = new Map<string, NotebookSnapshot>()
   const links = new Map<string, Set<string>>()
@@ -36,16 +64,6 @@ export function mockNotebooks(options: {
     async sendNotebookComm(id, message) {
       get(id)
       options.emit({ type: 'notebook.comm', kernelId: id, message })
-    },
-    async handoffNotebook(id) {
-      get(id).editor = 'jupyterlab'
-      changed(get(id))
-      return { url: '#mock-jupyterlab' }
-    },
-    async reclaimNotebook(id) {
-      get(id).editor = 'odin'
-      changed(get(id))
-      return copy(get(id))
     },
     async notebookEnvironment(project) {
       options.project(project)
@@ -103,23 +121,38 @@ export function mockNotebooks(options: {
         [...notebooks.values()].filter(n => n.kernel.project === project).map(n => n.kernel),
       )
     },
-    async createNotebook(project, req) {
+    async openNotebook(project, req) {
       const root = options.project(project)
-      if (!req.name.trim()) throw new ApiRequestError(400, 'Name is required')
-      if (
-        [...notebooks.values()].some(
-          n => n.kernel.project === project && n.kernel.name === req.name,
-        )
+      if (req.sessionId && options.session(req.sessionId).project !== project)
+        throw new ApiRequestError(400, 'Session belongs to another project')
+      const path = req.path
+      if (!path.endsWith('.ipynb') || path.startsWith('/') || path.split('/').includes('..'))
+        throw new ApiRequestError(400, 'Choose a project-relative .ipynb path')
+      const existing = [...notebooks.values()].find(
+        n => n.kernel.project === project && n.kernel.path === path,
       )
-        throw new ApiRequestError(409, 'Kernel name already exists')
+      if (existing) {
+        if (req.interpreter && !existing.kernel.interpreter) {
+          existing.kernel.interpreter = req.interpreter
+          existing.kernel.location = req.location ?? existing.kernel.location
+          changed(existing)
+        }
+        return copy(existing.kernel)
+      }
+      const source = options.files.read(path)
+      if (source === undefined) {
+        if (!req.create) throw new ApiRequestError(404, 'Notebook not found')
+        options.files.write(path, EMPTY_NOTEBOOK)
+      }
       const time = new Date().toISOString()
       const kernel: NotebookKernel = {
         id: `notebook-${++sequence}`,
         project,
-        name: req.name,
-        cwd: req.cwd || root.path,
-        interpreter: req.interpreter || '.venv/bin/python',
-        location: req.location || { kind: 'native' },
+        path,
+        name: path.split('/').at(-1)!,
+        cwd: root.path,
+        interpreter: req.interpreter ?? '',
+        location: req.location ?? { kind: 'native' },
         state: 'stopped',
         createdAt: time,
         updatedAt: time,
@@ -128,8 +161,7 @@ export function mockNotebooks(options: {
       const snapshot: NotebookSnapshot = {
         kernel,
         revision: String(++sequence),
-        cells: [],
-        editor: 'odin',
+        cells: cellsOf(source ?? EMPTY_NOTEBOOK),
       }
       notebooks.set(kernel.id, snapshot)
       changed(snapshot)
@@ -140,7 +172,7 @@ export function mockNotebooks(options: {
     },
     async saveNotebook(id, revision, cells) {
       const snapshot = get(id)
-      if (snapshot.editor !== 'odin' || snapshot.revision !== revision)
+      if (snapshot.revision !== revision)
         throw new ApiRequestError(409, 'Notebook changed; reload before saving')
       snapshot.cells = copy(cells)
       changed(snapshot)
@@ -159,8 +191,9 @@ export function mockNotebooks(options: {
     },
     async executeNotebook(id, req) {
       const snapshot = get(id)
-      if (snapshot.revision !== req.revision || snapshot.editor !== 'odin')
+      if (snapshot.revision !== req.revision)
         throw new ApiRequestError(409, 'Notebook changed; reload before running')
+      if (!snapshot.kernel.interpreter) throw new ApiRequestError(409, 'no Python environment')
       const cell = snapshot.cells.find(c => c.id === req.cellId)
       if (!cell || cell.kind !== 'code') throw new ApiRequestError(400, 'Select a code cell')
       const time = new Date().toISOString()
@@ -206,26 +239,18 @@ export function mockNotebooks(options: {
       notebooks.delete(id)
       for (const set of links.values()) set.delete(id)
     },
-    async exportNotebook(id, path) {
-      get(id)
-      if (!path.endsWith('.ipynb') || path.includes('..'))
-        throw new ApiRequestError(400, 'Choose a relative .ipynb path')
-      return { path }
-    },
     notebookOutputUrl: (id, cellId, index) =>
       `/a/notebooks/${encodeURIComponent(id)}/${encodeURIComponent(cellId)}/${index}`,
   } satisfies Pick<
     Api,
-    | 'handoffNotebook'
     | 'notebookWidgetState'
     | 'sendNotebookComm'
-    | 'reclaimNotebook'
     | 'notebookEnvironment'
     | 'setupNotebookEnvironment'
     | 'notebookVariables'
     | 'notebookDataFrame'
     | 'listNotebooks'
-    | 'createNotebook'
+    | 'openNotebook'
     | 'getNotebook'
     | 'saveNotebook'
     | 'sessionNotebooks'
@@ -235,7 +260,6 @@ export function mockNotebooks(options: {
     | 'interruptNotebook'
     | 'stopNotebook'
     | 'removeNotebook'
-    | 'exportNotebook'
     | 'notebookOutputUrl'
   >
   return methods

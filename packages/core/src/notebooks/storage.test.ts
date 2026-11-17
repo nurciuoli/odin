@@ -1,32 +1,55 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, linkSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createNotebookStorage, type IpynbDocument } from "./storage.ts";
+import { createNotebookStorage, normalizeNotebookPath, type IpynbDocument } from "./storage.ts";
 
 const document = (): IpynbDocument => ({ nbformat: 4, nbformat_minor: 5, metadata: { extension: { preserved: true } }, cells: [{ id: "code", cell_type: "code", source: ["x = 1\n", "x"], metadata: { tags: ["analysis"] }, outputs: [], execution_count: null }] });
-test("ipynb storage preserves metadata and detects external revisions and unsafe paths", () => {
-  const home = mkdtempSync(join(tmpdir(), "odin-notebook-storage-"));
+const temp = () => mkdtempSync(join(tmpdir(), "odin-notebook-storage-"));
+
+test("ipynb storage preserves metadata and detects external revisions", () => {
+  const root = temp();
   try {
-    const storage = createNotebookStorage(home), first = storage.write("kernel", document(), null);
-    assert.deepEqual(storage.read("kernel").document, document());
-    const external = JSON.parse(readFileSync(storage.path("kernel"), "utf8")); external.cells[0].source = "external change";
-    writeFileSync(storage.path("kernel"), JSON.stringify(external));
-    assert.throws(() => storage.write("kernel", document(), first.revision), /changed/);
-    assert.equal(storage.read("kernel").document.cells[0].source, "external change");
-    assert.throws(() => storage.read("../outside"), /invalid notebook ID/);
-    linkSync(storage.path("kernel"), join(home, "linked.ipynb"));
-    assert.throws(() => storage.read("kernel"), /regular unlinked file/);
-  } finally { rmSync(home, { recursive: true, force: true }); }
+    const storage = createNotebookStorage(), first = storage.write(root, "a/nb.ipynb", document(), null);
+    assert.deepEqual(storage.read(root, "a/nb.ipynb").document, document());
+    assert.throws(() => storage.write(root, "a/nb.ipynb", document(), null), /already exists/);
+    const file = join(root, "a", "nb.ipynb"), external = JSON.parse(readFileSync(file, "utf8")); external.cells[0].source = "external change";
+    writeFileSync(file, JSON.stringify(external));
+    assert.throws(() => storage.write(root, "a/nb.ipynb", document(), first.revision), /changed/);
+    assert.equal(storage.read(root, "a/nb.ipynb").document.cells[0].source, "external change");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("create writes an empty nbformat 4.5 notebook with parent folders", () => {
+  const root = temp();
+  try {
+    const storage = createNotebookStorage(); storage.create(root, "deep/er/new.ipynb");
+    const doc = JSON.parse(readFileSync(join(root, "deep", "er", "new.ipynb"), "utf8"));
+    assert.deepEqual(doc, { nbformat: 4, nbformat_minor: 5, metadata: { kernelspec: { name: "python3", display_name: "Python 3", language: "python" }, language_info: { name: "python" } }, cells: [] });
+    assert.equal(storage.exists(root, "deep/er/new.ipynb"), true); assert.equal(storage.exists(root, "nope/x.ipynb"), false);
+    assert.equal(storage.read(root, "deep/er/new.ipynb").document.cells.length, 0);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("paths are validated and cannot escape the project root", () => {
+  const root = temp(), outside = temp();
+  try {
+    const storage = createNotebookStorage();
+    for (const bad of ["../x.ipynb", "/x.ipynb", "C:/x.ipynb", "x.json", "a//b.ipynb", "a/./b.ipynb", ".git/x.ipynb"]) assert.throws(() => normalizeNotebookPath(bad), /notebook path|\.ipynb/, bad);
+    assert.equal(normalizeNotebookPath("a\\b.ipynb"), "a/b.ipynb");
+    let linked = false;
+    try { symlinkSync(outside, join(root, "link"), "junction"); linked = true; } catch { /* symlinks may be unavailable */ }
+    if (linked) assert.throws(() => storage.write(root, "link/x.ipynb", document(), null), /regular project directory/);
+  } finally { rmSync(root, { recursive: true, force: true }); rmSync(outside, { recursive: true, force: true }); }
 });
 
 test("corrupt or unsupported external notebook is refused without overwrite", () => {
-  const home = mkdtempSync(join(tmpdir(), "odin-notebook-storage-"));
+  const root = temp();
   try {
-    const storage = createNotebookStorage(home); storage.write("kernel", document(), null);
-    writeFileSync(storage.path("kernel"), "{bad"); assert.throws(() => storage.read("kernel"), /invalid JSON/);
-    writeFileSync(storage.path("kernel"), JSON.stringify({ ...document(), nbformat: 3 })); assert.throws(() => storage.read("kernel"), /unsupported/);
-    assert.equal(JSON.parse(readFileSync(storage.path("kernel"), "utf8")).nbformat, 3);
-  } finally { rmSync(home, { recursive: true, force: true }); }
+    const storage = createNotebookStorage(), file = join(root, "nb.ipynb"); storage.write(root, "nb.ipynb", document(), null);
+    writeFileSync(file, "{bad"); assert.throws(() => storage.read(root, "nb.ipynb"), /invalid JSON/);
+    writeFileSync(file, JSON.stringify({ ...document(), nbformat: 3 })); assert.throws(() => storage.read(root, "nb.ipynb"), /unsupported/);
+    assert.equal(JSON.parse(readFileSync(file, "utf8")).nbformat, 3);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

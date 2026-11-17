@@ -420,7 +420,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       if (project) parts.push(project);
     }
     parts.push(
-      "Odin analysis instructions: use notebook_list/notebook_create to find or create a named Python kernel, " +
+      "Odin analysis instructions: use notebook_list, notebook_open (existing .ipynb) or notebook_create (new .ipynb at a project-relative path) to get a notebook backed by an ordinary project file, " +
       "notebook_execute to run code as persistent notebook cells, and notebook_status/notebook_wait/notebook_interrupt for long runs. " +
       "A shared kernel keeps its original working directory and interpreter even when you attach from a fork or worktree; inspect those before running code. " +
       "Notebook execution and variable/dataframe inspection require execution permission. If its Python environment is missing, ask the user to use the notebook setup action. " +

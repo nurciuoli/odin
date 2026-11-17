@@ -589,17 +589,24 @@ the library; the native default agent can delegate to them.
 
 ## Notebooks and Python analysis
 
-`@odin/shared/notebooks` defines named project kernels, immutable working directory/interpreter/OS/distro,
-notebook snapshots with revisions and stable cell IDs, execution receipts and durable notices. Kernels can be
-shared across sessions/worktrees; attachment never changes execution location. One lazy Jupyter host serves
-each project/location. Notebook files live under configurable `Config.home/notebooks`, not in session transcripts.
-Restart restores stopped resources and interrupted receipts; it never replays code. Busy kernels do not expire.
+A notebook is an ordinary `.ipynb` file in the project, addressed by a project-relative path (forward slashes, ends
+in `.ipynb`, checked against the project root). `@odin/shared/notebooks` defines one kernel record per
+(root, path) (`NotebookKernel.path`; `name` is the file basename), immutable interpreter/OS/distro, notebook
+snapshots with revisions and stable cell IDs, execution receipts and durable notices. The kernel process starts
+lazily on first execute; opening a notebook starts nothing. Kernels can be shared across sessions/worktrees;
+attachment never changes execution location. One lazy Jupyter host serves each project/location. Notebooks are not
+stored under `Config.home` and not in session transcripts. The Files service lists `.ipynb` files like any other
+file. Restart restores stopped resources and interrupted receipts; it never replays code. Busy kernels do not expire.
 
-SQLite migration 0013 holds kernels, session links, execution receipts and pending notices. `.ipynb` remains the
-source of truth for cells/outputs. Saves use revision checks and atomic rename; conflicts return 409. Execution
+SQLite migration 0014 (recreating 0013's tables; existing notebooks and kernels are dropped, not migrated) holds
+kernels keyed by UNIQUE(root, path), session links, execution receipts and pending notices. `.ipynb` remains the
+source of truth for cells/outputs. Saves use revision checks and atomic rename; conflicts return 409. Edits made to
+the file outside Odin (an editor, git, another tool) surface through the same revision check: a save or execute
+with a stale revision returns 409 and the client refetches. There is no external-editor hand-off. Execution
 is serialized per kernel. Human API calls cannot impersonate an agent by supplying sessionId. Agent tools are
-scoped to their session's project. Runs preserve author attribution; human changes are summarized next turn.
-Notices are acknowledged after a successful turn boundary, not on send. They do not autonomously trigger turns.
+scoped to their session's project; `notebook_create` and `notebook_open` take a project-relative `path`. Runs
+preserve author attribution; human changes are summarized next turn. Notices are acknowledged after a successful
+turn boundary, not on send. They do not autonomously trigger turns.
 
 HostToolResult adds bounded text/image content while preserving its text field. All driver adapters map images
 to native content blocks. Executable/inspecting host tools declare `effect: execute`; mutations declare `edit`.
@@ -608,9 +615,12 @@ allows, other modes ask explicitly. Only once approvals are advertised until nat
 acceptEdits never authorizes Python execution. Interrupt/end cancels outstanding core prompts. Read-only file
 snapshot tools need no execution approval. Inspecting Python objects is execution and must be gated.
 
-REST: GET/POST `/api/projects/:name/notebooks`; GET/PUT/DELETE `/api/notebooks/:id`;
+REST: GET `/api/projects/:name/notebooks` lists kernels; POST `/api/projects/:name/notebooks/open` with
+`OpenNotebookRequest` `{path, sessionId?, create?, interpreter?, location?}` (with `sessionId`, which must belong to that project else 400, `path` is relative to that session's cwd, e.g. a worktree, instead of the project root; the absolute root is stored on the kernel so saves and runs hit the same file; host tools always use the calling session's cwd) returns the existing record for that path or
+creates one (`create` writes an empty nbformat-4 file when missing, else 404); GET/PUT/DELETE `/api/notebooks/:id`
+(DELETE removes the record and stops the kernel, never the file);
 GET `/api/sessions/:id/notebooks`; POST `/api/sessions/:id/notebooks/:kernelId/attach`;
-POST `/api/notebooks/:id/execute`, `/interrupt`, `/stop`, `/save-to-project`;
+POST `/api/notebooks/:id/execute`, `/interrupt`, `/stop`;
 GET `/api/notebook-executions/:id`; POST `/api/notebook-executions/:id/wait`.
 Updates stream as notebook.updated, notebook.execution and bounded notebook.output frames. Clients refetch
 snapshots on reconnect; SSE is not a durable output store. Long tools return execution handles promptly.
@@ -619,20 +629,18 @@ Rich HTML/JavaScript/SVG output is served only at `/a/notebooks/:id/:cellId/:ind
 headers and embedded only in the existing scripts/forms sandbox. Native output rendering permits text and
 raster images; it never inserts HTML into the app DOM. Jupyter credentials stay inside core, absent from agent
 results, browser responses and logs; kernel child environments omit Odin tokens. Environment provisioning is
-an explicit action. JupyterLab hand-off grants exclusive editor ownership until returned to Odin.
+an explicit action.
 
 The widget bridge uses bounded comm_open/comm_msg/comm_close envelopes with base64 buffers. It serves only
 bundled standard widget classes, never CDN modules. The user explicitly enables callbacks for each frame;
 messages are accepted only from that frame's window with matching kernel/model identity and size bounds.
 Widget callbacks execute Python and keep kernels busy until the protocol reports idle. Stop revokes bridges.
-JupyterLab is proxied on a separate loopback origin with upstream authentication injected by core; hand-off
-binds the existing kernel and notebook via Jupyter's session API. Returning revokes the proxy and reloads disk.
 
 Environment detect/setup use POST `/api/projects/:name/notebook-environment/{detect,setup}`. Setup is explicit,
 creates the Odin-managed Jupyter environment, adds only ipykernel to an existing project environment, or creates
 a uv-managed .venv with the analysis baseline. Variable/dataframe inspection is explicit Python execution via
 POST `/api/notebooks/:id/{variables,dataframe}`. GET `/api/notebooks/:id/widgets` returns bounded live widget
-models; POST `/api/notebooks/:id/comm` sends a validated callback. POST `/handoff` and `/reclaim` control the lease.
+models; POST `/api/notebooks/:id/comm` sends a validated callback.
 
 ## Artifacts
 
