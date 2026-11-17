@@ -39,6 +39,8 @@ export interface Config {
   projectsRescanMs: number;
   /** ODIN_FAKE_HARNESS=1: run sessions on the scripted fake driver (no model calls). For demos and e2e checks. */
   fakeHarness: boolean;
+  /** ODIN_HARNESSES: comma-separated harness ids to offer (e.g. "claude,codex"). Default "claude". "all" offers every driver. */
+  harnesses: string[] | null;
   /**
    * Extra Host and Origin names, from ODIN_EXTRA_HOSTS. Used when Tailscale Serve reaches loopback
    * with the machine's tailnet name. Empty means localhost only.
@@ -60,6 +62,12 @@ export function extraHostsFrom(value: string | undefined): string[] {
     if (!HOST_NAME.test(host)) throw new Error(`ODIN_EXTRA_HOSTS entry "${host}" must be a hostname`);
   }
   return [...new Set(hosts)];
+}
+
+/** ODIN_HARNESSES parsed: null means every driver; unset means Claude only. */
+export function harnessesFrom(value: string | undefined): string[] | null {
+  const ids = (value ?? "claude").split(",").map((part) => part.trim().toLowerCase()).filter(Boolean);
+  return ids.includes("all") ? null : [...new Set(ids)];
 }
 
 export function expandHome(p: string): string {
@@ -95,6 +103,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, overrides: Part
     githubSyncMs: 2 * 60_000,
     projectsRescanMs: 60_000,
     fakeHarness: env.ODIN_FAKE_HARNESS === "1",
+    harnesses: harnessesFrom(env.ODIN_HARNESSES),
     extraHosts: extraHostsFrom(env.ODIN_EXTRA_HOSTS),
     allowedLogin: (env.ODIN_ALLOWED_LOGIN ?? "").trim().toLowerCase(),
   };

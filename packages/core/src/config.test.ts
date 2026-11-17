@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { extraHostsFrom, loadConfig } from "./config.ts";
+import { extraHostsFrom, harnessesFrom, loadConfig } from "./config.ts";
 
 const home = join(tmpdir(), "odin-config-test");
 
@@ -47,4 +47,10 @@ test("ODIN_EXTRA_HOSTS accepts hostnames and rejects ports and schemes", () => {
   assert.throws(() => extraHostsFrom("*.ts.net"), /hostname/);
   assert.equal(loadConfig({ ODIN_HOME: home }).allowedLogin, "");
   assert.equal(loadConfig({ ODIN_HOME: home, ODIN_ALLOWED_LOGIN: " Me@Example.com " }).allowedLogin, "me@example.com");
+});
+
+test("ODIN_HARNESSES defaults to Claude only and accepts a list or all", () => {
+  assert.deepEqual(harnessesFrom(undefined), ["claude"]);
+  assert.deepEqual(harnessesFrom(" Claude, codex ,codex"), ["claude", "codex"]);
+  assert.equal(harnessesFrom("all"), null);
 });

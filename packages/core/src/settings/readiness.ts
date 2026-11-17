@@ -71,7 +71,7 @@ export function readiness(input: ReadinessInput): ReadinessResponse {
 }
 
 /** Env vars that mean Claude has credentials without a login (names only; values are never read). */
-const CLAUDE_AUTH_ENV = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX"];
+const CLAUDE_AUTH_ENV = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"];
 
 /**
  * Whether a Claude login seems to exist. macOS keeps it in the keychain, which Odin does not touch: there a missing

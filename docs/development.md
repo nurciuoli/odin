@@ -49,6 +49,7 @@ Odin snapshots `state.db` to `<home>/backups/` before any schema upgrade.
 | `ODIN_HOME` | Data folder (database, library, logs). |
 | `ODIN_PORT` | Port to bind on `127.0.0.1`. |
 | `ODIN_FAKE_HARNESS=1` | Use the scripted fake harness instead of real runtimes. |
+| `ODIN_HARNESSES` | Harnesses to offer, comma-separated (`claude`, `codex`, `grok`, `antigravity`) or `all`. Default `claude`. |
 | `ODIN_EXTRA_HOSTS` | Extra Host/Origin names allowed in (for example a Tailscale Serve hostname). |
 | `ODIN_ALLOWED_LOGIN` | With Tailscale Serve: the one Tailscale login allowed in. |
 | `GITHUB_TOKEN` | Optional, for reading pull requests. Falls back to `gh auth token`. |

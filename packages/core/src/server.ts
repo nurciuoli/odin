@@ -15,9 +15,6 @@ import type { Harnesses } from "./harness/types.ts";
 import { createClaudeHarness } from "./harness/claude/driver.ts";
 import { createCodexHarness } from "./harness/codex/driver.ts";
 import { createGrokHarness } from "./harness/grok/driver.ts";
-import { createOpenCodeHarness } from "./harness/opencode/driver.ts";
-import { createOpenCodeRuntime } from "./harness/opencode/runtime.ts";
-import { adaptOpenCodeLibrary } from "./harness/opencode/library.ts";
 import { createAntigravityHarness } from "./harness/antigravity/driver.ts";
 import { adaptLibrary } from "./harness/codex/library.ts";
 import { demoScript, fakeHarness } from "./harness/fake.ts";
@@ -33,6 +30,12 @@ import { createSettingsService } from "./settings/service.ts";
 import { getToolPathSource, setToolPathSource } from "./tools/resolve.ts";
 import { createFilesService } from "./files/service.ts";
 import { createNotebooksService } from "./notebooks/service.ts";
+
+/** Keeps only the harnesses named in ODIN_HARNESSES (Claude is always kept so the app stays usable). */
+function enabledHarnesses(enabled: string[] | null, all: Harnesses): Harnesses {
+  if (!enabled) return all;
+  return Object.fromEntries(Object.entries(all).filter(([id]) => id === "claude" || enabled.includes(id))) as Harnesses;
+}
 
 export interface AppOptions {
   config: Config;
@@ -68,22 +71,16 @@ export function createApp(options: AppOptions): App {
     bus,
     githubFetch: options.githubFetch ?? fetch,
     now: options.now ?? (() => new Date()),
-    harnesses: options.harnesses ?? (config.fakeHarness ? {
+    harnesses: options.harnesses ?? enabledHarnesses(config.harnesses, config.fakeHarness ? {
       claude: fakeHarness({ script: demoScript }),
       codex: { ...fakeHarness({ script: demoScript }), id: "codex", name: "Codex (fake)" },
       grok: { ...fakeHarness({ script: demoScript }), id: "grok", name: "Grok (fake)" },
-      opencode: { ...fakeHarness({ script: demoScript }), id: "opencode", name: "OpenCode (fake)" },
       antigravity: { ...fakeHarness({ script: demoScript }), id: "antigravity", name: "Antigravity (fake)" },
     } : {
       claude: createClaudeHarness(),
       codex: createCodexHarness({ db, prepare: prepareCodex }),
       grok: createGrokHarness({ db }),
       antigravity: createAntigravityHarness({ db }),
-      opencode: createOpenCodeHarness({ db, runtime: () => createOpenCodeRuntime({ home: config.home, projectLibrary: (opts) => {
-        const session = db.prepare("SELECT project FROM sessions WHERE id = ?").get(opts.sessionId ?? opts.resume ?? "") as { project: string } | undefined;
-        if (!session) throw new Error("OpenCode session record is missing");
-        return adaptOpenCodeLibrary(services, config.home, session.project, opts);
-      } }) }),
     }),
   };
   // Every factory gets the same `services` object; it's complete before any request or timer runs (see services.ts).

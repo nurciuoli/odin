@@ -12,9 +12,6 @@
     "@modelcontextprotocol/sdk": "1.32.2",
     "@odin/adapter-claude-code": "workspace:*",
     "@odin/shared": "workspace:*",
-    "@opencode/client": "2.3.0",
-    "@opencode/core": "2.3.0",
-    "@opencode/sdk": "2.3.0",
     "zod": "^4.0.0"
   }
 }

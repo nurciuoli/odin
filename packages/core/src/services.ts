@@ -28,7 +28,7 @@ export interface Deps {
   /** fetch for GitHub. Tests inject a fake; never the network in tests. */
   githubFetch: typeof fetch;
   now: () => Date;
-  /** Harness drivers by id. Production: Claude, Codex, Grok, OpenCode, and Antigravity. Tests pass fakeHarness(). */
+  /** Harness drivers by id. Production: Claude, plus Codex, Grok and Antigravity when ODIN_HARNESSES lists them. Tests pass fakeHarness(). */
   harnesses: Harnesses;
 }
 
