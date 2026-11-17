@@ -59,9 +59,6 @@ const prose = () => props.cell.kind === 'markdown' && !editing.value
         >[{{ cell.executionCount ?? ' ' }}]</span
       >
       <span>{{ cell.kind === 'code' ? 'Python' : 'Markdown' }}</span>
-      <span v-if="!detached" class="nb-cell__author">{{
-        cell.author.kind === 'human' ? 'You' : 'Agent'
-      }}</span>
       <span class="nb-cell__tools">
         <IuButton
           v-if="cell.kind === 'markdown' && !detached"
@@ -146,9 +143,6 @@ const prose = () => props.cell.kind === 'markdown' && !editing.value
 .nb-cell__count {
   color: var(--iu-text-2);
   white-space: pre;
-}
-.nb-cell__author::before {
-  content: '· ';
 }
 .nb-cell__tools {
   display: flex;

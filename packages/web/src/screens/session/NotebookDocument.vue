@@ -34,17 +34,13 @@ const props = withDefaults(
   defineProps<{
     session: SessionDetail
     kernelId: string
-    /** Linked to this session already. */
-    attached?: boolean
     /** A cell to show: the thread points at it. A new object asks again. */
     reveal?: { cell: string } | null
   }>(),
-  { attached: true, reveal: null },
+  { reveal: null },
 )
 const emit = defineEmits<{
   close: []
-  /** The kernel was linked to this session, or its details changed. */
-  changed: []
   'update:dirty': [dirty: boolean]
 }>()
 
@@ -162,7 +158,6 @@ function addCell(kind: 'code' | 'markdown') {
     source: '',
     outputs: [],
     executionCount: null,
-    author: { kind: 'human' },
   })
 }
 async function saveActive() {
@@ -222,13 +217,6 @@ function keepDraft() {
     current.base = current.remote
     current.remote = null
   }
-}
-async function attach() {
-  await action(async () => {
-    await api.attachNotebook(props.session.id, props.kernelId)
-    emit('changed')
-    message.value = 'Attached to this session'
-  })
 }
 async function configure(environment: { interpreter: string; location: KernelLocation }) {
   const kernel = draft.value?.base.kernel
@@ -389,14 +377,6 @@ onBeforeUnmount(() => unsubscribe?.())
     >
       <template #actions>
         <IuButton
-          v-if="phase === 'ready' && !attached"
-          size="sm"
-          variant="secondary"
-          :disabled="busy"
-          @click="attach"
-          >Attach</IuButton
-        >
-        <IuButton
           v-if="phase === 'ready' && (dirty || draft?.remote)"
           size="sm"
           variant="primary"
@@ -450,12 +430,6 @@ onBeforeUnmount(() => unsubscribe?.())
           :project="session.project"
           @ready="configure"
         />
-        <IuCallout v-if="!attached" intent="info" variant="subtle">
-          This kernel is not attached to this session. Attach it to let the agent use it.
-        </IuCallout>
-        <IuCallout v-if="kernel.cwd !== session.cwd" intent="info" variant="subtle">
-          This shared kernel runs in {{ kernel.cwd }}, not this session’s directory.
-        </IuCallout>
       </div>
 
       <div v-if="tray === 'kernel'" class="nb-doc__tray">

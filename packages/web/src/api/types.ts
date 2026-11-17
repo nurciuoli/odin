@@ -74,8 +74,6 @@ export interface Api {
     revision: string,
     cells: import('@odin/shared/notebooks').NotebookCell[],
   ): Promise<import('@odin/shared/notebooks').NotebookSnapshot>
-  sessionNotebooks(sessionId: string): Promise<import('@odin/shared/notebooks').NotebookKernel[]>
-  attachNotebook(sessionId: string, kernelId: string): Promise<void>
   executeNotebook(
     kernelId: string,
     request: import('@odin/shared/notebooks').ExecuteCellRequest,

@@ -22,7 +22,6 @@ function cellsOf(source: string): NotebookCell[] {
         source: Array.isArray(c.source) ? c.source.join('') : String(c.source ?? ''),
         outputs: [],
         executionCount: null,
-        author: { kind: 'human' as const },
       }))
   } catch {
     return []
@@ -37,7 +36,6 @@ export function mockNotebooks(options: {
   files: { read: (path: string) => string | undefined; write: (path: string, text: string) => void }
 }) {
   const notebooks = new Map<string, NotebookSnapshot>()
-  const links = new Map<string, Set<string>>()
   const executions = new Map<string, NotebookExecution>()
   let sequence = 0
   const copy = <T>(value: T): T => structuredClone(value)
@@ -178,17 +176,6 @@ export function mockNotebooks(options: {
       changed(snapshot)
       return copy(snapshot)
     },
-    async sessionNotebooks(id) {
-      options.session(id)
-      return copy([...(links.get(id) ?? [])].map(key => get(key).kernel))
-    },
-    async attachNotebook(id, kernelId) {
-      if (options.session(id).project !== get(kernelId).kernel.project)
-        throw new ApiRequestError(400, 'Kernel belongs to another project')
-      const set = links.get(id) ?? new Set<string>()
-      set.add(kernelId)
-      links.set(id, set)
-    },
     async executeNotebook(id, req) {
       const snapshot = get(id)
       if (snapshot.revision !== req.revision)
@@ -201,7 +188,6 @@ export function mockNotebooks(options: {
         id: `execution-${++sequence}`,
         kernelId: id,
         cellId: cell.id,
-        sessionId: null,
         state: 'completed',
         startedAt: time,
         finishedAt: time,
@@ -237,7 +223,6 @@ export function mockNotebooks(options: {
     async removeNotebook(id) {
       get(id)
       notebooks.delete(id)
-      for (const set of links.values()) set.delete(id)
     },
     notebookOutputUrl: (id, cellId, index) =>
       `/a/notebooks/${encodeURIComponent(id)}/${encodeURIComponent(cellId)}/${index}`,
@@ -253,8 +238,6 @@ export function mockNotebooks(options: {
     | 'openNotebook'
     | 'getNotebook'
     | 'saveNotebook'
-    | 'sessionNotebooks'
-    | 'attachNotebook'
     | 'executeNotebook'
     | 'notebookExecution'
     | 'interruptNotebook'

@@ -19,7 +19,6 @@ async function setup(interpreter = '.venv/bin/python') {
     create: true,
     ...(interpreter ? { interpreter } : {}),
   })
-  await api.attachNotebook(session.id, kernel.id)
   const snapshot = await api.getNotebook(kernel.id)
   await api.saveNotebook(kernel.id, snapshot.revision, [
     {
@@ -28,7 +27,6 @@ async function setup(interpreter = '.venv/bin/python') {
       source: 'print(1)',
       outputs: [],
       executionCount: null,
-      author: { kind: 'agent', sessionId: session.id },
     },
   ])
   const wrapper = mount(NotebookDocument, {

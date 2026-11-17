@@ -157,7 +157,6 @@ export function parseIpynb(source: string): NotebookCell[] | null {
             ? c.outputs.map(ipynbOutput).filter((o): o is NotebookOutput => o !== null)
             : [],
         executionCount: typeof c.execution_count === 'number' ? c.execution_count : null,
-        author: { kind: 'human' },
       }
     })
 }

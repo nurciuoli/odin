@@ -24,7 +24,6 @@ const snapshot = (revision = '1', source = 'a = 1'): NotebookSnapshot => ({
       source,
       outputs: [],
       executionCount: null,
-      author: { kind: 'human' },
     },
   ],
 })

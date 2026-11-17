@@ -74,9 +74,6 @@ export function createHttpApi(options: HttpApiOptions = {}): Api {
     getNotebook: id => get(`/api/notebooks/${seg(id)}`),
     saveNotebook: (id, revision, cells) =>
       send('PUT', `/api/notebooks/${seg(id)}`, { revision, cells }),
-    sessionNotebooks: id => get(`${session(id)}/notebooks`),
-    attachNotebook: (id, kernelId) =>
-      send('POST', `${session(id)}/notebooks/${seg(kernelId)}/attach`),
     executeNotebook: (id, req) => send('POST', `/api/notebooks/${seg(id)}/execute`, req),
     notebookExecution: id => get(`/api/notebook-executions/${seg(id)}`),
     interruptNotebook: id => send('POST', `/api/notebooks/${seg(id)}/interrupt`),
