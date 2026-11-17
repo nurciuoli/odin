@@ -36,8 +36,11 @@ Read by anyone working in this repo: contributors, and coding agents (including 
   `yarn workspace <name> add`. A fresh worktree needs `yarn install`. If `yarn --version` is 1.x, use `corepack yarn`.
 - Node 24 runs TypeScript directly: erasable syntax only (no enums, namespaces or parameter properties); imports use `.ts`.
 - Core has no web framework and few deps. A new runtime dependency needs a reason in the PR.
+- Branch from `main` as `type/short-desc` (`feat/`, `fix/`, `docs/`, `chore/`, ...); PR titles follow Conventional
+  Commits (`fix(core): ...`) because PRs are squash-merged and the title becomes the commit. See CONTRIBUTING.md.
 - Contract changes (`packages/shared/`, `services.ts`, `harness/types.ts`, `docs/contracts.md`,
-  `db/schema.sql`/migrations, `web/src/api/types.ts`) go in their own commit and are called out in the PR.
+  `db/schema.sql`/migrations, `web/src/api/types.ts`) are listed in the PR's Contract section and get the `contract`
+  label. A large contract change lands first as its own PR. Breaking ones use `!` in the title.
 - Keep changes scoped to the task. Need a contract change? Say so in your report or PR.
 - Tests next to the code (`*.test.ts`): `node:test` in core/shared/adapters, vitest in web. No network, no real
   `~/.odin` or `~/.claude`, no real GitHub, no real model calls: use `testDeps()` / `startApp()` from

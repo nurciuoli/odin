@@ -1,0 +1,29 @@
+name: PR title
+
+# PRs are squash-merged and the title becomes the commit on main, so it must follow Conventional Commits.
+# See CONTRIBUTING.md#pull-requests.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions: {}
+
+jobs:
+  pr-title:
+    name: PR title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Conventional Commits format
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          types='feat|fix|perf|refactor|docs|test|build|ci|chore|revert'
+          scopes='core|web|shared|desktop|adapter|library|harness|deps'
+          if printf '%s' "$TITLE" | grep -Eq "^($types)(\(($scopes)\))?!?: [^ ].{2,}$"; then
+            echo "OK: $TITLE"
+          else
+            echo "::error::PR title must look like 'type(scope): summary', e.g. 'fix(core): expand Windows short paths'."
+            echo "Types: ${types//|/, }. Optional scopes: ${scopes//|/, }. Add '!' before ':' for breaking changes."
+            echo "Got: $TITLE"
+            exit 1
+          fi
