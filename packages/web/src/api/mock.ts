@@ -667,9 +667,19 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
         {
           cell_type: 'code',
           id: 'load',
-          execution_count: null,
+          execution_count: 1,
           source: 'import pandas as pd\ndata = pd.read_csv("data/results.csv")\ndata.head()',
-          outputs: [],
+          outputs: [
+            {
+              output_type: 'execute_result',
+              execution_count: 1,
+              metadata: {},
+              data: {
+                'text/plain':
+                  '      id                      name    status\n0    123           First experiment  complete\n1    456  Second, larger experiment   pending',
+              },
+            },
+          ],
         },
       ],
       metadata: {},

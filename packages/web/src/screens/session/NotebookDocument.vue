@@ -11,6 +11,7 @@ import {
   onMounted,
   reactive,
   ref,
+  toRaw,
   useTemplateRef,
   watch,
 } from 'vue'
@@ -244,7 +245,10 @@ const chipTitle = computed(() =>
     : `${chipLabel.value}, kernel ${kernel.value?.state ?? ''}`,
 )
 const chipDot = computed<Status>(() => (needsEnvironment.value ? 'idle' : kernelStatus.value))
-const location = (): KernelLocation => kernel.value?.location ?? { kind: 'native' }
+const location = (): KernelLocation => {
+  const at = kernel.value?.location
+  return at ? { ...toRaw(at) } : { kind: 'native' }
+}
 
 const kernelMenu = computed<MenuItem[]>(() => {
   const k = kernel.value
@@ -623,7 +627,7 @@ onBeforeUnmount(() => {
                 <IuStatusDot :status="chipDot" :size="8" decorative />
               </template>
               <span class="nb-chip__label">{{ chipLabel }}</span>
-              <template #trailing><IuIcon name="chevronDown" :size="12" /></template>
+              <template #trailing><IuIcon name="chevronDown" :size="14" /></template>
             </IuButton>
           </template>
         </IuMenu>

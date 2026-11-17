@@ -10,7 +10,19 @@ import { ApiRequestError } from './types'
 
 const EMPTY_NOTEBOOK = JSON.stringify({ cells: [], metadata: {}, nbformat: 4, nbformat_minor: 5 })
 
-/** Cells of an .ipynb file's text (code and Markdown cells; the mock keeps no outputs). */
+function displayOutputs(raw: unknown): NotebookCell['outputs'] {
+  if (!Array.isArray(raw)) return []
+  return raw.flatMap(o => {
+    const data = (o as { data?: Record<string, unknown> }).data
+    if (!data) return []
+    const joined = Object.fromEntries(
+      Object.entries(data).map(([mime, v]) => [mime, Array.isArray(v) ? v.join('') : v]),
+    )
+    return [{ type: 'display' as const, data: joined }]
+  })
+}
+
+/** Cells of an .ipynb file's text (code and Markdown cells; display outputs are kept). */
 function cellsOf(source: string): NotebookCell[] {
   try {
     const cells = (JSON.parse(source) as { cells?: Record<string, unknown>[] }).cells ?? []
@@ -20,8 +32,8 @@ function cellsOf(source: string): NotebookCell[] {
         id: typeof c.id === 'string' ? c.id : `cell-${i}`,
         kind: c.cell_type === 'code' ? ('code' as const) : ('markdown' as const),
         source: Array.isArray(c.source) ? c.source.join('') : String(c.source ?? ''),
-        outputs: [],
-        executionCount: null,
+        outputs: displayOutputs(c.outputs),
+        executionCount: typeof c.execution_count === 'number' ? c.execution_count : null,
       }))
   } catch {
     return []
