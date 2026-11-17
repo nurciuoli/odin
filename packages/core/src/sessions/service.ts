@@ -13,6 +13,7 @@ import type {
 } from "@odin/shared/api";
 import type { HarnessEvent, PermissionRequest, SlashCommand, TranscriptEntry } from "@odin/shared/harness";
 import { emptyMetrics, sessionBranch } from "@odin/shared/session";
+import { findModel } from "@odin/shared/api";
 import { applyHarnessEvent, reconcileTaskHistory } from "@odin/shared/transcript";
 import { HttpError } from "../http/util.ts";
 import { PERMISSION_MODES } from "../launch/service.ts";
@@ -758,7 +759,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
   async function validateEffort(harness: import("../harness/types.ts").Harness, model: string | null | undefined, effort: unknown) {
     if (effort === undefined || effort === null) return;
     const models = await harness.models();
-    const selected = models.find(m => m.value === model || m.resolved === model) ?? (!model ? models[0] : undefined);
+    const selected = findModel(models, model) ?? (!model ? models[0] : undefined);
     if (typeof effort !== "string" || !selected?.effortLevels?.includes(effort as import("@odin/shared/api").Effort)) bad(harness.id + " does not support effort " + String(effort) + " for this model");
   }
 
@@ -1140,7 +1141,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
 
       if (req.model !== undefined && req.effort === undefined && s.effort) {
         const models = await harnessFor(s).models();
-        const selected = models.find(m => m.value === req.model?.trim() || m.resolved === req.model?.trim());
+        const selected = findModel(models, req.model);
         if (!selected?.effortLevels?.includes(s.effort)) req = { ...req, effort: null };
       }
       await validateEffort(harnessFor(s), req.model ?? s.model, req.effort);
@@ -1211,7 +1212,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       let effort = parent.effort;
       if (req.model !== undefined && effort) {
         const models = await harness.models();
-        if (!models.find(m => m.value === model || m.resolved === model)?.effortLevels?.includes(effort)) effort = null;
+        if (!findModel(models, model)?.effortLevels?.includes(effort)) effort = null;
       }
       const title = (req.title?.trim() || (aside ? sideTitle(prompt!) : `${parent.title} (fork)`)).slice(0, 200);
       if (parent.projects.length > 1 && harness.capabilities?.additionalDirectories === false) bad(`${parent.harness} does not support additional project directories`);

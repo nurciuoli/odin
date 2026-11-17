@@ -9,6 +9,7 @@ follow [Semantic Versioning](https://semver.org/).
 - Notebooks open from the Files tab as project files.
 - `yarn dev:desktop` launches the Odin Dev desktop app from a terminal, including one inside Odin.
 - Sessions started in a terminal take the harness's generated name instead of staying "Untitled session".
+- Claude's model picker shows the real catalog (Haiku 5.5, Fable and every supported effort level) from the start, and a session's concrete model id matches its alias instead of showing as an extra entry.
 
 ## [0.1.0]
 
