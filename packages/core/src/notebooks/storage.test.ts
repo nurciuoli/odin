@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createNotebookStorage, normalizeNotebookPath, type IpynbDocument } from "./storage.ts";
+import { createNotebookStorage, normalizeNotebookPath, EMPTY_NOTEBOOK, type IpynbDocument } from "./storage.ts";
 
 const document = (): IpynbDocument => ({ nbformat: 4, nbformat_minor: 5, metadata: { extension: { preserved: true } }, cells: [{ id: "code", cell_type: "code", source: ["x = 1\n", "x"], metadata: { tags: ["analysis"] }, outputs: [], execution_count: null }] });
 const temp = () => mkdtempSync(join(tmpdir(), "odin-notebook-storage-"));
@@ -51,5 +51,14 @@ test("corrupt or unsupported external notebook is refused without overwrite", ()
     writeFileSync(file, "{bad"); assert.throws(() => storage.read(root, "nb.ipynb"), /invalid JSON/);
     writeFileSync(file, JSON.stringify({ ...document(), nbformat: 3 })); assert.throws(() => storage.read(root, "nb.ipynb"), /unsupported/);
     assert.equal(JSON.parse(readFileSync(file, "utf8")).nbformat, 3);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("existing odin_author cell metadata is tolerated on read", () => {
+  const root = mkdtempSync(join(tmpdir(), "odin-nb-author-"));
+  try {
+    const doc = { ...EMPTY_NOTEBOOK(), cells: [{ id: "c1", cell_type: "markdown", source: "hi", metadata: { odin_author: { kind: "agent", sessionId: "gone" } } }] };
+    writeFileSync(join(root, "a.ipynb"), JSON.stringify(doc));
+    assert.equal(createNotebookStorage().read(root, "a.ipynb").document.cells.length, 1);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

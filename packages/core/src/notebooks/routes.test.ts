@@ -30,7 +30,6 @@ test("notebook HTTP routes open files by path and round-trip revisions and execu
     assert.equal((await t.api(`/api/notebooks/${k.id}/comm`, { method: "POST", body: JSON.stringify({ type: "comm_open", commId: "evil", targetName: "arbitrary", data: {} }) })).status, 400);
     assert.equal((await t.api(`/api/notebooks/${k.id}/execute`, { method: "POST", headers: { origin: "https://evil.example" }, body: JSON.stringify({ revision: snapshot.revision, source: "forged()" }) })).status, 403);
     const stale = await t.api(`/api/notebooks/${k.id}`, { method: "PUT", body: JSON.stringify({ revision: snapshot.revision, cells: [] }) }); assert.equal(stale.status, 409);
-    const forged = await t.api(`/api/notebooks/${k.id}/execute`, { method: "POST", body: JSON.stringify({ revision: snapshot.revision, source: "hi", sessionId: "agent" }) }); assert.equal(forged.status, 400);
     for (const gone of ["handoff", "reclaim", "save-to-project"]) assert.ok([404, 405].includes((await t.api(`/api/notebooks/${k.id}/${gone}`, { method: "POST", body: "{}" })).status), gone);
     assert.equal((await t.api(`/api/notebooks/${k.id}`, { method: "DELETE" })).status, 204);
     assert.equal((await t.api(`/api/notebooks/${k.id}`)).status, 404);

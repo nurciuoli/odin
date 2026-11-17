@@ -25,22 +25,19 @@ function setup(execute?: ServiceRuntime["execute"]) {
 }
 const status = (n: number) => (error: unknown) => error instanceof HttpError && error.status === n;
 
-test("persisted notebook execution retains state across session attachments, attribution and notices", async () => {
+test("persisted notebook execution retains state and writes plain .ipynb cells", async () => {
   const s = setup();
   try {
     const kernel = await s.open("analysis.ipynb");
-    s.notebooks.attach("a", kernel.id); s.notebooks.attach("b", kernel.id);
-    const run = await s.notebooks.execute(kernel.id, { revision: s.notebooks.snapshot(kernel.id).revision, source: "print(42)", sessionId: "a" });
+    const run = await s.notebooks.execute(kernel.id, { revision: s.notebooks.snapshot(kernel.id).revision, source: "print(42)" });
     assert.equal((await s.notebooks.wait(run.id, 1000)).state, "completed");
     const snapshot = s.notebooks.snapshot(kernel.id);
     assert.deepEqual(snapshot.cells[0].outputs, [{ type: "stream", name: "stdout", text: "42\n" }]);
-    assert.deepEqual(snapshot.cells[0].author, { kind: "agent", sessionId: "a" });
+    assert.equal("author" in snapshot.cells[0], false);
     const ipynb = JSON.parse(readFileSync(join(s.path, "analysis.ipynb"), "utf8"));
     assert.equal(ipynb.nbformat, 4); assert.equal(ipynb.cells[0].outputs[0].output_type, "stream");
-    assert.equal(s.notebooks.forSession("b")[0].cwd, s.path);
+    assert.equal("odin_author" in ipynb.cells[0].metadata, false);
     assert.equal(s.calls.filter(value => value.startsWith("create:")).length, 1);
-    assert.equal(s.notebooks.notices("a").length, 1); assert.equal(s.notebooks.notices("b").length, 1);
-    s.notebooks.acknowledgeNotices("a", s.notebooks.notices("b").map(value => value.id)); assert.equal(s.notebooks.notices("b").length, 1);
   } finally { await s.close(); }
 });
 
@@ -48,7 +45,7 @@ test("optimistic revisions reject stale edits and unknown cell execution", async
   const s = setup();
   try {
     const k = await s.open("analysis.ipynb"); const snapshot = s.notebooks.snapshot(k.id);
-    const cells = [{ id: "cell-1", kind: "code" as const, source: "x = 1", outputs: [], executionCount: null, author: { kind: "human" as const } }];
+    const cells = [{ id: "cell-1", kind: "code" as const, source: "x = 1", outputs: [], executionCount: null }];
     s.notebooks.save(k.id, snapshot.revision, cells);
     assert.throws(() => s.notebooks.save(k.id, snapshot.revision, []), status(409));
     await assert.rejects(s.notebooks.execute(k.id, { revision: s.notebooks.snapshot(k.id).revision, cellId: "missing" }), status(404));
@@ -155,7 +152,7 @@ test("agent output paging exposes large output tails without oversized tool mess
   const s = setup(async (_id, _source, output) => { output({ type: "stream", content: { text: "x".repeat(100000) + "THE END" } }); });
   try {
     const k = await s.open("output.ipynb");
-    const run = await s.notebooks.execute(k.id, { revision: s.notebooks.snapshot(k.id).revision, source: "large()", sessionId: "a" }); await s.notebooks.wait(run.id, 1000);
+    const run = await s.notebooks.execute(k.id, { revision: s.notebooks.snapshot(k.id).revision, source: "large()" }); await s.notebooks.wait(run.id, 1000);
     const tool = s.notebooks.hostTools("a").find(value => value.name === "notebook_output")!;
     const first = JSON.parse((await tool.handler({ kernel_id: k.id, cell_id: run.cellId, limit: 1000 })).text); assert.equal(first.hasMore, true); assert.equal(first.total, 100007);
     const tail = JSON.parse((await tool.handler({ kernel_id: k.id, cell_id: run.cellId, offset: 100000, limit: 1000 })).text); assert.equal(tail.text, "THE END"); assert.equal(tail.hasMore, false);
@@ -175,7 +172,7 @@ test("notebooks are project files: open is idempotent per path, create writes a 
     assert.equal(s.notebooks.list("demo").length, 1);
     assert.deepEqual(s.written, [["analysis/q1.ipynb"]]);
     assert.equal(s.calls.length, 0, "opening must not start a kernel");
-    s.notebooks.attach("a", k.id); await s.notebooks.remove(k.id);
+    await s.notebooks.remove(k.id);
     assert.ok(existsSync(join(s.path, "analysis", "q1.ipynb")), "remove never deletes the file");
     assert.equal(s.notebooks.list("demo").length, 0);
     assert.equal((await s.notebooks.open("demo", { path: "analysis/q1.ipynb" })).path, "analysis/q1.ipynb");
@@ -232,7 +229,7 @@ test("path-based host tools: create, open, list and path as a kernel alternative
     assert.equal("name" in tool("notebook_create").params, false);
     await assert.rejects(tool("notebook_open").handler({ path: "nope.ipynb" }), status(404));
     const created = JSON.parse((await tool("notebook_create").handler({ path: "tools/t.ipynb" })).text);
-    assert.equal(created.path, "tools/t.ipynb"); assert.equal(s.notebooks.forSession("a")[0].id, created.id);
+    assert.equal(created.path, "tools/t.ipynb"); assert.equal(s.notebooks.list("demo")[0].id, created.id);
     assert.equal(JSON.parse((await tool("notebook_open").handler({ path: "tools/t.ipynb" })).text).id, created.id);
     assert.equal(JSON.parse((await tool("notebook_list").handler({})).text)[0].path, "tools/t.ipynb");
     assert.equal(JSON.parse((await tool("notebook_read").handler({ path: "tools/t.ipynb" })).text).kernel.id, created.id);
@@ -263,7 +260,7 @@ test("a session-scoped open resolves against the session cwd; same path in two r
     assert.equal((await s.notebooks.open("demo", { path: "analysis.ipynb", sessionId: "w" })).id, wt.id);
     assert.equal(s.notebooks.list("demo").length, 2);
     const snapshot = s.notebooks.snapshot(wt.id);
-    s.notebooks.save(wt.id, snapshot.revision, [{ id: "c1", kind: "markdown", source: "worktree", outputs: [], executionCount: null, author: { kind: "human" } }]);
+    s.notebooks.save(wt.id, snapshot.revision, [{ id: "c1", kind: "markdown", source: "worktree", outputs: [], executionCount: null }]);
     assert.match(readFileSync(join(worktree, "analysis.ipynb"), "utf8"), /worktree/);
     assert.doesNotMatch(readFileSync(join(s.path, "analysis.ipynb"), "utf8"), /worktree/);
     await assert.rejects(s.notebooks.open("demo", { path: "analysis.ipynb", create: true, sessionId: "x" }), status(400));

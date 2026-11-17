@@ -10,7 +10,19 @@ import { ApiRequestError } from './types'
 
 const EMPTY_NOTEBOOK = JSON.stringify({ cells: [], metadata: {}, nbformat: 4, nbformat_minor: 5 })
 
-/** Cells of an .ipynb file's text (code and Markdown cells; the mock keeps no outputs). */
+function displayOutputs(raw: unknown): NotebookCell['outputs'] {
+  if (!Array.isArray(raw)) return []
+  return raw.flatMap(o => {
+    const data = (o as { data?: Record<string, unknown> }).data
+    if (!data) return []
+    const joined = Object.fromEntries(
+      Object.entries(data).map(([mime, v]) => [mime, Array.isArray(v) ? v.join('') : v]),
+    )
+    return [{ type: 'display' as const, data: joined }]
+  })
+}
+
+/** Cells of an .ipynb file's text (code and Markdown cells; display outputs are kept). */
 function cellsOf(source: string): NotebookCell[] {
   try {
     const cells = (JSON.parse(source) as { cells?: Record<string, unknown>[] }).cells ?? []
@@ -20,9 +32,8 @@ function cellsOf(source: string): NotebookCell[] {
         id: typeof c.id === 'string' ? c.id : `cell-${i}`,
         kind: c.cell_type === 'code' ? ('code' as const) : ('markdown' as const),
         source: Array.isArray(c.source) ? c.source.join('') : String(c.source ?? ''),
-        outputs: [],
-        executionCount: null,
-        author: { kind: 'human' as const },
+        outputs: displayOutputs(c.outputs),
+        executionCount: typeof c.execution_count === 'number' ? c.execution_count : null,
       }))
   } catch {
     return []
@@ -37,7 +48,6 @@ export function mockNotebooks(options: {
   files: { read: (path: string) => string | undefined; write: (path: string, text: string) => void }
 }) {
   const notebooks = new Map<string, NotebookSnapshot>()
-  const links = new Map<string, Set<string>>()
   const executions = new Map<string, NotebookExecution>()
   let sequence = 0
   const copy = <T>(value: T): T => structuredClone(value)
@@ -178,17 +188,6 @@ export function mockNotebooks(options: {
       changed(snapshot)
       return copy(snapshot)
     },
-    async sessionNotebooks(id) {
-      options.session(id)
-      return copy([...(links.get(id) ?? [])].map(key => get(key).kernel))
-    },
-    async attachNotebook(id, kernelId) {
-      if (options.session(id).project !== get(kernelId).kernel.project)
-        throw new ApiRequestError(400, 'Kernel belongs to another project')
-      const set = links.get(id) ?? new Set<string>()
-      set.add(kernelId)
-      links.set(id, set)
-    },
     async executeNotebook(id, req) {
       const snapshot = get(id)
       if (snapshot.revision !== req.revision)
@@ -201,7 +200,6 @@ export function mockNotebooks(options: {
         id: `execution-${++sequence}`,
         kernelId: id,
         cellId: cell.id,
-        sessionId: null,
         state: 'completed',
         startedAt: time,
         finishedAt: time,
@@ -237,7 +235,6 @@ export function mockNotebooks(options: {
     async removeNotebook(id) {
       get(id)
       notebooks.delete(id)
-      for (const set of links.values()) set.delete(id)
     },
     notebookOutputUrl: (id, cellId, index) =>
       `/a/notebooks/${encodeURIComponent(id)}/${encodeURIComponent(cellId)}/${index}`,
@@ -253,8 +250,6 @@ export function mockNotebooks(options: {
     | 'openNotebook'
     | 'getNotebook'
     | 'saveNotebook'
-    | 'sessionNotebooks'
-    | 'attachNotebook'
     | 'executeNotebook'
     | 'notebookExecution'
     | 'interruptNotebook'

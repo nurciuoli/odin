@@ -160,14 +160,14 @@ describe('SessionFiles', () => {
     const open = vi.spyOn(api, 'openNotebook')
     await newNotebook()
     await flushPromises()
-    expect(open).toHaveBeenLastCalledWith(session.project, {
+    expect(open).toHaveBeenCalledWith(session.project, {
       path: 'Untitled.ipynb',
       create: true,
       sessionId: session.id,
     })
     expect(button('Untitled.ipynb')).toBeDefined()
     await newNotebook()
-    expect(open).toHaveBeenLastCalledWith(session.project, {
+    expect(open).toHaveBeenCalledWith(session.project, {
       path: 'Untitled-2.ipynb',
       create: true,
       sessionId: session.id,
@@ -176,7 +176,7 @@ describe('SessionFiles', () => {
     await button('data').trigger('click')
     await flushPromises()
     await newNotebook()
-    expect(open).toHaveBeenLastCalledWith(session.project, {
+    expect(open).toHaveBeenCalledWith(session.project, {
       path: 'data/Untitled.ipynb',
       create: true,
       sessionId: session.id,

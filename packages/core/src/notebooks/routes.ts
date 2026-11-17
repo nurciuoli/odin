@@ -11,12 +11,8 @@ export const registerNotebookRoutes: RegisterRoutes = (router, _deps, services) 
     if (!body || typeof body.revision !== "string") throw new HttpError(400, "revision is required");
     return services.notebooks.save(params.id, body.revision, body.cells);
   });
-  router.get("/api/sessions/:id/notebooks", ({ params }) => services.notebooks.forSession(params.id));
-  router.post("/api/sessions/:id/notebooks/:kernelId/attach", ({ params }) => services.notebooks.attach(params.id, params.kernelId));
   router.post("/api/notebooks/:id/execute", async ({ params, req }) => {
     const body = await readJson(req) as ExecuteCellRequest;
-    // Human execution is attributed to the user; agents use the permission-gated host tools.
-    if (body?.sessionId !== undefined) throw new HttpError(400, "sessionId is reserved for host tools");
     return services.notebooks.execute(params.id, body);
   });
   router.get("/api/notebook-executions/:id", ({ params }) => services.notebooks.execution(params.id));

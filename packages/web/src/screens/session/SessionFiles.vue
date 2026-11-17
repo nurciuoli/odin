@@ -51,7 +51,7 @@ import {
 import { SURFACE } from './surface'
 
 const props = defineProps<{ session: SessionDetail }>()
-const emit = defineEmits<{ hide: [] }>()
+const emit = defineEmits<{ hide: []; 'open-environment': [] }>()
 const api = useApi()
 const sessionId = computed(() => props.session.id)
 const composerDrafts = useDrafts()
@@ -71,7 +71,6 @@ interface NotebookState {
   /** The cells as saved on disk, for the read-only view. Null until read, or when the file is not a notebook. */
   cells: NotebookCell[] | null
   reading: boolean
-  attached: boolean
   dirty: boolean
 }
 
@@ -147,7 +146,6 @@ async function openNotebookDoc(path: string, create = false) {
     error: '',
     cells: existing?.cells ?? null,
     reading: !create && !existing?.cells,
-    attached: false,
     dirty: false,
   }
   notebooks.value[path] = state
@@ -174,14 +172,8 @@ async function openNotebookDoc(path: string, create = false) {
       create,
       sessionId: props.session.id,
     })
-    let attached = (await api.sessionNotebooks(props.session.id)).map(k => k.id).includes(kernel.id)
-    if (!attached) {
-      await api.attachNotebook(props.session.id, kernel.id)
-      attached = true
-    }
     const s = live()
     if (!s) return
-    s.attached = attached
     s.kernel = kernel
     s.phase = 'ready'
     if (create) void browse(listing.value.path)
@@ -626,10 +618,9 @@ defineExpose({ open })
               v-if="nb.phase === 'ready' && nb.kernel"
               :session="session"
               :kernel-id="nb.kernel.id"
-              :attached="nb.attached"
               @update:dirty="nb.dirty = $event"
-              @changed="nb.attached = true"
               @close="close(doc)"
+              @open-environment="emit('open-environment')"
             />
             <template v-else>
               <DocumentHeader

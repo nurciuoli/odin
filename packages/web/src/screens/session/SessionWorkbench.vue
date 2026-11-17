@@ -2,6 +2,8 @@
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { SessionDetail } from '@odin/shared/api'
 import { IuButton } from '@/components/Button'
+import { IuTabs } from '@/components/Tabs'
+import SessionEnvironment from './SessionEnvironment.vue'
 import type SessionFilesType from './SessionFiles.vue'
 import type { PreviewView } from './workbench'
 const SessionFiles = defineAsyncComponent(() => import('./SessionFiles.vue'))
@@ -11,6 +13,11 @@ const props = withDefaults(
 )
 const emit = defineEmits<{ close: []; 'update:width': [width: number] }>()
 const tab = defineModel<PreviewView>('tab', { required: true })
+const filesTab = ref<'files' | 'environment'>('files')
+const filesTabs = [
+  { id: 'files', label: 'Files' },
+  { id: 'environment', label: 'Environment' },
+]
 const filePanel = ref<InstanceType<typeof SessionFilesType>>()
 const pendingPath = ref<string | null>(null)
 watch(filePanel, panel => {
@@ -21,6 +28,7 @@ watch(filePanel, panel => {
 })
 function openFile(path: string) {
   tab.value = 'files'
+  filesTab.value = 'files'
   const root = props.session.cwd.replaceAll('\\', '/').replace(/\/$/, '')
   const normalized = path.replaceAll('\\', '/')
   const relative = normalized.startsWith(root + '/')
@@ -148,12 +156,37 @@ defineExpose({ openFile })
       </div>
       <div class="session-workbench__content">
         <div v-show="tab === 'files'" class="session-workbench__file-panel">
-          <SessionFiles
-            :key="session.id"
-            ref="filePanel"
-            :session="session"
-            @hide="emit('close')"
+          <IuTabs
+            v-model="filesTab"
+            class="session-workbench__file-tabs"
+            :tabs="filesTabs"
+            :panels="false"
+            id-base="session-files-tabs"
           />
+          <div
+            v-show="filesTab === 'files'"
+            id="session-files-tabs-panel-files"
+            class="session-workbench__file-tab"
+            role="tabpanel"
+            aria-labelledby="session-files-tabs-tab-files"
+          >
+            <SessionFiles
+              :key="session.id"
+              ref="filePanel"
+              :session="session"
+              @hide="emit('close')"
+              @open-environment="filesTab = 'environment'"
+            />
+          </div>
+          <div
+            v-if="filesTab === 'environment'"
+            id="session-files-tabs-panel-environment"
+            class="session-workbench__file-tab"
+            role="tabpanel"
+            aria-labelledby="session-files-tabs-tab-environment"
+          >
+            <SessionEnvironment :key="session.id" :session="session" />
+          </div>
         </div>
         <div v-show="tab === 'artifacts'" class="session-workbench__artifacts">
           <slot name="artifacts" />
@@ -203,6 +236,17 @@ defineExpose({ openFile })
   min-height: 0;
   min-width: 0;
   display: flex;
+}
+.session-workbench__file-tabs {
+  flex: none;
+  padding: 0 14px;
+}
+.session-workbench__file-tab {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  flex-direction: column;
 }
 .session-workbench__file-panel,
 .session-workbench__activity,

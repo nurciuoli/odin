@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, relative, resolve, sep, join } from "node:path";
-import type { OpenNotebookRequest, ExecuteCellRequest, NotebookCell, NotebookExecution, NotebookKernel, NotebookNotice, NotebookOutput, NotebookVariable, NotebookDataFrame, DataFrameQuery, NotebookComm } from "@odin/shared/notebooks";
+import type { OpenNotebookRequest, ExecuteCellRequest, NotebookCell, NotebookExecution, NotebookKernel, NotebookOutput, NotebookVariable, NotebookDataFrame, DataFrameQuery, NotebookComm } from "@odin/shared/notebooks";
 import type { Deps, NotebooksService, Services } from "../services.ts";
 import type { HostTool, HostToolResult } from "../harness/types.ts";
 import { HttpError } from "../http/util.ts";
@@ -54,14 +54,12 @@ function asOutput(output: NotebookOutput): Record<string, unknown> {
   return { output_type: "display_data", data: output.data, metadata: output.metadata ?? {} };
 }
 function asCell(cell: IpynbCell): NotebookCell {
-  const author = cell.metadata?.odin_author;
   return { id: cell.id, kind: cell.cell_type === "code" ? "code" : "markdown", source: Array.isArray(cell.source) ? cell.source.join("") : cell.source,
     executionCount: cell.execution_count ?? null,
-    author: author && typeof author === "object" && (author as { kind?: string }).kind === "agent" && typeof (author as { sessionId?: unknown }).sessionId === "string" ? { kind: "agent", sessionId: (author as { sessionId: string }).sessionId } : { kind: "human" },
     outputs: (cell.outputs ?? []).map(raw => outputFromRaw({ ...raw, type: raw.output_type })).filter((output): output is NotebookOutput => output !== null) };
 }
 function persistedCell(cell: NotebookCell): IpynbCell {
-  return { id: cell.id, cell_type: cell.kind, source: cell.source, metadata: { odin_author: cell.author },
+  return { id: cell.id, cell_type: cell.kind, source: cell.source, metadata: {},
     ...(cell.kind === "code" ? { execution_count: cell.executionCount, outputs: cell.outputs.map(asOutput) } : {}) };
 }
 
@@ -112,13 +110,6 @@ export function createNotebooksService(deps: Deps, services: Services, options: 
     if (!session) throw new HttpError(404, "unknown session");
     if (session.project !== row(id).project) throw new HttpError(403, "kernel belongs to another project");
     return session;
-  }
-  function notify(id: string, message: string, except?: string) {
-    const links = db.prepare("SELECT session_id FROM notebook_session_links WHERE kernel_id = ?").all(id) as { session_id: string }[];
-    for (const link of links) if (link.session_id !== except) {
-      db.prepare("INSERT INTO notebook_notices(id, session_id, kernel_id, text, created_at) VALUES (?, ?, ?, ?, ?)").run(randomUUID(), link.session_id, id, message, now());
-      db.prepare("DELETE FROM notebook_notices WHERE session_id = ? AND id NOT IN (SELECT id FROM notebook_notices WHERE session_id = ? ORDER BY rowid DESC LIMIT 1000)").run(link.session_id, link.session_id);
-    }
   }
   function runtime(id: string) {
     const value = kernel(row(id));
@@ -221,9 +212,9 @@ export function createNotebooksService(deps: Deps, services: Services, options: 
     timer.unref(); idleTimers.set(id, timer);
   }
   function execution(id: string): NotebookExecution {
-    const value = db.prepare("SELECT * FROM notebook_executions WHERE id = ?").get(id) as { id: string; kernel_id: string; cell_id: string; session_id: string | null; state: NotebookExecution["state"]; started_at: string | null; finished_at: string | null; error: string | null } | undefined;
+    const value = db.prepare("SELECT * FROM notebook_executions WHERE id = ?").get(id) as { id: string; kernel_id: string; cell_id: string; state: NotebookExecution["state"]; started_at: string | null; finished_at: string | null; error: string | null } | undefined;
     if (!value) throw new HttpError(404, "unknown notebook execution");
-    return { id: value.id, kernelId: value.kernel_id, cellId: value.cell_id, sessionId: value.session_id, state: value.state, startedAt: value.started_at, finishedAt: value.finished_at, error: value.error };
+    return { id: value.id, kernelId: value.kernel_id, cellId: value.cell_id, state: value.state, startedAt: value.started_at, finishedAt: value.finished_at, error: value.error };
   }
   function executionState(id: string, value: NotebookExecution["state"], error: string | null = null) {
     db.prepare("UPDATE notebook_executions SET state = ?, error = ?, started_at = CASE WHEN ? = 'running' THEN ? ELSE started_at END, finished_at = CASE WHEN ? IN ('completed','failed','interrupted') THEN ? ELSE finished_at END WHERE id = ?").run(value, error, value, now(), value, now(), id);
@@ -283,9 +274,8 @@ export function createNotebooksService(deps: Deps, services: Services, options: 
       const value = row(id), snapshot = storage.read(id);
       return { kernel: kernel(value), revision: snapshot.revision, cells: snapshot.document.cells.map(asCell) };
     },
-    save(id, revision, cells, sessionId) {
+    save(id, revision, cells) {
       available(id);
-      if (sessionId) validateSession(sessionId, id);
       if (chains.has(id) || row(id).state === "busy") throw new HttpError(409, "wait for queued executions before editing");
       if (!Array.isArray(cells) || cells.length > 10000) throw new HttpError(400, "invalid cells");
       const ids = new Set<string>();
@@ -299,30 +289,23 @@ export function createNotebooksService(deps: Deps, services: Services, options: 
         const prior = old.get(cell.id);
         const unchanged = prior && asCell(prior).source === cell.source && asCell(prior).kind === cell.kind;
         if (unchanged) return prior;
-        return persistedCell({ ...cell, author: sessionId ? { kind: "agent", sessionId } : { kind: "human" }, outputs: [], executionCount: null });
+        return persistedCell({ ...cell, outputs: [], executionCount: null });
       });
       storage.write(id, previous.document, revision);
       db.prepare("UPDATE notebook_kernels SET updated_at = ? WHERE id = ?").run(now(), id);
-      notify(id, `${sessionId ? "Another agent" : "You"} edited notebook ${row(id).name}. Reload the notebook before your next change.`, sessionId);
       publish(id);
       return service.snapshot(id);
-    },
-    attach(sessionId, id) { validateSession(sessionId, id); db.prepare("INSERT OR IGNORE INTO notebook_session_links(session_id, kernel_id) VALUES (?, ?)").run(sessionId, id); },
-    forSession(sessionId) {
-      if (!services.sessions.get(sessionId)) throw new HttpError(404, "unknown session");
-      return (db.prepare("SELECT k.* FROM notebook_kernels k JOIN notebook_session_links l ON k.id = l.kernel_id WHERE l.session_id = ? ORDER BY k.created_at, k.id").all(sessionId) as Row[]).map(kernel);
     },
     async execute(id, request: ExecuteCellRequest) {
       available(id);
       if (!request || typeof request.revision !== "string") throw new HttpError(400, "notebook revision is required");
       if (!row(id).interpreter) throw new HttpError(409, "no Python environment; set one up");
-      if (request.sessionId) service.attach(request.sessionId, id);
       const snapshot = storage.read(id);
       if (snapshot.revision !== request.revision) throw new HttpError(409, "notebook changed; reload before running");
       let cell = request.cellId ? snapshot.document.cells.find(value => value.id === request.cellId) : undefined;
       if (request.cellId && !cell) throw new HttpError(404, "unknown cell");
       if (cell && db.prepare("SELECT id FROM notebook_executions WHERE kernel_id = ? AND cell_id = ? AND state IN ('queued','running')").get(id, cell.id)) throw new HttpError(409, "this cell already has a queued or running execution");
-      if (!cell) { cell = persistedCell({ id: randomUUID(), kind: "code", source: "", outputs: [], executionCount: null, author: { kind: "human" } }); snapshot.document.cells.push(cell); }
+      if (!cell) { cell = persistedCell({ id: randomUUID(), kind: "code", source: "", outputs: [], executionCount: null }); snapshot.document.cells.push(cell); }
       if (cell.cell_type !== "code") throw new HttpError(400, "only code cells execute");
       if (request.source !== undefined) {
         if (typeof request.source !== "string" || Buffer.byteLength(request.source) > 1024 * 1024) throw new HttpError(400, "source must be at most 1 MiB");
@@ -330,13 +313,12 @@ export function createNotebooksService(deps: Deps, services: Services, options: 
       }
       const source = asCell(cell).source;
       const executionId = randomUUID(), cellId = cell.id;
-      cell.metadata.odin_author = request.sessionId ? { kind: "agent", sessionId: request.sessionId } : { kind: "human" };
       storage.write(id, snapshot.document, request.revision);
-      db.prepare("INSERT INTO notebook_executions(id, kernel_id, cell_id, session_id, state) VALUES (?, ?, ?, ?, 'queued')").run(executionId, id, cellId, request.sessionId ?? null);
+      db.prepare("INSERT INTO notebook_executions(id, kernel_id, cell_id, state) VALUES (?, ?, ?, 'queued')").run(executionId, id, cellId);
       bus.emit({ type: "notebook.execution", execution: execution(executionId) }); publish(id); clearIdle(id);
       const previous = chains.get(id) ?? Promise.resolve();
       const job = previous.catch(() => undefined).then(async () => {
-        if (closed || interrupted.has(executionId)) { executionState(executionId, "interrupted"); interrupted.delete(executionId); notify(id, `Notebook ${row(id).name}: cell ${cellId} interrupted.`); return; }
+        if (closed || interrupted.has(executionId)) { executionState(executionId, "interrupted"); interrupted.delete(executionId); return; }
         let bytes = 0, events = 0, truncated = false, clearOnNextOutput = false;
         let outputCell: IpynbCell | undefined, outputTimer: ReturnType<typeof setTimeout> | undefined, flushError: unknown;
         const flush = () => {
@@ -403,7 +385,6 @@ export function createNotebooksService(deps: Deps, services: Services, options: 
         } finally {
           if (outputTimer) clearTimeout(outputTimer);
           interrupted.delete(executionId); publish(id);
-          notify(id, `Notebook ${row(id).name}: cell ${cellId} ${execution(executionId).state}.`);
         }
       });
       chains.set(id, job); jobs.set(executionId, job);
@@ -471,7 +452,7 @@ export function createNotebooksService(deps: Deps, services: Services, options: 
           if (!found) throw new HttpError(404, "notebook is not open; use notebook_open first");
           id = found.id;
         }
-        validateSession(sessionId, id); service.attach(sessionId, id); return id;
+        validateSession(sessionId, id); return id;
       };
       const result = (value: unknown): HostToolResult => ({ text: JSON.stringify(value) });
       const executionResult = (value: NotebookExecution): HostToolResult => {
@@ -502,13 +483,13 @@ export function createNotebooksService(deps: Deps, services: Services, options: 
       };
       const tools: HostTool[] = [
         { name: "notebook_list", description: "List the notebooks opened in this session's project: path, cwd, interpreter and kernel state.", params: {}, async handler() { const s = services.sessions.get(sessionId); if (!s?.project) throw new HttpError(400, "session has no project"); return result(service.list(s.project)); } },
-        { name: "notebook_create", effect: "edit", description: "Create a new empty .ipynb notebook at a project-relative path (parent folders are created) and attach it. Fails nothing if it already exists; it is opened. Does not install packages or start Python until the first execution.", params: { path: { type: "string", description: "Project-relative path ending in .ipynb" }, interpreter: { type: "string", description: "Python interpreter path; detected from the notebook folder when omitted", optional: true }, distro: { type: "string", description: "WSL distribution; required for WSL sessions unless the cwd identifies it", optional: true } }, async handler(input) {
+        { name: "notebook_create", effect: "edit", description: "Create a new empty .ipynb notebook at a project-relative path (parent folders are created). Fails nothing if it already exists; it is opened. Does not install packages or start Python until the first execution.", params: { path: { type: "string", description: "Project-relative path ending in .ipynb" }, interpreter: { type: "string", description: "Python interpreter path; detected from the notebook folder when omitted", optional: true }, distro: { type: "string", description: "WSL distribution; required for WSL sessions unless the cwd identifies it", optional: true } }, async handler(input) {
           const { project, location: where } = location(input);
-          const k = await service.open(project, { sessionId, path: text(input.path), create: true, interpreter: input.interpreter === undefined ? undefined : text(input.interpreter), ...(where ? { location: where } : {}) }); service.attach(sessionId, k.id); return result(k);
+          const k = await service.open(project, { sessionId, path: text(input.path), create: true, interpreter: input.interpreter === undefined ? undefined : text(input.interpreter), ...(where ? { location: where } : {}) }); return result(k);
         } },
-        { name: "notebook_open", description: "Open an existing .ipynb file in this project by project-relative path and attach it. Returns the kernel record (including its id). Starts no Python process until the first execution.", params: { path: { type: "string", description: "Project-relative path ending in .ipynb" }, interpreter: { type: "string", description: "Python interpreter path; detected when omitted", optional: true }, distro: { type: "string", description: "WSL distribution; required for WSL sessions unless the cwd identifies it", optional: true } }, async handler(input) {
+        { name: "notebook_open", description: "Open an existing .ipynb file in this project by project-relative path. Returns the kernel record (including its id). Starts no Python process until the first execution.", params: { path: { type: "string", description: "Project-relative path ending in .ipynb" }, interpreter: { type: "string", description: "Python interpreter path; detected when omitted", optional: true }, distro: { type: "string", description: "WSL distribution; required for WSL sessions unless the cwd identifies it", optional: true } }, async handler(input) {
           const { project, location: where } = location(input);
-          const k = await service.open(project, { sessionId, path: text(input.path), interpreter: input.interpreter === undefined ? undefined : text(input.interpreter), ...(where ? { location: where } : {}) }); service.attach(sessionId, k.id); return result(k);
+          const k = await service.open(project, { sessionId, path: text(input.path), interpreter: input.interpreter === undefined ? undefined : text(input.interpreter), ...(where ? { location: where } : {}) }); return result(k);
         } },
         { name: "notebook_read", description: "Read notebook cells and bounded outputs; use offset/limit for paging.", params: { ...kernelParam, offset: { type: "number", description: "Cell offset", optional: true }, limit: { type: "number", description: "Cell count, up to 50", optional: true } }, async handler(input) { const snapshot = service.snapshot(requireKernel(input)); const offset = Math.max(0, Math.floor(Number(input.offset) || 0)); const cells = snapshot.cells.slice(offset, offset + Math.min(50, Math.max(1, Number(input.limit) || 10))); let preview = JSON.stringify({ ...snapshot, cells }); if (preview.length > 64000) preview = preview.slice(0, 64000) + "\n[Truncated; request fewer cells]"; return { text: preview }; } },
         { name: "notebook_output", description: "Page through a cell's persisted text/error output. Up to 16000 characters per page; raster plots accompany the first page.", params: { ...kernelParam, cell_id: { type: "string", description: "Cell ID" }, offset: { type: "number", description: "Character offset", optional: true }, limit: { type: "number", description: "Character count, at most 16000", optional: true } }, async handler(input) {
@@ -524,8 +505,8 @@ export function createNotebooksService(deps: Deps, services: Services, options: 
           }
           return { text: summary, ...(content.length > 1 ? { content } : {}) };
         } },
-        { name: "notebook_execute", effect: "execute", description: "Execute Python in shared kernel state. Returns quickly with an execution handle; wait/status tools track long cells.", params: { ...kernelParam, revision: { type: "string", description: "Current notebook revision" }, source: { type: "string", description: "Python source" }, cell_id: { type: "string", description: "Existing code cell ID; omit to append", optional: true } }, async handler(input) { const value = await service.execute(requireKernel(input), { revision: text(input.revision), source: text(input.source), cellId: input.cell_id === undefined ? undefined : text(input.cell_id), sessionId }); return executionResult(await service.wait(value.id, 1000)); } },
-        { name: "notebook_edit", effect: "edit", description: "Edit a notebook cell using the current revision. Outputs clear when source changes.", params: { ...kernelParam, revision: { type: "string", description: "Current revision" }, cell_id: { type: "string", description: "Cell ID" }, source: { type: "string", description: "Replacement source" } }, async handler(input) { const id = requireKernel(input), snapshot = service.snapshot(id), target = snapshot.cells.find(cell => cell.id === input.cell_id); if (!target) throw new HttpError(404, "unknown cell"); target.source = text(input.source); return result(service.save(id, text(input.revision), snapshot.cells, sessionId)); } },
+        { name: "notebook_execute", effect: "execute", description: "Execute Python in shared kernel state. Returns quickly with an execution handle; wait/status tools track long cells.", params: { ...kernelParam, revision: { type: "string", description: "Current notebook revision" }, source: { type: "string", description: "Python source" }, cell_id: { type: "string", description: "Existing code cell ID; omit to append", optional: true } }, async handler(input) { const value = await service.execute(requireKernel(input), { revision: text(input.revision), source: text(input.source), cellId: input.cell_id === undefined ? undefined : text(input.cell_id) }); return executionResult(await service.wait(value.id, 1000)); } },
+        { name: "notebook_edit", effect: "edit", description: "Edit a notebook cell using the current revision. Outputs clear when source changes.", params: { ...kernelParam, revision: { type: "string", description: "Current revision" }, cell_id: { type: "string", description: "Cell ID" }, source: { type: "string", description: "Replacement source" } }, async handler(input) { const id = requireKernel(input), snapshot = service.snapshot(id), target = snapshot.cells.find(cell => cell.id === input.cell_id); if (!target) throw new HttpError(404, "unknown cell"); target.source = text(input.source); return result(service.save(id, text(input.revision), snapshot.cells)); } },
         { name: "notebook_status", description: "Get a notebook execution's status, output preview and plot images.", params: { execution_id: { type: "string", description: "Execution handle" } }, async handler(input) { const value = execution(text(input.execution_id)); validateSession(sessionId, value.kernelId); return executionResult(value); } },
         { name: "notebook_wait", description: "Wait up to ten seconds for an execution. Safe to call repeatedly.", params: { execution_id: { type: "string", description: "Execution handle" }, timeout_ms: { type: "number", description: "Wait milliseconds, at most 10000", optional: true } }, async handler(input) { const value = execution(text(input.execution_id)); validateSession(sessionId, value.kernelId); return executionResult(await service.wait(value.id, input.timeout_ms === undefined ? 1000 : Number(input.timeout_ms))); } },
         { name: "notebook_interrupt", effect: "execute", description: "Interrupt running Python and cancel queued executions for this shared kernel.", params: kernelParam, async handler(input) { await service.interrupt(requireKernel(input)); return { text: "Interrupt requested" }; } },
@@ -534,8 +515,6 @@ export function createNotebooksService(deps: Deps, services: Services, options: 
       ];
       return tools;
     },
-    notices(sessionId) { return (db.prepare("SELECT * FROM notebook_notices WHERE session_id = ? ORDER BY created_at, id").all(sessionId) as { id: string; session_id: string; kernel_id: string; text: string; created_at: string }[]).map(value => ({ id: value.id, sessionId: value.session_id, kernelId: value.kernel_id, text: value.text, createdAt: value.created_at } satisfies NotebookNotice)); },
-    acknowledgeNotices(sessionId, ids) { for (const id of ids) db.prepare("DELETE FROM notebook_notices WHERE id = ? AND session_id = ?").run(id, sessionId); },
     usesPath(path) {
       return (db.prepare("SELECT cwd FROM notebook_kernels").all() as { cwd: string }[]).some(value => { const part = relative(resolve(path), resolve(value.cwd)); return !part || (!part.startsWith(`..${sep}`) && part !== ".." && !isAbsolute(part)); });
     },

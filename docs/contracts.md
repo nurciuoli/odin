@@ -601,21 +601,23 @@ the library; the native default agent can delegate to them.
 A notebook is an ordinary `.ipynb` file in the project, addressed by a project-relative path (forward slashes, ends
 in `.ipynb`, checked against the project root). `@odin/shared/notebooks` defines one kernel record per
 (root, path) (`NotebookKernel.path`; `name` is the file basename), immutable interpreter/OS/distro, notebook
-snapshots with revisions and stable cell IDs, execution receipts and durable notices. The kernel process starts
-lazily on first execute; opening a notebook starts nothing. Kernels can be shared across sessions/worktrees;
-attachment never changes execution location. One lazy Jupyter host serves each project/location. Notebooks are not
+snapshots with revisions and stable cell IDs, execution receipts. The kernel process starts
+lazily on first execute; opening a notebook starts nothing. A kernel belongs to its file, not to a session; there are no
+session links. One lazy Jupyter host serves each project/location. Notebooks are not
 stored under `Config.home` and not in session transcripts. The Files service lists `.ipynb` files like any other
 file. Restart restores stopped resources and interrupted receipts; it never replays code. Busy kernels do not expire.
 
 SQLite migration 0014 (recreating 0013's tables; existing notebooks and kernels are dropped, not migrated) holds
-kernels keyed by UNIQUE(root, path), session links, execution receipts and pending notices. `.ipynb` remains the
+kernels keyed by UNIQUE(root, path) and execution receipts; migration 0015 drops the session-link and notice tables
+and the execution receipts' `session_id`. `.ipynb` remains the
 source of truth for cells/outputs. Saves use revision checks and atomic rename; conflicts return 409. Edits made to
 the file outside Odin (an editor, git, another tool) surface through the same revision check: a save or execute
 with a stale revision returns 409 and the client refetches. There is no external-editor hand-off. Execution
-is serialized per kernel. Human API calls cannot impersonate an agent by supplying sessionId. Agent tools are
-scoped to their session's project; `notebook_create` and `notebook_open` take a project-relative `path`. Runs
-preserve author attribution; human changes are summarized next turn. Notices are acknowledged after a successful
-turn boundary, not on send. They do not autonomously trigger turns.
+is serialized per kernel. Cells carry no authorship: `NotebookCell` has no `author`, no
+cell metadata is written beyond what the file already holds, and an `odin_author` entry in an existing file is
+ignored. Agent tools are scoped to their session's project; `notebook_create` and `notebook_open` take a
+project-relative `path`, and `notebook_status`/`notebook_wait` take the execution id. Nothing is delivered into
+sessions when a notebook changes; the revision check is the only coordination.
 
 HostToolResult adds bounded text/image content while preserving its text field. All driver adapters map images
 to native content blocks. Executable/inspecting host tools declare `effect: execute`; mutations declare `edit`.
@@ -628,7 +630,6 @@ REST: GET `/api/projects/:name/notebooks` lists kernels; POST `/api/projects/:na
 `OpenNotebookRequest` `{path, sessionId?, create?, interpreter?, location?}` (with `sessionId`, which must belong to that project else 400, `path` is relative to that session's cwd, e.g. a worktree, instead of the project root; the absolute root is stored on the kernel so saves and runs hit the same file; host tools always use the calling session's cwd) returns the existing record for that path or
 creates one (`create` writes an empty nbformat-4 file when missing, else 404); GET/PUT/DELETE `/api/notebooks/:id`
 (DELETE removes the record and stops the kernel, never the file);
-GET `/api/sessions/:id/notebooks`; POST `/api/sessions/:id/notebooks/:kernelId/attach`;
 POST `/api/notebooks/:id/execute`, `/interrupt`, `/stop`;
 GET `/api/notebook-executions/:id`; POST `/api/notebook-executions/:id/wait`.
 Updates stream as notebook.updated, notebook.execution and bounded notebook.output frames. Clients refetch

@@ -48,12 +48,11 @@ Odin adds the parts those tools don't have:
 
 ## Jupyter support
 
-Notebooks are ordinary `.ipynb` files in the project. Open one from a session's Files tab to read its cells and
-outputs, edit and save them, or create a new notebook from the New menu. Running a cell starts a Python kernel for
-that notebook on first use, in the environment you choose: detect the project's Python, or set one up natively or
-in WSL. Opening a notebook starts nothing.
+Open, edit and run Jupyter notebooks (`.ipynb` files) right inside a session. Open one from the Files tab, or create a
+new notebook from the New menu. Odin detects your project's Python environment automatically; you can change it
+any time in the Environment tab.
 
-![A Jupyter notebook open in the session's preview beside the chat, with the Markdown and Python cells of analysis.ipynb](docs/assets/screenshots/session-notebook.png)
+![A notebook open beside the chat, with its kernel, toolbar, and Markdown and Python cells with output](docs/assets/screenshots/session-notebook.png)
 
 ## Quick start
 

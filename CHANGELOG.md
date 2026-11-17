@@ -5,6 +5,9 @@ follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- Breaking: notebooks no longer record who wrote a cell or share kernels across sessions. `NotebookCell.author`, `NotebookNotice`, `sessionId` on executions and execute requests, `GET /api/sessions/:id/notebooks` and `POST /api/sessions/:id/notebooks/:kernelId/attach` are removed, sessions no longer receive notebook-change notices, and migration 0015 drops the session-link and notice tables. Existing `.ipynb` files with author metadata still open.
+- Notebooks: the Python environment is detected silently when a notebook opens, and a compact kernel chip in the header (interpreter, state, "Select kernel" when none) replaces the environment callout; its menu holds Interrupt, Restart, Stop, Variables and a link to the new Environment tab. Run errors show on the failing cell, the cwd-mismatch notice is gone, and the cell view is a quiet document (gutter with execution count, status rail, run time). The toolbar (Run all, Restart, Clear outputs, Interrupt, Variables) folds into a menu when the pane is narrow, and a wide pane shows an outline of headings and cells.
+- The session's Files panel has an Environment tab: the detected Python environment (detect again, set up, Native/WSL on Windows) and the project's notebook kernels with Stop.
 - The session model selector no longer switches to another model after a turn.
 - Hand edits to `pricing.json` are picked up even when written within the same timestamp tick (Windows).
 - Notebooks open from the Files tab as project files.
