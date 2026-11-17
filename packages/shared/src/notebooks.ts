@@ -1,6 +1,6 @@
 /**
  * A notebook is an ordinary .ipynb file in the project, addressed by a project-relative path; cells and outputs live
- * in that file. SQLite holds one kernel record per (root, path), where root is the project root or a session cwd plus execution receipts. The kernel process starts
+ * in that file. SQLite holds one kernel record per (root, path), where root is the project root or a session cwd, plus execution receipts. The kernel process starts
  * lazily on first execute.
  */
 export type KernelLocation = { kind: "native" } | { kind: "wsl"; distro: string };
@@ -20,7 +20,6 @@ export type NotebookOutput =
 export interface NotebookCell {
   id: string; kind: "code" | "markdown"; source: string; outputs: NotebookOutput[];
   executionCount: number | null;
-  author: { kind: "human" } | { kind: "agent"; sessionId: string };
 }
 export interface NotebookSnapshot {
   kernel: NotebookKernel; revision: string; cells: NotebookCell[];
@@ -43,14 +42,11 @@ export interface NotebookEnvironment {
 }
 export type ExecutionState = "queued" | "running" | "completed" | "failed" | "interrupted";
 export interface NotebookExecution {
-  id: string; kernelId: string; cellId: string; sessionId: string | null; state: ExecutionState;
+  id: string; kernelId: string; cellId: string; state: ExecutionState;
   startedAt: string | null; finishedAt: string | null; error: string | null;
 }
 export interface ExecuteCellRequest {
-  cellId?: string; source?: string; revision: string; sessionId?: string;
-}
-export interface NotebookNotice {
-  id: string; sessionId: string; kernelId: string; text: string; createdAt: string;
+  cellId?: string; source?: string; revision: string;
 }
 export interface NotebookVariable { name: string; type: string; preview: string; shape?: number[] }
 export interface NotebookDataFrame {

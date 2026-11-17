@@ -237,7 +237,6 @@ export function createSessionsService(deps: Deps, services: Services, options: S
   outbox.recover();
   const pumping = new Set<string>();
   const nativeBusy = new Set<string>();
-  const deliveredNotices = new Map<string, string[]>();
   const approvals = hostToolApprovals({
     session: id => get(id),
     request(id, request) {
@@ -560,8 +559,6 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         patchAndEmit(l.id, { permissionMode: e.mode });
         break;
       case "turn.end":
-        if (e.ok) services.notebooks.acknowledgeNotices(l.id, deliveredNotices.get(l.id) ?? []);
-        deliveredNotices.delete(l.id);
         l.streaming.clear();
         l.turnActive = false;
         l.settled = l.tail.length;
@@ -728,16 +725,13 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       const repause = !!l?.pauseAfterRelease;
       if (l) l.pauseAfterRelease = false;
       try {
-        const notices = services.notebooks.notices(id);
-        const message = notices.length ? { ...next.message, text: `${next.message.text}\n\n[Odin notebook updates]\n${notices.map(n => n.text).join("\n")}\n[/Odin notebook updates]` } : next.message;
-        deliveredNotices.set(id, notices.map(n => n.id));
         if (l) {
           l.turnActive = true;
           clearIdle(l);
           patchAndEmit(id, { state: "running", waitingFor: null });
-          l.handle.send(message);
+          l.handle.send(next.message);
         } else {
-          const opts: StartOptions = { cwd: s.cwd, resume: id, prompt: message, hostTools: hostTools(id), mcpServers };
+          const opts: StartOptions = { cwd: s.cwd, resume: id, prompt: next.message, hostTools: hostTools(id), mcpServers };
           if (s.model) opts.model = s.model;
           opts.effort = s.effort;
           if (s.permissionMode) opts.permissionMode = s.permissionMode;

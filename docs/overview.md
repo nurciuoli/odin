@@ -35,8 +35,8 @@ roles), and settings a runtime cannot express are reported, not silently dropped
 **Artifact**: a self-contained HTML document an agent posts in a session, versioned, rendered in a sandboxed frame,
 and able to send structured input back into the session.
 
-**Notebook**: a Python kernel attached to a session, which agents drive through host tools and you can inspect in
-the session workbench or hand off to JupyterLab.
+**Notebook**: an ordinary `.ipynb` file in the project with a lazily started Python kernel, which agents drive
+through host tools and you can edit and run in the session workbench.
 
 ## What you can do
 
