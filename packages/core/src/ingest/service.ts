@@ -61,7 +61,9 @@ export function createIngestService(deps: Deps, services: Services): IngestServi
     const patch: SessionPatch = { ...extra };
     const changed = (Object.keys(metrics) as (keyof typeof metrics)[]).some((k) => JSON.stringify(session.metrics[k]) !== JSON.stringify(metrics[k]));
     if (changed) patch.metrics = metrics;
-    if (topModel && topModel !== session.model) patch.model = topModel;
+    // The record's model is the one the user selected (PATCH) or the harness reported (init/model events). Usage never
+    // rewrites it. Only an ingested session with no model yet takes the top model from its usage, so it gets one.
+    if (topModel && !session.model && !patch.model && session.origin === "external") patch.model = topModel;
     if (Object.keys(patch).length) services.sessions.patch(sessionId, patch);
   }
 

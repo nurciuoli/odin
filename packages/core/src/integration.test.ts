@@ -102,7 +102,7 @@ test("seams: register → discover, start → prompt → answer, resume, fork; m
     assert.deepEqual(d1.metrics.tokensByModel["claude-test-1"], { input: 300, output: 30, cacheRead: 0, cacheWrite: 0 });
     assert.equal(d1.metrics.toolCalls, 1);
     assert.ok(Math.abs(d1.metrics.costUsd! - 0.03) < 1e-9, "unpriced model: the harness's cumulative cost, not a sum");
-    assert.equal(d1.model, "claude-test-1");
+    assert.equal(d1.model, "claude-fake-1", "the record keeps the model the harness init reported; usage never rewrites it");
     // Transcript: stored entries plus the live tail, each once.
     const ids = d1.transcript.map((e) => e.id);
     assert.equal(new Set(ids).size, ids.length, "no duplicated entries");

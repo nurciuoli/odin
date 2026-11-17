@@ -160,13 +160,30 @@ test("metrics: counts, wall and active time, cumulative usage replaces, incremen
   });
 });
 
-test("model with most output tokens lands on the record; batches add up across requests", () => {
-  const { ingest, sessions } = setup();
+test("usage does not rewrite a selected model; per-model totals still count every model; batches add up", () => {
+  const { ingest, sessions } = setup([makeSession({ model: "claude-haiku-5-5" })]);
   ingest.ingest([usage({ output: 5 })]);
   ingest.ingest([usage({ model: "claude-opus-5-5", output: 500 }), usage({ output: 7 })]);
   const s = sessions.records.get("s1")!;
-  assert.equal(s.model, "claude-opus-5-5");
+  assert.equal(s.model, "claude-haiku-5-5");
   assert.equal(s.metrics.tokens.output, 512);
+  assert.equal(s.metrics.tokensByModel["claude-opus-5-5"]!.output, 500);
+  assert.equal(s.metrics.tokensByModel["claude-sonnet-5-5"]!.output, 12);
+});
+
+test("an ingested session with no model takes the top-output model from usage, then keeps it", () => {
+  const { ingest, sessions } = setup();
+  ingest.ingest([usage({ output: 5 })]);
+  assert.equal(sessions.records.get("s1")!.model, "claude-sonnet-5-5");
+  ingest.ingest([usage({ model: "claude-opus-5-5", output: 500 })]);
+  assert.equal(sessions.records.get("s1")!.model, "claude-sonnet-5-5");
+});
+
+test("an Odin-run session's model is not set from usage", () => {
+  const { ingest, sessions } = setup([makeSession({ id: "m", origin: "odin" })]);
+  ingest.recordHarnessEvent("m", { type: "usage", model: "claude-opus-5-5", usage: { input: 0, output: 50, cacheRead: 0, cacheWrite: 0 }, cumulative: false, costUsd: null, contextTokens: null });
+  assert.equal(sessions.records.get("m")!.model, null);
+  assert.equal(sessions.records.get("m")!.metrics.tokensByModel["claude-opus-5-5"]!.output, 50);
 });
 
 test("cost: priced models use pricing; an unpriced model falls back to the harness's cost, else null", () => {
@@ -243,7 +260,7 @@ test("tool targets are truncated, and message text is not stored beyond 2000 cha
 // ── harness facts ──────────────────────────────────────────────────────────
 
 test("recordHarnessEvent: usage, turn.end, tool entries and a failed exit become facts and metrics", () => {
-  const { ingest, sessions, deps } = setup([makeSession({ id: "m", origin: "odin" })]);
+  const { ingest, sessions, deps } = setup([makeSession({ id: "m", origin: "odin", model: "claude-sonnet-5-5" })]);
   const run = (e: HarnessEvent) => ingest.recordHarnessEvent("m", e);
   run({ type: "init", sessionId: "m", model: "claude-sonnet-5-5", permissionMode: null, cwd: "/", tools: [], slashCommands: [], agents: [] });
   const tool = { kind: "tool", id: "t1", name: "Bash", input: { command: "npm run test --silent" }, at: null, parentToolUseId: null } as const;
