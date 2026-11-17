@@ -338,6 +338,22 @@ test("discover imports external sessions once; ensureExternal creates or returns
   }
 });
 
+test("discover gives hook-created sessions the harness's generated name, but keeps user renames", async () => {
+  const s = setup();
+  try {
+    const at = "2026-10-02T00:00:00Z";
+    s.sessions.ensureExternal({ id: "hook-1", harness: "claude", project: PROJECT, cwd: s.projectPath, at });
+    s.sessions.ensureExternal({ id: "hook-2", harness: "claude", project: PROJECT, cwd: s.projectPath, at, title: "My name" });
+    s.harness.seed({ sessionId: "hook-1", cwd: s.projectPath, title: "Fix the login redirect" });
+    s.harness.seed({ sessionId: "hook-2", cwd: s.projectPath, title: "Generated" });
+    await s.sessions.discover(PROJECT);
+    assert.equal(s.sessions.get("hook-1")!.title, "Fix the login redirect");
+    assert.equal(s.sessions.get("hook-2")!.title, "My name");
+  } finally {
+    await s.sessions.close();
+  }
+});
+
 test("discovery timer runs over projects.list()", async () => {
   const s = setup({ projectsRescanMs: 20 });
   try {
