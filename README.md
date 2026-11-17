@@ -35,9 +35,9 @@ Odin adds the parts those tools don't have:
 
 ![Odin home: the composer above a list of in-progress sessions, one paused for permission](docs/assets/screenshots/home.png)
 
-**Session**: streaming chat with tool calls, terminal output, and a details panel for context, changes, background tasks and plan.
+**Session**: streaming chat with tool calls, terminal output, and a details panel for context, changes, background tasks and plan. Open the workspace files beside the chat to browse and preview them.
 
-![A running session with tool calls, a failed build and the details side panel](docs/assets/screenshots/session.png)
+![A session with streaming chat, the details panel, and the workspace file browser with a Markdown file previewed](docs/assets/screenshots/session-file-preview.png)
 
 **Project overview**: time, cost, lines changed and commits per project, with a chart over 7 days, 30 days or 12 weeks.
 
