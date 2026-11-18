@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue'
+import { ref, watch, nextTick, onMounted } from 'vue'
 
 const props = withDefaults(
   defineProps<{
@@ -13,6 +13,10 @@ const props = withDefaults(
 const open = defineModel<boolean>('open', { required: true })
 const el = ref<HTMLDialogElement>()
 
+// A dialog mounted already open (a parent's v-if) opens too; the watch below only sees later changes.
+onMounted(() => {
+  if (open.value) el.value?.showModal()
+})
 watch(open, async v => {
   await nextTick()
   if (v)

@@ -1,0 +1,1 @@
+- Files: rename, move, duplicate and delete files and folders from the list view, from the preview panel or with F2 and Delete. Drag a row onto a folder to move it. Deleted files go to a Trash you can restore from for 7 days, with an Undo on the toast.

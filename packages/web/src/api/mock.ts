@@ -5,6 +5,8 @@
 import type {
   FileMatch,
   FileSearchResult,
+  FileTrashEntry,
+  ProjectMapFile,
   AssetFiles,
   AssetKind,
   ImportPreview,
@@ -348,6 +350,20 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
 
   const notFound = (what: string): never => {
     throw new ApiRequestError(404, `${what} not found`)
+  }
+  // The Files tab's mutable copy of the mock map, and the mock trash.
+  let mapFiles = clone(MOCK_FILE_MAP.files)
+  const trashed: { entry: FileTrashEntry; files: ProjectMapFile[] }[] = []
+  /** Rename/move a file or every file under a folder; 409 when the target is taken. */
+  function relocateFiles(from: string, to: string): string {
+    const affected = mapFiles.filter(f => f.path === from || f.path.startsWith(`${from}/`))
+    if (!affected.length) throw new ApiRequestError(404, `${from} no longer exists`)
+    if (to === from) throw new ApiRequestError(409, `${from} is already there`)
+    if (to.startsWith(`${from}/`)) throw new ApiRequestError(400, `Can't move ${from} into itself`)
+    if (mapFiles.some(f => f.path === to || f.path.startsWith(`${to}/`)))
+      throw new ApiRequestError(409, `"${to.split('/').pop()}" already exists there`)
+    for (const f of affected) f.path = to + f.path.slice(from.length)
+    return to
   }
   const projectOf = (name: string) =>
     db.projects.find(p => p.name === name) ?? notFound(`project ${name}`)
@@ -818,7 +834,7 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
     readProjectFile: (name, path) =>
       respond(() => {
         projectOf(name)
-        const known = MOCK_FILE_MAP.files.find(f => f.path === path)
+        const known = mapFiles.find(f => f.path === path)
         if (!known) throw new ApiRequestError(404, 'File not found')
         const content = mockFileText(path)
         return { path, content, version: fakeHash(content), size: known.size }
@@ -826,7 +842,79 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
     getProjectFileMap: name =>
       respond(() => {
         projectOf(name)
-        return MOCK_FILE_MAP
+        return clone({ ...MOCK_FILE_MAP, files: mapFiles })
+      }),
+    renameProjectFile: (name, path, newName) =>
+      respond(() => {
+        projectOf(name)
+        const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/') + 1) : ''
+        return { path: relocateFiles(path, dir + newName.trim()) }
+      }),
+    moveProjectFiles: (name, paths, to) =>
+      respond(() => {
+        projectOf(name)
+        const moved = paths.map(from => ({
+          from,
+          to: relocateFiles(from, (to ? `${to}/` : '') + from.split('/').pop()!),
+        }))
+        return { moved }
+      }),
+    duplicateProjectFile: (name, path) =>
+      respond(() => {
+        projectOf(name)
+        const known = mapFiles.find(f => f.path === path)
+        if (!known) throw new ApiRequestError(404, `${path} no longer exists`)
+        const dot = path.lastIndexOf('.')
+        const stem = dot > path.lastIndexOf('/') ? path.slice(0, dot) : path
+        const ext = dot > path.lastIndexOf('/') ? path.slice(dot) : ''
+        let copy = `${stem} copy${ext}`
+        for (let n = 2; mapFiles.some(f => f.path === copy); n++) copy = `${stem} copy ${n}${ext}`
+        mapFiles.push({ ...known, path: copy })
+        return { path: copy }
+      }),
+    trashProjectFiles: (name, paths) =>
+      respond(() => {
+        projectOf(name)
+        return paths.map(path => {
+          const inside = mapFiles.filter(f => f.path === path || f.path.startsWith(`${path}/`))
+          if (!inside.length) throw new ApiRequestError(404, `${path} no longer exists`)
+          const entry: FileTrashEntry = {
+            id: `trash-${++seq}`,
+            path,
+            kind: inside.length === 1 && inside[0]!.path === path ? 'file' : 'directory',
+            size: inside.reduce((n, f) => n + f.size, 0),
+            trashedAt: nowIso(),
+          }
+          trashed.push({ entry, files: clone(inside) })
+          mapFiles = mapFiles.filter(f => !inside.includes(f))
+          return entry
+        })
+      }),
+    listProjectTrash: name =>
+      respond(() => {
+        projectOf(name)
+        return trashed.map(t => clone(t.entry)).reverse()
+      }),
+    restoreProjectTrash: (name, id) =>
+      respond(() => {
+        projectOf(name)
+        const i = trashed.findIndex(t => t.entry.id === id)
+        if (i < 0) throw new ApiRequestError(404, 'That item is no longer in the trash')
+        const { entry, files } = trashed[i]!
+        if (mapFiles.some(f => files.some(t => t.path === f.path)))
+          throw new ApiRequestError(409, `${entry.path} already exists; rename or move it first`)
+        mapFiles.push(...files)
+        trashed.splice(i, 1)
+        return { path: entry.path }
+      }),
+    purgeProjectTrash: (name, id) =>
+      respond(() => {
+        projectOf(name)
+        if (id === undefined) trashed.length = 0
+        else {
+          const i = trashed.findIndex(t => t.entry.id === id)
+          if (i >= 0) trashed.splice(i, 1)
+        }
       }),
     listSessionFiles: (id, path = '') =>
       respond(() => {

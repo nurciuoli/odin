@@ -117,6 +117,21 @@ export function createHttpApi(options: HttpApiOptions = {}): Api {
     searchSessionFiles: (id, q) => get(`${session(id)}/files/search${query({ q })}`),
     readProjectFile: (name, path) => get(`${project(name)}/file${query({ path })}`),
     getProjectFileMap: name => get(`${project(name)}/files/map`),
+    renameProjectFile: (name, path, newName) =>
+      send('POST', `${project(name)}/files/rename`, { path, name: newName }),
+    moveProjectFiles: (name, paths, to) =>
+      send('POST', `${project(name)}/files/move`, { paths, to }),
+    duplicateProjectFile: (name, path) =>
+      send('POST', `${project(name)}/files/duplicate`, { path }),
+    trashProjectFiles: (name, paths) => send('POST', `${project(name)}/files/trash`, { paths }),
+    listProjectTrash: name => get(`${project(name)}/files/trash`),
+    restoreProjectTrash: (name, id) =>
+      send('POST', `${project(name)}/files/trash/${encodeURIComponent(id)}/restore`, {}),
+    purgeProjectTrash: (name, id) =>
+      send(
+        'DELETE',
+        `${project(name)}/files/trash${id === undefined ? '' : `/${encodeURIComponent(id)}`}`,
+      ),
     searchProjectFiles: (name, q) => get(`${project(name)}/files/search${query({ q })}`),
     readSessionFile: (id, path) => get(`${session(id)}/file${query({ path })}`),
     createSessionFile: (id, path, content) =>
