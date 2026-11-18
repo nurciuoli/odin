@@ -398,6 +398,15 @@ export function fakeHarness(options: FakeHarnessOptions = {}): FakeHarness {
       store.set(newId, { info: { ...s.info, sessionId: newId, createdAt: now().toISOString(), updatedAt: now().toISOString() }, entries: s.entries.map((e) => ({ ...e })) });
       return newId;
     },
+    async forkAt(sessionId, messageId) {
+      const s = findStored(sessionId);
+      if (!s) throw new Error(`unknown session ${sessionId}`);
+      const at = s.entries.findIndex((e) => e.id === messageId && e.kind === "user");
+      if (at < 0) throw new Error(`${messageId} is not a user message of session ${sessionId}`);
+      const newId = randomUUID();
+      store.set(newId, { info: { ...s.info, sessionId: newId, createdAt: now().toISOString(), updatedAt: now().toISOString() }, entries: s.entries.slice(0, at).map((e) => ({ ...e })) });
+      return newId;
+    },
     async delete(sessionId) {
       store.delete(sessionId);
     },

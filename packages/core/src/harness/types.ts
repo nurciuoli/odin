@@ -138,6 +138,11 @@ export interface Harness {
   rename(sessionId: string, title: string, projectPath?: string): Promise<void>;
   /** Copy a stored session into a new one without running it. Returns the new id. */
   fork(sessionId: string, projectPath?: string): Promise<string>;
+  /**
+   * Like `fork`, but the copy ends just before the user message `messageId` (an id from `messages()`). Throws when the
+   * message is not a user message of that session. Present only when `capabilities.checkpoints.forkAt` is true.
+   */
+  forkAt?(sessionId: string, messageId: string, projectPath?: string): Promise<string>;
   delete(sessionId: string, projectPath?: string): Promise<void>;
   models(): Promise<ModelInfo[]>;
 }

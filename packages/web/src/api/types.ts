@@ -172,6 +172,18 @@ export interface Api {
   interruptSession(id: string): Promise<void>
   endSession(id: string): Promise<Session>
   forkSession(id: string, req: ForkSessionRequest): Promise<Session>
+  // checkpoints (docs/contracts.md#checkpoints)
+  listCheckpoints(id: string): Promise<import('@odin/shared/api').Checkpoint[]>
+  checkpointDiff(
+    id: string,
+    checkpointId: string,
+    against?: 'turn' | 'current',
+  ): Promise<import('@odin/shared/api').CheckpointDiff>
+  restoreCheckpoint(
+    id: string,
+    checkpointId: string,
+    req: import('@odin/shared/api').RestoreCheckpointRequest,
+  ): Promise<import('@odin/shared/api').RestoreCheckpointResult>
   listModels(harness?: string): Promise<ModelInfo[]>
 
   // artifacts
