@@ -1,13 +1,15 @@
 <script setup lang="ts">
-// Rewind to a checkpoint: pick what happens (branch, rewind this session, restore files, fork the conversation), see
-// which files would change, confirm. The server does the work (restoreCheckpoint, forkSession); this collects the
-// choice and reports the outcome. Destructive modes say so and are never the default.
+// Go back to a checkpoint. A timeline of the session's turns shows where you are going back to and what would be left
+// behind; four cards say what happens (branch, rewind, restore files, fork); a one-line result says exactly what you
+// get; the files that would change sit under a disclosure. The server does the work (restoreCheckpoint, forkSession).
+// Destructive modes say so and are never the default.
 import { computed, ref, watch } from 'vue'
 import type { Checkpoint, CheckpointDiff, RestoreCheckpointResult, Session } from '@odin/shared/api'
 import { useApi } from '@/api'
 import { IuButton } from '@/components/Button'
 import { IuCallout } from '@/components/Callout'
-import { IuRadio } from '@/components/Fields'
+import { IuIcon } from '@/components/Icon'
+import type { IconName } from '@/components/Icon'
 import { IuDialog } from '@/components/Modal'
 
 type Mode = 'branch' | 'rewind' | 'files' | 'fork'
@@ -15,6 +17,8 @@ type Mode = 'branch' | 'rewind' | 'files' | 'fork'
 const props = defineProps<{
   sessionId: string
   checkpoint: Checkpoint | null
+  /** All of the session's checkpoints, for the timeline. */
+  checkpoints: Checkpoint[]
   /** The user message the checkpoint precedes, for the heading. */
   messageText: string
   /** The harness can fork a stored session at a message. */
@@ -25,7 +29,7 @@ const open = defineModel<boolean>('open', { required: true })
 const emit = defineEmits<{
   /** A new session exists (branch, fork or conversation rewind): go to it. */
   forked: [session: Session]
-  /** Files were restored in this session; `undoCheckpointId` undoes it. */
+  /** The restore finished; `undoCheckpointId` undoes a files restore. */
   restored: [result: RestoreCheckpointResult]
 }>()
 
@@ -38,7 +42,7 @@ const error = ref<string | null>(null)
 
 const hasFiles = computed(() => props.checkpoint?.snapshot === 'ok')
 const first = computed(() => (props.checkpoint?.turn ?? 0) <= 1)
-// What the harness and the checkpoint allow. The first message has nothing before it to cut at.
+// The first message has nothing before it to cut the conversation at.
 const canCut = computed(() => props.forkAt && !first.value)
 const available = computed<Record<Mode, boolean>>(() => ({
   branch: canCut.value,
@@ -68,33 +72,78 @@ watch(
   { immediate: true },
 )
 
+// ── the timeline: one dot per turn; the chosen turn is the point you go back to ──
+const turns = computed(() =>
+  props.checkpoints.filter(c => c.kind === 'turn').sort((a, b) => a.turn - b.turn),
+)
+const at = computed(() => props.checkpoint?.turn ?? 0)
+const kept = computed(() => Math.max(0, at.value - 1))
+const dropped = computed(() => Math.max(0, turns.value.length - kept.value))
+/** Whether the conversation after the chosen point stays with the result of this mode. */
+const cutsConversation = computed(() => mode.value !== 'files')
+function dotState(turn: number): 'kept' | 'chosen' | 'later' {
+  if (turn < at.value) return 'kept'
+  if (turn === at.value) return 'chosen'
+  return 'later'
+}
+
+const turnsWord = (n: number) => `${n} ${n === 1 ? 'turn' : 'turns'}`
+const outcome = computed(() => {
+  const k = turnsWord(kept.value)
+  switch (mode.value) {
+    case 'branch':
+      return `A new session with ${k}${hasFiles.value ? ', in its own worktree with the files from then' : ''}. This session keeps all ${turnsWord(turns.value.length)}.`
+    case 'rewind':
+      return `Continue in a new session with ${k}${hasFiles.value ? ' and the project files put back' : ''}. This session is archived, not deleted.`
+    case 'files':
+      return `The project files go back to before turn ${at.value}. The conversation keeps all ${turnsWord(turns.value.length)}, and the current files are saved first so you can undo.`
+    default:
+      return `A new session with ${k}. The files stay as they are now.`
+  }
+})
+
+const cards: { mode: Mode; icon: IconName; title: string; blurb: string; action: string }[] = [
+  {
+    mode: 'branch',
+    icon: 'gitBranch',
+    title: 'Branch from here',
+    blurb: 'Try another way, keep this one',
+    action: 'Branch',
+  },
+  {
+    mode: 'rewind',
+    icon: 'history',
+    title: 'Rewind this session',
+    blurb: 'Undo the turns after this point',
+    action: 'Rewind',
+  },
+  {
+    mode: 'files',
+    icon: 'file',
+    title: 'Restore files only',
+    blurb: 'Keep the chat, put the files back',
+    action: 'Restore files',
+  },
+  {
+    mode: 'fork',
+    icon: 'message',
+    title: 'Fork the chat only',
+    blurb: 'Cut the chat here, leave files alone',
+    action: 'Fork',
+  },
+]
+const card = computed(() => cards.find(c => c.mode === mode.value)!)
+const whyNot = (m: Mode) =>
+  m === 'files'
+    ? 'This checkpoint has no saved files.'
+    : !props.forkAt
+      ? 'This harness cannot cut a conversation at a message.'
+      : 'The first message has nothing before it.'
+
 const SHOWN = 8
 const verb = { added: 'recreated', modified: 'reverted', removed: 'deleted' } as const
 const shownFiles = computed(() => diff.value?.files.slice(0, SHOWN) ?? [])
 const moreFiles = computed(() => (diff.value ? diff.value.files.length - SHOWN : 0))
-
-const labels: Record<Mode, { title: string; body: string; action: string }> = {
-  branch: {
-    title: 'Branch from here',
-    body: 'A new session in its own worktree, with the conversation and files as they were. This session is not touched.',
-    action: 'Branch',
-  },
-  rewind: {
-    title: 'Rewind this session',
-    body: 'Continue in a new session cut at this message and put the project files back. This session is archived, not deleted.',
-    action: 'Rewind',
-  },
-  files: {
-    title: 'Restore files only',
-    body: 'Put the project files back as they were, and keep the conversation as it is. The current files are saved first, so you can undo.',
-    action: 'Restore files',
-  },
-  fork: {
-    title: 'Fork the conversation only',
-    body: 'A new session cut at this message, leaving the files as they are now.',
-    action: 'Fork',
-  },
-}
 
 async function confirm() {
   const cp = props.checkpoint
@@ -131,36 +180,71 @@ async function confirm() {
 </script>
 
 <template>
-  <IuDialog v-model:open="open" size="md">
+  <IuDialog v-model:open="open" size="lg">
     <template #header>
-      <h2 class="rewind__title">Rewind to before this message</h2>
+      <h2 class="rewind__title">Go back to before turn {{ at }}</h2>
     </template>
     <form class="rewind" @submit.prevent="confirm">
       <blockquote class="rewind__message">{{ messageText }}</blockquote>
-      <fieldset class="rewind__modes">
-        <legend class="rewind__legend">What should happen?</legend>
-        <div
-          v-for="m in ['branch', 'rewind', 'files', 'fork'] as Mode[]"
-          :key="m"
-          class="rewind__mode"
+
+      <figure class="rewind__timeline" :aria-label="`Turn ${at} of ${turns.length}`">
+        <ol class="rewind__track">
+          <li
+            v-for="t in turns"
+            :key="t.id"
+            class="rewind__stop"
+            :class="[
+              `rewind__stop--${dotState(t.turn)}`,
+              { 'rewind__stop--dim': dotState(t.turn) !== 'kept' && cutsConversation },
+            ]"
+            :aria-current="t.turn === at ? 'step' : undefined"
+          >
+            <span class="rewind__dot" />
+            <span class="rewind__stop-label">{{ t.turn }}</span>
+          </li>
+        </ol>
+        <figcaption class="rewind__caption">
+          <template v-if="cutsConversation"
+            >Turns {{ at }}{{ dropped > 1 ? `–${turns.length}` : '' }} would be left
+            behind.</template
+          >
+          <template v-else>Only the files go back; every turn stays.</template>
+        </figcaption>
+      </figure>
+
+      <div class="rewind__cards" role="radiogroup" aria-label="What should happen?">
+        <label
+          v-for="c in cards"
+          :key="c.mode"
+          class="rewind__card"
+          :class="{
+            'rewind__card--on': mode === c.mode,
+            'rewind__card--off': !available[c.mode],
+          }"
+          :title="available[c.mode] ? undefined : whyNot(c.mode)"
         >
-          <IuRadio v-model="mode" name="rewind-mode" :value="m" :disabled="!available[m]">
-            <span class="rewind__mode-title">{{ labels[m].title }}</span>
-          </IuRadio>
-          <p class="rewind__mode-body">
-            {{ labels[m].body }}
-            <template v-if="!available[m]">
-              <em v-if="m === 'files'"> Not available: this checkpoint has no saved files.</em>
-              <em v-else-if="!forkAt">
-                Not available: this harness cannot cut a conversation at a message.</em
-              >
-              <em v-else> Not available: the first message has nothing before it.</em>
-            </template>
-          </p>
-        </div>
-      </fieldset>
-      <section v-if="restoresFiles" class="rewind__files" aria-live="polite">
-        <h3 class="rewind__files-title">In the project folder</h3>
+          <input
+            v-model="mode"
+            class="rewind__radio"
+            type="radio"
+            name="rewind-mode"
+            :value="c.mode"
+            :disabled="!available[c.mode]"
+          />
+          <IuIcon :name="c.icon" :size="18" class="rewind__card-icon" />
+          <span class="rewind__card-title">{{ c.title }}</span>
+          <span class="rewind__card-blurb">{{ available[c.mode] ? c.blurb : whyNot(c.mode) }}</span>
+        </label>
+      </div>
+
+      <p class="rewind__outcome" aria-live="polite">{{ outcome }}</p>
+
+      <details v-if="restoresFiles" class="rewind__files">
+        <summary>
+          Files that change<template v-if="diff">
+            ({{ diff.files.length }}{{ diff.truncated ? '+' : '' }})</template
+          >
+        </summary>
         <p v-if="diffError" class="rewind__muted">Could not compare the files: {{ diffError }}</p>
         <p v-else-if="!diff" class="rewind__muted">Comparing files…</p>
         <p v-else-if="!diff.files.length" class="rewind__muted">
@@ -173,11 +257,9 @@ async function confirm() {
               <span class="rewind__verb">{{ verb[f.status] }}</span>
             </li>
           </ul>
-          <p v-if="moreFiles > 0 || diff.truncated" class="rewind__muted">
-            and {{ moreFiles > 0 ? moreFiles : 'more' }}{{ diff.truncated ? '+' : '' }} more
-          </p>
+          <p v-if="moreFiles > 0" class="rewind__muted">and {{ moreFiles }} more</p>
         </template>
-      </section>
+      </details>
       <IuCallout v-if="error" intent="danger" variant="inline" live>{{ error }}</IuCallout>
     </form>
     <template #footer>
@@ -190,7 +272,7 @@ async function confirm() {
         :loading="working"
         :disabled="!available[mode]"
         @click="confirm"
-        >{{ labels[mode].action }}</IuButton
+        >{{ card.action }}</IuButton
       >
     </template>
   </IuDialog>
@@ -205,56 +287,155 @@ async function confirm() {
 .rewind {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 .rewind__message {
   margin: 0;
-  padding: 6px 10px;
-  border-left: 2px solid var(--iu-border);
   color: var(--iu-text-2);
   font-size: var(--iu-font-size-13);
   display: -webkit-box;
-  -webkit-line-clamp: 3;
-  line-clamp: 3;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   overflow-wrap: anywhere;
 }
-.rewind__modes {
+.rewind__timeline {
+  margin: 0;
+  padding: 14px 16px 12px;
+  border: 1px solid var(--iu-border);
+  border-radius: var(--iu-radius-lg);
+  background: var(--iu-hover);
+}
+.rewind__track {
   margin: 0;
   padding: 0;
-  border: 0;
+  list-style: none;
+  display: flex;
+  align-items: flex-start;
+  overflow-x: auto;
+}
+.rewind__stop {
+  position: relative;
+  flex: 1 1 0;
+  min-inline-size: 28px;
   display: flex;
   flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+/* the line between dots; the first dot has none */
+.rewind__stop + .rewind__stop::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  inset-inline-end: 50%;
+  inline-size: 100%;
+  block-size: 2px;
+  background: var(--iu-border-strong);
+}
+.rewind__stop--dim + .rewind__stop--dim::before,
+.rewind__stop--chosen::before {
+  background: var(--iu-border);
+}
+.rewind__dot {
+  position: relative;
+  inline-size: 14px;
+  block-size: 14px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2px solid var(--iu-text-2);
+  background: var(--iu-text-2);
+}
+.rewind__stop--chosen .rewind__dot {
+  border-color: var(--iu-accent);
+  background: var(--iu-bg, var(--iu-hover));
+  box-shadow: 0 0 0 3px var(--iu-accent-wash);
+}
+.rewind__stop--dim:not(.rewind__stop--chosen) .rewind__dot {
+  border-color: var(--iu-border-strong);
+  background: transparent;
+}
+.rewind__stop-label {
+  font-size: var(--iu-font-size-11, var(--iu-font-size-12));
+  color: var(--iu-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.rewind__stop--chosen .rewind__stop-label {
+  color: var(--iu-text);
+}
+.rewind__caption {
+  margin-top: 10px;
+  font-size: var(--iu-font-size-12);
+  color: var(--iu-text-2);
+}
+.rewind__cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
-.rewind__legend {
-  padding: 0;
-  margin-bottom: 6px;
-  font-size: var(--iu-font-size-12);
-  color: var(--iu-text-muted);
+.rewind__card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  column-gap: 10px;
+  row-gap: 2px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid var(--iu-border);
+  border-radius: var(--iu-radius-lg);
+  cursor: pointer;
 }
-.rewind__mode-title {
-  font-weight: var(--iu-font-weight-medium);
+.rewind__card:hover {
+  background: var(--iu-hover);
 }
-.rewind__mode-body {
-  margin: 2px 0 0 26px;
+.rewind__card--on {
+  border-color: var(--iu-accent);
+  background: var(--iu-accent-wash);
+}
+.rewind__card:has(.rewind__radio:focus-visible) {
+  outline: 2px solid var(--iu-accent);
+  outline-offset: 2px;
+}
+.rewind__card--off {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.rewind__radio {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+.rewind__card-icon {
+  grid-row: 1 / 3;
+  color: var(--iu-text-2);
+}
+.rewind__card-title {
+  font-size: var(--iu-font-size-14);
+  font-weight: var(--iu-font-weight-semibold);
+}
+.rewind__card-blurb {
+  grid-column: 2;
   font-size: var(--iu-font-size-12);
   color: var(--iu-text-2);
+}
+.rewind__outcome {
+  margin: 0;
+  font-size: var(--iu-font-size-13);
+  color: var(--iu-text);
 }
 .rewind__files {
-  padding: 10px 12px;
-  border: 1px solid var(--iu-border);
-  border-radius: var(--iu-radius-md);
-}
-.rewind__files-title {
-  margin: 0 0 6px;
   font-size: var(--iu-font-size-12);
-  font-weight: var(--iu-font-weight-semibold);
   color: var(--iu-text-2);
 }
+.rewind__files summary {
+  cursor: pointer;
+  font-weight: var(--iu-font-weight-semibold);
+}
 .rewind__list {
-  margin: 0;
+  margin: 8px 0 0;
   padding: 0;
   list-style: none;
   display: flex;
@@ -265,7 +446,6 @@ async function confirm() {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  font-size: var(--iu-font-size-12);
 }
 .rewind__path {
   font-family: var(--iu-font-mono);
@@ -274,10 +454,14 @@ async function confirm() {
 .rewind__verb,
 .rewind__muted {
   color: var(--iu-text-muted);
-  font-size: var(--iu-font-size-12);
   flex: none;
 }
 .rewind__muted {
-  margin: 0;
+  margin: 6px 0 0;
+}
+@media (max-width: 560px) {
+  .rewind__cards {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

@@ -77,7 +77,9 @@ const { view, phase, error, load, setRecord, setQueue } = useSessionView(toRef(p
 const { toast } = useToast()
 const side = useSideThreads(toRef(props, 'id'))
 const sideThreads = side.threads
-const { byMessage: checkpointsByMessage } = useCheckpoints(toRef(props, 'id'))
+const { checkpoints: allCheckpoints, byMessage: checkpointsByMessage } = useCheckpoints(
+  toRef(props, 'id'),
+)
 
 const session = computed(() => view.value?.detail ?? null)
 // Opening a session reads it: Home stops listing it as finished-but-unopened (`app/seen.ts`). Updates that land while
@@ -837,6 +839,7 @@ function onDeleted() {
       v-model:open="rewindOpen"
       :session-id="id"
       :checkpoint="rewindFor"
+      :checkpoints="allCheckpoints"
       :message-text="rewindText"
       :fork-at="forkAt"
       @forked="onForked"

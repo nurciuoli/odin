@@ -135,6 +135,12 @@ const author = (): ChatAuthor => ({
   id: props.harness ?? 'claude',
 })
 
+/** " · 3 files changed" for the tooltip, or nothing while the turn runs. */
+function rewindNote(row: Row): string {
+  const cp = checkpointOf(row)
+  const summary = cp ? checkpointSummary(cp) : null
+  return summary ? ` (${summary})` : ''
+}
 const checkpointOf = (row: Row) =>
   row.kind === 'user' ? props.checkpoints?.get(row.id) : undefined
 
@@ -310,22 +316,19 @@ const WORKING = computed<ChatMessage>(() => ({
         :actions="row.kind === 'assistant' || row.kind === 'user'"
         :regenerate="false"
       >
-        <div v-if="checkpointOf(row)" class="session-thread__checkpoint">
-          <span class="session-thread__checkpoint-label"
-            >Checkpoint {{ checkpointOf(row)!.turn
-            }}<template v-if="checkpointSummary(checkpointOf(row)!)">
-              · {{ checkpointSummary(checkpointOf(row)!) }}</template
-            ></span
-          >
+        <template v-if="checkpointOf(row)" #actions>
           <IuButton
             class="session-thread__rewind"
             variant="ghost"
             size="sm"
-            :aria-label="`Rewind to before message ${checkpointOf(row)!.turn}`"
+            icon-only
+            :aria-label="`Rewind to before this message${rewindNote(row)}`"
+            :title="`Rewind to before this message${rewindNote(row)}`"
             @click="emit('rewind', checkpointOf(row)!)"
-            >Rewind…</IuButton
           >
-        </div>
+            <template #icon><IuIcon name="history" :size="14" /></template>
+          </IuButton>
+        </template>
       </IuMessage>
     </template>
     <IuMessage
@@ -352,27 +355,5 @@ const WORKING = computed<ChatMessage>(() => ({
 }
 .session-thread__card {
   margin-top: 6px;
-}
-.session-thread__checkpoint {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 4px;
-  font-size: var(--iu-font-size-12);
-  color: var(--iu-text-muted);
-}
-/* the action appears on hover or keyboard focus, like the message's own actions; the label stays */
-.session-thread__rewind {
-  opacity: 0;
-}
-.iu-message:hover .session-thread__rewind,
-.iu-message:focus-within .session-thread__rewind,
-.session-thread__rewind:focus-visible {
-  opacity: 1;
-}
-@media (hover: none) {
-  .session-thread__rewind {
-    opacity: 1;
-  }
 }
 </style>
