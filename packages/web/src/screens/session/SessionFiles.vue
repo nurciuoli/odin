@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // The workspace surface: a file browser above, and below it everything opened from it as documents in one tab strip.
 // A text file is edited here; a .ipynb opens as a notebook (its kernel is the file's), read-only while it opens.
+// "This session" heads the browser: the files the agent read or changed, newest first (fileActivity.ts).
 import {
   computed,
   defineAsyncComponent,
@@ -52,6 +53,7 @@ import {
   type OpenDoc,
 } from './documents'
 import { SURFACE } from './surface'
+import { touchedFiles, type CellRef, type FileTouch } from './fileActivity'
 
 const props = defineProps<{ session: SessionDetail }>()
 const emit = defineEmits<{ hide: []; 'open-environment': [] }>()
@@ -80,6 +82,18 @@ interface NotebookState {
   reading: boolean
   dirty: boolean
 }
+
+const touched = computed(() =>
+  touchedFiles(props.session.transcript, {
+    pending: props.session.pending,
+    running: props.session.state === 'running',
+    root: props.session.cwd,
+  }).filter(f => f.inside),
+)
+/** A cell to show in a notebook, per path; a new object asks the notebook again. */
+const touchLabel = (t?: FileTouch) =>
+  t ? (t.meta ? `${t.verb.done} · ${t.meta}` : t.verb.done) : ''
+const reveals = ref<Record<string, { cell: string }>>({})
 
 const listing = ref<SessionFileListing>({ path: '', entries: [], truncated: false })
 const listed = ref(false)
@@ -310,6 +324,27 @@ async function createOther() {
     otherBusy.value = false
   }
 }
+/** Open the notebook a kernel belongs to, scrolled to one of its cells. */
+async function openCell(target: CellRef) {
+  error.value = ''
+  let path = Object.entries(notebooks.value).find(
+    ([, nb]) => nb.kernel?.id === target.kernelId,
+  )?.[0]
+  if (!path) {
+    try {
+      path = (await api.getNotebook(target.kernelId)).kernel.path
+    } catch (e) {
+      error.value = message(e)
+      return
+    }
+  }
+  if (!path) {
+    error.value = 'That notebook could not be found.'
+    return
+  }
+  reveals.value[path] = { cell: target.cellId }
+  await openNotebookDoc(path)
+}
 /** Write `Untitled.ipynb` (or `Untitled-2.ipynb`, ...) in the folder on show, and open it. */
 async function newNotebook() {
   error.value = ''
@@ -447,7 +482,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', unload)
   window.removeEventListener('focus', refresh)
 })
-defineExpose({ open })
+defineExpose({ open, openCell })
 </script>
 
 <template>
@@ -476,6 +511,24 @@ defineExpose({ open })
         </button>
       </div>
       <div v-show="!sidebarCollapsed" class="session-files__sidebar-content">
+        <section v-if="touched.length" class="session-files__session" aria-label="This session">
+          <h3 class="session-files__section-title">This session</h3>
+          <ul class="session-files__touched">
+            <li v-for="file in touched" :key="file.path">
+              <button
+                type="button"
+                class="session-files__entry"
+                :class="{ 'session-files__entry--active': activePath === file.path }"
+                :title="file.path"
+                @click="open(file.path)"
+              >
+                <IuIcon :name="fileIcon(file.path)" :size="14" class="session-files__entry-icon" />
+                <span class="session-files__entry-name">{{ file.path }}</span>
+                <span class="session-files__entry-meta">{{ touchLabel(file.touches[0]) }}</span>
+              </button>
+            </li>
+          </ul>
+        </section>
         <div class="session-files__nav">
           <IuButton size="sm" variant="ghost" @click="browse()">Root</IuButton>
           <IuButton
@@ -674,6 +727,7 @@ defineExpose({ open })
               v-if="nb.phase === 'ready' && nb.kernel"
               :session="session"
               :kernel-id="nb.kernel.id"
+              :reveal="reveals[doc.ref.path] ?? null"
               @update:dirty="nb.dirty = $event"
               @close="close(doc)"
               @open-environment="emit('open-environment')"
@@ -896,6 +950,30 @@ defineExpose({ open })
 }
 .session-files__entry-icon {
   flex: none;
+  color: var(--iu-text-muted);
+}
+.session-files__session {
+  flex: none;
+  max-height: 40%;
+  overflow-y: auto;
+  padding: 6px 6px 4px;
+  border-bottom: 1px solid var(--iu-border-quiet);
+}
+.session-files__section-title {
+  margin: 0;
+  padding: 2px 8px 4px;
+  font-size: var(--iu-font-size-11);
+  font-weight: var(--iu-font-weight-medium);
+  color: var(--iu-text-muted);
+}
+.session-files__touched {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.session-files__entry-meta {
+  flex: none;
+  font-size: var(--iu-font-size-11);
   color: var(--iu-text-muted);
 }
 .session-files__entry-name {

@@ -3,6 +3,7 @@
 // commands, agents) as one rail inside an assistant turn (steps.ts, rail.ts, components/Rail). A step that posted an
 // artifact keeps a card under its line (the artifact itself shows in the artifact column; the card selects it there).
 // New content never takes focus; the list follows the bottom only while the reader is already there (IuMessageList).
+// A step that worked on a workspace file or a notebook cell offers to open it in the Files tab (fileActivity.ts).
 import { computed, ref } from 'vue'
 import type { TranscriptEntry } from '@odin/shared/harness'
 import { taskKey } from '@odin/shared/harness'
@@ -13,6 +14,8 @@ import { IuEmpty } from '@/components/States'
 import { IuRail } from '@/components/Rail'
 import { IuToolCall } from '@/components/ToolCall'
 import { IuButton } from '@/components/Button'
+import { IuIcon } from '@/components/Icon'
+import type { ToolCallView } from '@/components/ToolCall'
 import { harnessLabel } from '@/screens/shared/format'
 import ArtifactCard from './ArtifactCard.vue'
 import InjectedNotice from './InjectedNotice.vue'
@@ -30,6 +33,7 @@ import {
 } from './steps'
 import { railRun } from './rail'
 import { useElapsed } from './useElapsed'
+import { entryCell, entryFile, type CellRef } from './fileActivity'
 
 const props = withDefaults(
   defineProps<{
@@ -91,7 +95,32 @@ const rails = computed(() => {
 const emit = defineEmits<{
   'open-artifact': [id: number, version: number]
   'open-task': [id: string]
+  /** A step that worked on a file: open it in the Files tab (path relative to the working directory). */
+  'open-file': [path: string]
+  /** A step that ran or edited a notebook cell: open its notebook at that cell. */
+  'open-cell': [cell: CellRef]
 }>()
+
+// A step's file or notebook cell, when it has one: read from its transcript entry, else from the call's view.
+const toolEntries = computed(() => {
+  const out = new Map<string, Extract<TranscriptEntry, { kind: 'tool' }>>()
+  for (const e of props.entries ?? []) if (e.kind === 'tool') out.set(e.id, e)
+  return out
+})
+const asEntry = (call: ToolCallView): Extract<TranscriptEntry, { kind: 'tool' }> =>
+  toolEntries.value.get(call.id) ?? {
+    kind: 'tool',
+    id: call.id,
+    name: call.name,
+    input: call.input,
+    ...(call.result
+      ? { result: { ok: true, text: call.result.text, truncated: !!call.result.truncated } }
+      : {}),
+    at: null,
+    parentToolUseId: null,
+  }
+const stepFile = (call: ToolCallView) => entryFile(asEntry(call), props.root)
+const stepCell = (call: ToolCallView) => entryCell(asEntry(call))
 
 const YOU: ChatAuthor = { name: 'You', kind: 'person', id: 'you' }
 const author = (): ChatAuthor => ({
@@ -216,6 +245,30 @@ const WORKING = computed<ChatMessage>(() => ({
                 @click="emit('open-task', taskKey(r.task))"
                 >Open agent</IuButton
               >
+              <template v-else-if="r?.kind === 'tool'">
+                <IuButton
+                  v-if="stepFile(r.call)"
+                  size="sm"
+                  variant="ghost"
+                  icon-only
+                  :aria-label="`Open ${stepFile(r.call)} in Files`"
+                  title="Open in Files"
+                  @click="emit('open-file', stepFile(r.call)!)"
+                >
+                  <template #icon><IuIcon name="panelRight" :size="14" /></template>
+                </IuButton>
+                <IuButton
+                  v-else-if="stepCell(r.call)"
+                  size="sm"
+                  variant="ghost"
+                  icon-only
+                  aria-label="Open this notebook cell in Files"
+                  title="Open cell in Files"
+                  @click="emit('open-cell', stepCell(r.call)!)"
+                >
+                  <template #icon><IuIcon name="panelRight" :size="14" /></template>
+                </IuButton>
+              </template>
             </template>
           </template>
           <template #after="{ step }">

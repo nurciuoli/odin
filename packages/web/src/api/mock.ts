@@ -683,6 +683,14 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
     'data/results.csv':
       'id,name,status\n00123,First experiment,complete\n00456,"Second, larger experiment",pending\n',
     'src/example.ts': 'export const greeting = "Hello Odin"\n',
+    // files the running session's transcript reads and edits, so its "This session" list opens them
+    'packages/shared/src/transcript.ts':
+      '// Folding live harness events into a transcript.\nexport function applyHarnessEvent() {}\n',
+    'packages/web/src/screens/session/SessionScreen.vue':
+      '<script setup lang="ts">\n// The session screen.\n</script>\n',
+    'packages/web/src/screens/session/SessionSide.vue':
+      '<script setup lang="ts">\n// The side column.\n</script>\n',
+    'packages/web/src/app/router.ts': "export const routes = [{ path: '/s/:id' }]\n",
     'analysis.ipynb': JSON.stringify({
       cells: [
         {

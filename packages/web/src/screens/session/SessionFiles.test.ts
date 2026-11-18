@@ -20,6 +20,43 @@ beforeAll(() => {
 })
 
 describe('SessionFiles', () => {
+  it('lists the files this session touched, newest first, and opens one', async () => {
+    const api = createMockApi()
+    const base = await api.getSession(FIXTURE_SESSION_IDS.idle)
+    const tool = (id: string, name: string, file: string) => ({
+      kind: 'tool' as const,
+      id,
+      name,
+      input: { file_path: `${base.cwd}/${file}`, old_string: 'a', new_string: 'b' },
+      result: { ok: true, text: '', truncated: false },
+      at: null,
+      parentToolUseId: null,
+    })
+    const session = {
+      ...base,
+      transcript: [tool('1', 'Read', 'a.md'), tool('2', 'Edit', 'b.md')],
+    }
+    const read = vi.fn(async (_id: string, path: string) => ({
+      path,
+      content: 'x',
+      version: 'v1',
+      size: 1,
+    }))
+    api.readSessionFile = read
+    const wrapper = mount(SessionFiles, {
+      props: { session },
+      global: { provide: { [API_KEY as symbol]: api }, stubs: { IuMarkdownEditor: editorStub } },
+    })
+    await flushPromises()
+    const list = wrapper.find('[aria-label="This session"]')
+    const names = list.findAll('.session-files__entry-name').map(n => n.text())
+    expect(names).toEqual(['b.md', 'a.md'])
+    expect(list.text()).toContain('Edited')
+    await list.findAll('button')[1]!.trigger('click')
+    await flushPromises()
+    expect(read).toHaveBeenCalledWith(session.id, 'a.md')
+    wrapper.unmount()
+  })
   it('adds selected CSV rows and original references to the existing composer draft', async () => {
     const api = createMockApi()
     const session = await api.getSession(FIXTURE_SESSION_IDS.idle)
@@ -137,8 +174,10 @@ describe('SessionFiles', () => {
     const tabs = wrapper.findAll('[role="tab"]')
     expect(tabs.map(t => t.attributes('aria-label'))).toEqual(['README.md', 'analysis.ipynb'])
     expect(tabs[1]!.attributes('aria-selected')).toBe('true')
-    await vi.waitFor(() =>
-      expect(wrapper.findComponent({ name: 'NotebookDocument' }).exists()).toBe(true),
+    // NotebookDocument is an async chunk: under a loaded test run its first import can take over a second
+    await vi.waitFor(
+      () => expect(wrapper.findComponent({ name: 'NotebookDocument' }).exists()).toBe(true),
+      { timeout: 5000 },
     )
     expect(wrapper.findAll('button button')).toHaveLength(0)
     wrapper.unmount()
