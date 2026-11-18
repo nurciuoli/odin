@@ -635,6 +635,7 @@ function onDeleted() {
                 @updated="setRecord"
                 :session-id="session.id"
                 :project="session.project"
+                :projects="session.projects"
                 :state="session.state"
                 :slash-commands="view.detail.slashCommands"
                 :context="context"

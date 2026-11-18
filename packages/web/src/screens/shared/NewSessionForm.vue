@@ -20,6 +20,7 @@ import { IuCallout } from '@/components/Callout'
 import type { Attachment as ChatAttachment } from '@/components/Chat'
 import { IuComposer } from '@/components/Composer'
 import { IuIcon } from '@/components/Icon'
+import type { MenuItem } from '@/components/Menu'
 import { useToast } from '@/components/Toast'
 import { attachmentProblem, messageProblem, readAttachment } from '@/screens/session/attachments'
 import ComposerChoice from './ComposerChoice.vue'
@@ -407,6 +408,17 @@ async function start(
   }
 }
 
+// Projects can be added to a session once it exists (its composer offers it); a new session picks them above.
+const addActions: MenuItem[] = [
+  {
+    id: 'add-project',
+    label: 'Add project',
+    icon: 'folder',
+    description: 'Available once the session has started',
+    disabled: true,
+  },
+]
+
 const modEnter = keyLabel('Mod+Enter')
 
 function focus() {
@@ -431,6 +443,15 @@ defineExpose({ focus })
         :options="harnessOptions"
         :disabled="starting || loadingDefaults"
       />
+      <ComposerWhere
+        v-model:worktree="form.worktree"
+        v-model:branch="form.branch"
+        v-model:open="whereOpen"
+        :prompt="form.prompt"
+        :recent-prefixes="recentPrefixes"
+        :shortcut="whereKeys"
+        :disabled="starting || loadingDefaults"
+      />
     </div>
     <IuComposer
       v-model="form.prompt"
@@ -448,6 +469,7 @@ defineExpose({ focus })
       alt-submit
       @submit="start($event, backgroundDefault)"
       @submit-alt="start($event, !backgroundDefault)"
+      :actions="addActions"
       @attach="onAttach"
       @cycle="cycleMode"
     >
@@ -463,15 +485,6 @@ defineExpose({ focus })
           <template #icon><IuIcon name="lock" :size="14" /></template>
           {{ modeLabel }}
         </IuButton>
-        <ComposerWhere
-          v-model:worktree="form.worktree"
-          v-model:branch="form.branch"
-          v-model:open="whereOpen"
-          :prompt="form.prompt"
-          :recent-prefixes="recentPrefixes"
-          :shortcut="whereKeys"
-          :disabled="starting || loadingDefaults"
-        />
       </template>
       <template #hint-start>⇧⇥ change mode</template>
       <template #hint

@@ -17,7 +17,7 @@
 // as the whole message sends the draft as a side thread (a fork with `aside: true`) instead of to this session.
 // `aside` hands the new side session to the screen, which shows it in the preview pane; focus stays here.
 import { effortChoices, asEffort, pickerExtras } from '@/screens/shared/effort'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type {
   Attachment,
   ModelInfo,
@@ -36,6 +36,8 @@ import { IuComposer, IuComposerSurface } from '@/components/Composer'
 import { IuButton } from '@/components/Button'
 import { IuCallout } from '@/components/Callout'
 import { IuIcon } from '@/components/Icon'
+import type { MenuItem } from '@/components/Menu'
+import { PROJECTS_KEY } from '@/app/projects'
 import { harnessLabel, PERMISSION_MODE_LABELS } from '@/screens/shared/format'
 import { useToast } from '@/components/Toast'
 import { attachmentProblem, messageProblem, readAttachment } from './attachments'
@@ -61,6 +63,8 @@ const props = withDefaults(
     sessionId: string
     /** The session's project, for `/clear`. */
     project?: string | null
+    /** Every project the session can reach (its working project first); the + menu offers the rest. */
+    projects?: string[]
     harness?: string
     state: SessionState
     effort?: import('@odin/shared/api').Effort | null
@@ -84,6 +88,7 @@ const props = withDefaults(
   {
     slashCommands: () => [],
     project: null,
+    projects: () => [],
     harness: 'claude',
     replaced: false,
     replacementKey: null,
@@ -109,6 +114,53 @@ const emit = defineEmits<{
 const api = useApi()
 const router = useRouter()
 const { toast } = useToast()
+
+// optional: a composer outside the app shell (a side thread, tests) just has no projects to offer
+const store = inject(PROJECTS_KEY, null)
+// Adding a project changes what the harness process is started with, so it waits for the turn to end.
+const addActions = computed<MenuItem[]>(() => {
+  const rest = (store?.projects.value ?? []).filter(
+    p => !p.missing && p.name !== props.project && !props.projects.includes(p.name),
+  )
+  const busy = props.state === 'running' || props.state === 'waiting'
+  return [
+    {
+      id: 'add-project',
+      label: 'Add project',
+      icon: 'folder',
+      description: busy
+        ? 'Available when the current turn ends'
+        : rest.length
+          ? undefined
+          : 'Every project is already in this session',
+      disabled: busy || !rest.length,
+      items: rest.map(p => ({ id: `project:${p.name}`, label: p.title })),
+    },
+  ]
+})
+async function onAction(id: string) {
+  if (id.startsWith('project:')) await addProject(id.slice(8))
+}
+async function addProject(name: string) {
+  if (updating.value) return
+  updating.value = true
+  try {
+    emit('updated', await api.updateSession(props.sessionId, { addProjects: [name] }))
+    toast({
+      title: `Added ${store?.projects.value.find(p => p.name === name)?.title ?? name}`,
+      description: 'The next message can use it.',
+      intent: 'success',
+    })
+  } catch (e) {
+    toast({
+      title: "Couldn't add the project",
+      description: e instanceof Error ? e.message : String(e),
+      intent: 'danger',
+    })
+  } finally {
+    updating.value = false
+  }
+}
 
 const effortOptions = computed(() => effortChoices(props.models, props.model))
 const updating = ref(false)
@@ -754,7 +806,9 @@ function onTakeoverBlur(e: FocusEvent) {
             :stopping="interrupting"
             stop-label="Interrupt"
             @submit="onSubmit"
+            :actions="addActions"
             @attach="onAttach"
+            @action="onAction"
             @stop="interrupt"
           >
             <template #controls>
