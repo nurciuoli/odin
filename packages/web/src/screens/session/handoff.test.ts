@@ -45,7 +45,7 @@ it('runs a full command without any card, and says what went wrong otherwise', a
   expect(handoffCard.value).toBeNull()
 })
 
-it('bare /handoff shows a question card: pick a harness, then a model, then it hands off', async () => {
+it('bare /handoff shows one line per harness; keys pick the harness, cycle its model and hand off', async () => {
   const api = createMockApi()
   const id = FIXTURE_SESSION_IDS.idle
   const session = await api.getSession(id)
@@ -56,20 +56,58 @@ it('bare /handoff shows a question card: pick a harness, then a model, then it h
     harness: session.harness,
   })
   await flushPromises()
-  expect(document.body.textContent).toContain('Hand this session off to which harness?')
-  const key = async (k: string) => {
+  expect(document.activeElement).toBe(document.querySelector('.handoff-card'))
+  const rows = () => [...document.querySelectorAll('.handoff-card__row')]
+  expect(rows().map(r => r.querySelector('.handoff-card__name')?.textContent)).toEqual([
+    'OpenCode',
+    'Codex',
+    'Grok',
+    'Antigravity',
+  ])
+  const key = async (k: string, init: KeyboardEventInit = {}) => {
     document
-      .querySelector('.iu-question-carousel')!
-      .dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }))
+      .querySelector('.handoff-card')!
+      .dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, ...init }))
     await flushPromises()
   }
+  const model = () => document.querySelector('.is-selected .handoff-card__modelname')?.textContent
   await key('2') // Codex
+  expect(rows()[1]!.classList.contains('is-selected')).toBe(true)
+  expect(model()).toBe('Default model')
+  await key('ArrowRight')
+  const first = model()
+  expect(first).not.toBe('Default model')
+  await key('Tab')
+  expect(model()).not.toBe(first)
+  await key('Tab', { shiftKey: true })
+  expect(model()).toBe(first)
+  await key('ArrowLeft')
+  expect(model()).toBe('Default model')
+  await key('ArrowRight')
   await key('Enter')
-  expect(document.body.textContent).toMatch(/model\?/)
-  await key('1') // Default model
-  await key('Enter')
-  expect(handoff).toHaveBeenCalledWith(id, { harness: 'codex' })
+  expect(handoff).toHaveBeenCalledTimes(1)
+  expect(handoff.mock.calls[0]![1]).toMatchObject({ harness: 'codex', model: expect.any(String) })
   expect(handoffCard.value).toBeNull()
+  wrapper.unmount()
+  sessions.stop()
+  projects.stop()
+})
+
+it('Escape closes the card without handing off', async () => {
+  const api = createMockApi()
+  const id = FIXTURE_SESSION_IDS.idle
+  const handoff = vi.spyOn(api, 'handoffSession')
+  openHandoff(id)
+  const { wrapper, sessions, projects } = await mountScreen(HandoffPrompt, `/s/${id}`, api, {
+    sessionId: id,
+    harness: 'claude',
+  })
+  await flushPromises()
+  document
+    .querySelector('.handoff-card')!
+    .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  expect(handoffCard.value).toBeNull()
+  expect(handoff).not.toHaveBeenCalled()
   wrapper.unmount()
   sessions.stop()
   projects.stop()
