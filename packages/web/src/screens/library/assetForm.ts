@@ -22,6 +22,7 @@ export const KIND_INFO: Record<AssetKind, { label: string; plural: string }> = {
   template: { label: 'Template', plural: 'Templates' },
   mcp: { label: 'MCP server', plural: 'MCP servers' },
   settings: { label: 'Settings profile', plural: 'Settings profiles' },
+  plugin: { label: 'Plugin', plural: 'Plugins' },
 }
 
 /** The kind's name in running text: "agent", "settings profile", "MCP server". */
@@ -220,6 +221,8 @@ export function starterFiles(
       }
     case 'settings':
       return { [file]: stringify({ name, description, permissions: { allow: [], deny: [] } }) }
+    case 'plugin':
+      return { [file]: stringify({ name, description, version: '0.1.0', includes: [] }) }
   }
 }
 

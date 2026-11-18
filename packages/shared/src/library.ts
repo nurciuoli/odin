@@ -3,6 +3,9 @@
 import type { AssetKind } from "./api.ts";
 
 export const ASSET_KINDS: AssetKind[] = ["instruction", "skill", "agent", "mcp", "settings"];
+/** Kinds a plugin can hold, in the order its page lists them. */
+export const PLUGIN_MEMBER_KINDS = ["instruction", "skill", "agent", "mcp", "settings"] as const satisfies readonly AssetKind[];
+export const PLUGIN_MAX_INCLUDES = 64;
 export const ASSET_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 /** A secret name in the vault (docs/contracts.md#secrets). */
@@ -43,6 +46,11 @@ export const LIBRARY_LAYOUT: Record<AssetKind, { dir: string; shape: "file" | "f
   template: { dir: "templates", shape: "file", entry: ".json" },
   mcp: { dir: "mcp", shape: "file", entry: ".json" },
   settings: { dir: "settings", shape: "file", entry: ".json" },
+  /**
+   * A plugin is a folder with `plugin.json`. Its own members sit inside it laid out like the library itself
+   * (`skills/<id>/SKILL.md`, `agents/<id>.md`, `mcp/<id>.json`, `settings/<id>.json`, `instructions/<id>/AGENTS.md`).
+   */
+  plugin: { dir: "plugins", shape: "folder", entry: "plugin.json" },
 };
 
 /**

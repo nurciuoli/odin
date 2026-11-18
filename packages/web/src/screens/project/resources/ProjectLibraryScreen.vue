@@ -33,6 +33,7 @@ const KIND_LABEL: Record<AssetKind, string> = {
   template: 'Template',
   mcp: 'MCP server',
   settings: 'Settings profile',
+  plugin: 'Plugin',
 }
 
 const api = useApi()

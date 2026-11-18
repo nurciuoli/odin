@@ -639,7 +639,7 @@ export interface SecretsResponse {
 // ── Library ─────────────────────────────────────────────────────────────────
 
 /** command/prompt/template remain readable by the migration parser only; not active library kinds. */
-export type AssetKind = "instruction" | "agent" | "skill" | "command" | "prompt" | "template" | "mcp" | "settings";
+export type AssetKind = "instruction" | "agent" | "skill" | "command" | "prompt" | "template" | "mcp" | "settings" | "plugin";
 
 /** A template: a session preset. Ids refer to other library assets. */
 export interface TemplateSpec {
@@ -701,6 +701,36 @@ export interface StartMcpOAuthRequest {
 export interface StartMcpOAuthResponse {
   /** Open this in the browser. */
   authorizationUrl: string;
+}
+
+/** The kinds a plugin can hold. A plugin never holds another plugin. */
+export type PluginMemberKind = "instruction" | "skill" | "agent" | "mcp" | "settings";
+
+/** An asset a plugin takes from the library by reference. */
+export interface PluginInclude {
+  kind: PluginMemberKind;
+  id: string;
+  /** Library version to pin; omitted: the current one. */
+  version?: string;
+}
+
+/** `plugin.json` without name and description: a plugin's manifest. Its own members are files in its folder. */
+export interface PluginSpec {
+  /** A label for people. The plugin's real version is a hash of its files and pinned members. */
+  version?: string;
+  includes: PluginInclude[];
+  /** Where an imported plugin came from, for a later update check. */
+  source?: { type: "git"; url: string; rev?: string };
+}
+
+/** A member of a plugin as the parser reports it (`meta.own` of a plugin asset). */
+export interface PluginOwnMember {
+  kind: PluginMemberKind;
+  id: string;
+  name: string;
+  description: string;
+  /** Why this member does not parse; the plugin has an error then too. */
+  error: string | null;
 }
 
 /** Permission rules and hooks, merged into .claude/settings.json on install. */
