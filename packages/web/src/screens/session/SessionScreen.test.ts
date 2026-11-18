@@ -442,6 +442,17 @@ describe('SessionScreen', () => {
     expect(send).not.toHaveBeenCalled()
   })
 
+  it('answers /status and /cost itself and never sends them', async () => {
+    const { api } = await mountSession(FIXTURE_SESSION_IDS.idle)
+    const send = vi.spyOn(api, 'sendMessage')
+    for (const cmd of ['/status', '/cost']) {
+      await textarea().setValue(cmd)
+      await textarea().trigger('keydown', { key: 'Enter' })
+      await flushPromises()
+    }
+    expect(send).not.toHaveBeenCalled()
+  })
+
   it('runs !commands through Odin and sends their output with the next message', async () => {
     const { api } = await mountSession(FIXTURE_SESSION_IDS.idle)
     const send = vi.spyOn(api, 'sendMessage')
