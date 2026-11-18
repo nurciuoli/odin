@@ -57,8 +57,6 @@ export interface StartOptions {
   /** Resume this harness session. With `fork: true`, the history is copied into `sessionId` instead. */
   resume?: string;
   fork?: boolean;
-  /** With `fork`: copy history only up to, not including, this user message (a transcript entry id). Needs `forkAt`. */
-  forkAtMessageId?: string;
   /** First user message; omitted on a resume that just reattaches. */
   prompt?: UserMessage;
   title?: string;
