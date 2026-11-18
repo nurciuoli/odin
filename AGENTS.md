@@ -11,7 +11,8 @@ Read by anyone working in this repo: contributors, and coding agents (including 
   types and is the source of truth; `packages/core/src/services.ts` holds the seams between core modules and
   `packages/core/src/harness/types.ts` the harness interface.
 - `docs/desktop.md`: the Electron shell.
-- `CHANGELOG.md`: add a line under Unreleased for any user-visible change.
+- `changes/`: for any user-visible change add a fragment file here (see `changes/README.md`); never edit `CHANGELOG.md`
+  in a feature PR. The release PR assembles the fragments into it.
 
 ## Layout
 

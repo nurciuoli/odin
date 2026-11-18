@@ -354,6 +354,30 @@ test("discover gives hook-created sessions the harness's generated name, but kee
   }
 });
 
+test("a project can be added to an idle session and reaches the harness on the next turn", async () => {
+  const s = setup();
+  try {
+    const path = join(s.deps.config.home, "later");
+    mkdirSync(path, { recursive: true });
+    const base = s.services.projects.get(PROJECT)!;
+    const get = s.services.projects.get;
+    s.services.projects.get = name => name === "later" ? { ...base, name, path } : get(name);
+    s.deps.db.prepare("INSERT INTO projects (name, path, created_at, updated_at) VALUES (?, ?, ?, ?)").run("later", path, "2026-10-01", "2026-10-01");
+    const session = await s.sessions.start({ project: PROJECT, prompt: { text: "Start small" } });
+    await idle(s, session.id);
+    await assert.rejects(s.sessions.update(session.id, { addProjects: ["nope"] }), status(404));
+    await assert.rejects(s.sessions.update(session.id, { addProjects: [""] }), status(400));
+    const updated = await s.sessions.update(session.id, { addProjects: ["later", PROJECT, "later"] });
+    assert.deepEqual(updated.projects, [PROJECT, "later"]);
+    assert.equal(s.sessions.list({ project: "later" })[0]?.id, session.id);
+    await s.sessions.send(session.id, { text: "Now use it" });
+    assert.deepEqual(s.harness.starts.at(-1)!.additionalDirectories, [path]);
+    await idle(s, session.id);
+    const again = await s.sessions.update(session.id, { addProjects: ["later"] });
+    assert.deepEqual(again.projects, [PROJECT, "later"], "adding a project twice changes nothing");
+  } finally { await s.sessions.close(); }
+});
+
 test("discovery timer runs over projects.list()", async () => {
   const s = setup({ projectsRescanMs: 20 });
   try {

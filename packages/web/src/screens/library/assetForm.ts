@@ -13,16 +13,75 @@ import type { TranscriptEntry } from '@odin/shared/harness'
 import { ASSET_ID_PATTERN, LIBRARY_LAYOUT, promptVariables } from '@odin/shared/library'
 import type { Intent } from '@/styles/status'
 
-export const KIND_INFO: Record<AssetKind, { label: string; plural: string }> = {
-  instruction: { label: 'AGENTS.md', plural: 'AGENTS.md' },
-  agent: { label: 'Agent', plural: 'Agents' },
-  skill: { label: 'Skill', plural: 'Skills' },
-  command: { label: 'Command', plural: 'Commands' },
-  prompt: { label: 'Prompt', plural: 'Prompts' },
-  template: { label: 'Template', plural: 'Templates' },
-  mcp: { label: 'MCP server', plural: 'MCP servers' },
-  settings: { label: 'Settings profile', plural: 'Settings profiles' },
-  plugin: { label: 'Plugin', plural: 'Plugins' },
+export const KIND_INFO: Record<AssetKind, { label: string; plural: string; blurb: string }> = {
+  instruction: {
+    label: 'AGENTS.md',
+    plural: 'AGENTS.md',
+    blurb: 'Standing instructions every agent reads. Install one into a project as its AGENTS.md.',
+  },
+  agent: {
+    label: 'Agent',
+    plural: 'Agents',
+    blurb: 'Subagents the main agent can hand work to, each with its own prompt, tools and model.',
+  },
+  skill: {
+    label: 'Skill',
+    plural: 'Skills',
+    blurb: 'Reusable how-to instructions an agent loads when a task matches.',
+  },
+  command: { label: 'Command', plural: 'Commands', blurb: '' },
+  prompt: { label: 'Prompt', plural: 'Prompts', blurb: '' },
+  template: { label: 'Template', plural: 'Templates', blurb: '' },
+  mcp: {
+    label: 'MCP server',
+    plural: 'MCP servers',
+    blurb: 'Tools and data sources agents can connect to, run locally or reached by URL.',
+  },
+  settings: {
+    label: 'Settings profile',
+    plural: 'Settings profiles',
+    blurb: 'Permission rules and hooks, merged into a project’s settings when installed.',
+  },
+  plugin: {
+    label: 'Plugin',
+    plural: 'Plugins',
+    blurb: 'A bundle of skills, subagents, MCP servers and settings that installs and updates together.',
+  },
+}
+
+/** A short second line for a table row, so look-alike assets can be told apart. */
+export function assetDetail(a: {
+  kind: AssetKind
+  id: string
+  files: string[]
+  meta: Record<string, unknown>
+}): string {
+  const m = a.meta
+  const str = (k: string) => (typeof m[k] === 'string' && m[k] ? (m[k] as string) : '')
+  switch (a.kind) {
+    case 'skill':
+      return a.files.length > 1 ? `${a.files.length} files` : ''
+    case 'agent':
+      return [
+        str('model'),
+        Array.isArray(m.tools) && m.tools.length ? `${m.tools.length} tools` : '',
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    case 'mcp':
+      return str('type') === 'http' || str('type') === 'sse'
+        ? `${str('type')} · ${str('url')}`
+        : ['stdio', [str('command'), ...(Array.isArray(m.args) ? m.args : [])].join(' ').trim()]
+            .filter(Boolean)
+            .join(' · ')
+    case 'settings': {
+      const p = (m.permissions ?? {}) as { allow?: unknown[]; deny?: unknown[] }
+      const n = (p.allow?.length ?? 0) + (p.deny?.length ?? 0)
+      return n ? `${n} permission rules` : ''
+    }
+    default:
+      return ''
+  }
 }
 
 /** The kind's name in running text: "agent", "settings profile", "MCP server". */
@@ -181,11 +240,17 @@ export const parseLines = (text: string): string[] =>
 
 // ── starters ────────────────────────────────────────────────────────────────
 
+function stdioSpec(name: string, description: string, line: string) {
+  const [command = 'npx', ...args] = line.trim().split(/\s+/).filter(Boolean)
+  return { name, description, type: 'stdio', command, args }
+}
+
 export function starterFiles(
   kind: AssetKind,
   id: string,
   name: string,
   description: string,
+  mcp: { type: 'stdio' | 'http' | 'sse'; command?: string; url?: string } = { type: 'stdio' },
 ): AssetFiles {
   const file = entryFile(kind, id)
   switch (kind) {
@@ -217,7 +282,11 @@ export function starterFiles(
       throw new Error('Use instructions, skills or subagents instead of legacy launch assets.')
     case 'mcp':
       return {
-        [file]: stringify({ name, description, type: 'stdio', command: 'npx', args: [] }),
+        [file]: stringify(
+          mcp.type === 'stdio'
+            ? stdioSpec(name, description, mcp.command ?? '')
+            : { name, description, type: mcp.type, url: mcp.url?.trim() ?? '' },
+        ),
       }
     case 'settings':
       return { [file]: stringify({ name, description, permissions: { allow: [], deny: [] } }) }

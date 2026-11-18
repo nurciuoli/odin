@@ -7,6 +7,8 @@ const props = withDefaults(
   defineProps<{
     source: string
     streaming?: boolean
+    /** file preview: h1-h6 and reflowed paragraphs instead of chat prose */
+    document?: boolean
     size?: 'sm' | 'md'
     codeMaxHeight?: string
     /** names that render as @mentions; anything else after an @ stays literal */
@@ -16,6 +18,7 @@ const props = withDefaults(
   }>(),
   {
     streaming: false,
+    document: false,
     size: 'md',
     codeMaxHeight: '420px',
     mentions: () => [],
@@ -23,7 +26,11 @@ const props = withDefaults(
 )
 
 const blocks = computed(() =>
-  parseMarkdown(props.source, { streaming: props.streaming, mentions: props.mentions }),
+  parseMarkdown(props.source, {
+    streaming: props.streaming,
+    mentions: props.mentions,
+    document: props.document,
+  }),
 )
 
 // Everything is built with h() from the parsed tree. No source string is ever
@@ -130,7 +137,7 @@ function Body() {
 </script>
 
 <template>
-  <div class="iu-md" :class="`iu-md--${size}`">
+  <div class="iu-md" :class="[`iu-md--${size}`, { 'iu-md--document': document }]">
     <Body />
   </div>
 </template>
@@ -151,7 +158,7 @@ function Body() {
 }
 
 /* margins are set by the flow below, never by the element defaults */
-.iu-md :where(p, h3, h4, ul, ol, blockquote, hr) {
+.iu-md :where(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, hr) {
   margin: 0;
 }
 
@@ -179,6 +186,32 @@ function Body() {
   font-size: var(--iu-font-size-14);
   font-weight: var(--iu-font-weight-semibold);
   line-height: var(--iu-leading-snug);
+}
+
+/* file preview: a document, not chat prose */
+.iu-md--document {
+  max-width: 78ch;
+  padding: 20px 16px 48px;
+}
+.iu-md--document > * + :where(.iu-md__h1, .iu-md__h2) {
+  margin-top: 1.6em;
+}
+.iu-md--document .iu-md__h1,
+.iu-md--document .iu-md__h2 {
+  font-size: var(--iu-font-size-24);
+  font-weight: var(--iu-font-weight-semibold);
+  line-height: var(--iu-leading-snug);
+}
+.iu-md--document .iu-md__h2 {
+  font-size: 20px;
+}
+.iu-md--document .iu-md__h5,
+.iu-md--document .iu-md__h6 {
+  font-size: var(--iu-font-size-14);
+  font-weight: var(--iu-font-weight-semibold);
+}
+.iu-md--document > * + :where(.iu-md__h5, .iu-md__h6) {
+  margin-top: 1em;
 }
 
 .iu-md strong {

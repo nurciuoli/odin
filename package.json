@@ -15,6 +15,8 @@
   "scripts": {
     "dev": "yarn workspace @odin/desktop dev",
     "dev:desktop": "node scripts/dev-desktop.ts",
+    "changelog:check": "node scripts/changelog.ts check",
+    "changelog:release": "node scripts/changelog.ts release",
     "dev:core": "node scripts/dev-core.ts",
     "start": "yarn workspace @odin/core start",
     "build:desktop": "yarn build:web && yarn workspace @odin/desktop dist",
@@ -24,7 +26,7 @@
     "typecheck": "yarn typecheck:core && yarn workspace @odin/web type-check",
     "typecheck:core": "tsc -p tsconfig.json --noEmit",
     "test": "yarn test:core && yarn workspace @odin/web test",
-    "test:core": "node --test \"packages/core/src/**/*.test.ts\" \"packages/shared/src/**/*.test.ts\" \"adapters/*/src/**/*.test.ts\" \"apps/desktop/src/**/*.test.ts\""
+    "test:core": "node --test \"scripts/*.test.ts\" \"packages/core/src/**/*.test.ts\" \"packages/shared/src/**/*.test.ts\" \"adapters/*/src/**/*.test.ts\" \"apps/desktop/src/**/*.test.ts\""
   },
   "resolutions": {
     "vite": "^6.4.4"
