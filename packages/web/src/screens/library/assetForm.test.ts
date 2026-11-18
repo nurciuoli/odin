@@ -64,6 +64,14 @@ describe('ids and starters', () => {
     expect(Object.keys(starterFiles('skill', 's', 'S', ''))).toEqual(['SKILL.md'])
     const mcp = starterFiles('mcp', 'm', 'M', '')['m.json']!
     expect(JSON.parse(mcp).command).toBe('npx')
+    const stdio = JSON.parse(
+      starterFiles('mcp', 'f', 'F', '', { type: 'stdio', command: 'npx -y pkg' })['f.json']!,
+    )
+    expect([stdio.command, stdio.args]).toEqual(['npx', ['-y', 'pkg']])
+    const remote = JSON.parse(
+      starterFiles('mcp', 'r', 'R', '', { type: 'http', url: 'https://x.dev/mcp' })['r.json']!,
+    )
+    expect([remote.type, remote.url]).toEqual(['http', 'https://x.dev/mcp'])
     expect(starterFiles('instruction', 'global', '', '')['AGENTS.md']).toContain(
       'Project instructions',
     )
