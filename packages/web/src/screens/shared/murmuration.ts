@@ -87,7 +87,7 @@ export function createFlock(w: number, h: number) {
         }
         if (b.x < 22) fx += (22 - b.x) * 0.3
         if (b.x > w - 22) fx -= (b.x - w + 22) * 0.3
-        const ceiling = 14 + s.gather * h * 0.3
+        const ceiling = 14 + s.gather * h * 0.42
         if (b.y < ceiling) fy += (ceiling - b.y) * 0.3
         if (b.y > h - 14) fy -= (b.y - h + 14) * 0.3
         b.nx = b.vx + fx * f

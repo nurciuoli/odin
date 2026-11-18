@@ -62,43 +62,70 @@ function bank(seed: number, spacing: number, w: number, h: number): Dot[] {
   }
   const bw = w * STORM.reach
   const bh = h * STORM.depth
-  // a handful of puffs, big and low at the outer edge, small and high toward the leading edge
-  const puffs = Array.from({ length: 9 }, (_, i) => {
-    const u = i / 8
-    return {
-      x: bw * (0.08 + u * 0.82) + (rnd() - 0.5) * bw * 0.1,
-      y: bh * (0.34 + 0.2 * (1 - u)) + (rnd() - 0.5) * bh * 0.16,
-      r: bh * (0.34 + 0.24 * (1 - u)) * (0.85 + rnd() * 0.4),
+  // A cumulus: a flat base, a row of round lobes on it, smaller lobes stacked above, taller at the outer edge and
+  // tapering toward the leading edge. Dots outline the lobes, fill them lightly (lit on top, shaded underneath) and
+  // thin out into wisps at the front.
+  const base = bh * 0.8
+  const puffs: { x: number; y: number; r: number }[] = []
+  const tier = (count: number, y: number, r: number, from: number, to: number) => {
+    for (let i = 0; i < count; i++) {
+      const u = count === 1 ? from : from + ((to - from) * i) / (count - 1)
+      const taper = 1 - 0.5 * u
+      const pr = r * taper * (0.8 + rnd() * 0.4)
+      puffs.push({
+        x: bw * u + (rnd() - 0.5) * bw * 0.05,
+        y: Math.min(base - pr * 0.55, y * (0.75 + 0.25 * taper) + (rnd() - 0.5) * bh * 0.05),
+        r: pr,
+      })
     }
-  })
+  }
+  tier(7, base, bh * 0.25, 0.03, 0.92)
+  tier(5, bh * 0.52, bh * 0.26, 0.08, 0.76)
+  tier(2, bh * 0.3, bh * 0.2, 0.12, 0.4)
   const dots: Dot[] = []
   for (let y = 0; y < bh; y += spacing) {
     for (let x = 0; x < bw; x += spacing) {
-      const px = x + (rnd() - 0.5) * spacing * 0.7
-      const py = y + (rnd() - 0.5) * spacing * 0.7
-      let d = 0
-      for (const p of puffs) {
-        const dist = Math.hypot(px - p.x, (py - p.y) * 1.25) / p.r
-        d = Math.max(d, 1 - dist * dist)
-      }
-      d *= smooth(bh, bh * 0.62, py) // flat, soft underside
-      d *= smooth(bw, bw * 0.7, px) // never a hard edge at the leading side
-      d = d * 0.9 + (rnd() - 0.5) * 0.08
-      if (d < 0.08) continue
-      dots.push({
-        u: px / bw,
-        v: py / bh,
-        d: clamp(d, 0, 1),
-        phase: rnd() * 6.28,
-        r: 0.7 + d * 0.9,
-      })
+      const px = x + (rnd() - 0.5) * spacing * 0.5
+      const py = y + (rnd() - 0.5) * spacing * 0.5
+      let f = -1
+      for (const p of puffs) f = Math.max(f, 1 - Math.hypot(px - p.x, py - p.y) / p.r)
+      f = Math.min(f, (base - py) / (bh * 0.05)) // flat underside
+      if (f <= 0) continue
+      const u = px / bw
+      let d: number
+      if (f < 0.16)
+        d = 0.95 // the lobed outline
+      else d = (0.5 - 0.3 * (py / base)) * (py > base * 0.82 ? 0.65 : 1) + (rnd() - 0.5) * 0.12
+      // wisps: the leading edge breaks up instead of ending
+      if (u > 0.78 && rnd() < smooth(0.78, 1, u)) continue
+      dots.push({ u, v: py / bh, d: clamp(d, 0, 1), phase: rnd() * 6.28, r: 0.8 })
     }
+  }
+  // the outline: points along each lobe's arc that no other lobe covers, plus the flat base
+  const inside = (px: number, py: number, skip: number) =>
+    puffs.some((q, j) => j !== skip && Math.hypot(px - q.x, py - q.y) < q.r * 0.97)
+  puffs.forEach((p, i) => {
+    const step = 3.2 / p.r
+    for (let a = 0; a < 6.2832; a += step) {
+      const px = p.x + Math.cos(a) * p.r
+      const py = p.y + Math.sin(a) * p.r
+      if (py > base || px < 0 || px > bw || inside(px, py, i)) continue
+      const u = px / bw
+      if (u > 0.82 && rnd() < smooth(0.82, 1, u)) continue
+      dots.push({ u, v: py / bh, d: 0.95, phase: rnd() * 6.28, r: 1.1 })
+    }
+  })
+  for (let x = 0; x < bw * 0.9; x += 3.2) {
+    const u = x / bw
+    if (u > 0.8 && rnd() < smooth(0.8, 0.95, u)) continue
+    if (puffs.some(q => Math.abs(x - q.x) < q.r * 0.9 && base - q.y < q.r * 1.6))
+      dots.push({ u, v: base / bh, d: 0.7, phase: rnd() * 6.28, r: 0.9 })
   }
   return dots
 }
 
 export function createStorm(w: number, h: number) {
-  const spacing = w < 520 ? 6 : 7
+  const spacing = w < 520 ? 5 : 5.5
   const left = bank(11, spacing, w, h)
   const right = bank(47, spacing, w, h)
   const bw = w * STORM.reach
