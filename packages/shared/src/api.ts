@@ -599,6 +599,12 @@ export interface UpdateSessionRequest {
   permissionMode?: PermissionMode;
   /** `false` promotes a side thread to an ordinary session; `true` is a 400. */
   aside?: boolean;
+  /**
+   * Projects to add to `Session.projects` (names already there are ignored; nothing is ever removed). 404 for an
+   * unknown project, 409 for an unavailable one or while a turn is running or waiting, 400 when the harness has no
+   * `additionalDirectories`. The next turn resumes with the new directories.
+   */
+  addProjects?: string[];
 }
 
 /** POST /api/sessions/:id/permissions/:requestId */

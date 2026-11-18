@@ -428,7 +428,9 @@ AppSettings.defaultWorktree`.
 - **Interrupt**: 204; pauses the queue even when idle, and stops the runtime when running/waiting.
   **End**: pauses the queue and closes the handle → `ended`.
 - **Update** (`PATCH`): title (also `harness.rename`), tags, pinned, archived, model, permissionMode, aside
-  (`false` only: promotes a side thread). Model and mode
+  (`false` only: promotes a side thread), `addProjects` (appends to `projects`, never removes: 404 unknown project, 409
+  unavailable project or a running/waiting turn, 400 when the harness lacks `additionalDirectories`; an idle process is
+  closed so the next message resumes with the new directories). Model and mode
   go to the live handle when there is one; without one they're stored and the next resume starts with them. When the
   live process refuses a change between turns, the handle is closed and the change applies on the resume; mid-turn
   that's a 409 with the reason.

@@ -42,9 +42,12 @@ function select(id: string) {
     working.value = id.slice(8)
     return
   }
+  // Work from `next`, not from `projects.value`: with a parent-controlled v-model the model keeps its old value until
+  // the parent re-renders, so reading it back after assigning it would see the project that was just removed.
   if (projects.value.includes(id)) {
-    projects.value = projects.value.filter(p => p !== id)
-    if (working.value === id) working.value = projects.value[0] ?? ''
+    const next = projects.value.filter(p => p !== id)
+    projects.value = next
+    if (working.value === id) working.value = next[0] ?? ''
   } else {
     projects.value = [...projects.value, id]
     if (!working.value) working.value = id
