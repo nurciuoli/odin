@@ -14,8 +14,10 @@ const props = withDefaults(
     title: string
     /** one sentence; use the default slot instead for richer (e.g. mixed-mono) copy */
     body?: string
+    /** show the small kind label under the content; turn off where it only adds noise */
+    eyebrow?: boolean
   }>(),
-  { kind: 'first-run' },
+  { kind: 'first-run', eyebrow: true },
 )
 
 const ICON: Record<typeof props.kind, IconName> = {
@@ -31,7 +33,7 @@ const EYEBROW: Record<typeof props.kind, string> = {
 }
 
 const icon = computed(() => ICON[props.kind])
-const eyebrow = computed(() => EYEBROW[props.kind])
+const eyebrowText = computed(() => EYEBROW[props.kind])
 </script>
 
 <template>
@@ -42,7 +44,7 @@ const eyebrow = computed(() => EYEBROW[props.kind])
       <slot>{{ body }}</slot>
     </div>
     <div v-if="$slots.action" class="iu-empty__action"><slot name="action" /></div>
-    <div class="iu-empty__eyebrow">{{ eyebrow }}</div>
+    <div v-if="eyebrow" class="iu-empty__eyebrow">{{ eyebrowText }}</div>
   </div>
 </template>
 

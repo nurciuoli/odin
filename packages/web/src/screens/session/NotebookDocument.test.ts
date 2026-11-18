@@ -67,6 +67,7 @@ const missing = {
   interpreter: null,
   managedHostPython: 'odin/python',
   needsSetup: true,
+  location: { kind: 'native' as const },
 }
 const chip = (wrapper: ReturnType<typeof mount>) => wrapper.find('.nb-chip')
 describe('notebook document', () => {
@@ -119,11 +120,13 @@ describe('notebook document', () => {
     expect(wrapper.text()).not.toContain('This shared kernel')
     wrapper.unmount()
   })
-  it('sends Set up Python environment and Kernel details to the Environment tab', async () => {
-    const { wrapper, chipMenu } = await setup()
-    await chipMenu('Set up Python environment')
+  it('sends Kernel details to the Environment tab and sets Python up in place', async () => {
+    const { api, wrapper, chipMenu } = await setup()
+    const setupEnv = vi.spyOn(api, 'setupNotebookEnvironment')
+    await chipMenu('Set up Python')
+    expect(setupEnv).toHaveBeenCalled()
     await chipMenu('Kernel details')
-    expect(wrapper.emitted('open-environment')).toHaveLength(2)
+    expect(wrapper.emitted('open-environment')).toHaveLength(1)
     wrapper.unmount()
   })
   it('has no JupyterLab hand-off', async () => {

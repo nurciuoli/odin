@@ -1082,7 +1082,15 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
     updateSession: (id, req) =>
       respond(() => {
         const s = sessionOf(id)
-        const { model, permissionMode, aside, ...rest } = req
+        const { model, permissionMode, aside, addProjects, ...rest } = req
+        if (addProjects?.length) {
+          if (s.state === 'running' || s.state === 'waiting')
+            throw new ApiRequestError(
+              409,
+              'wait for the current turn to finish before adding a project',
+            )
+          s.projects = [...new Set([...s.projects, ...addProjects])]
+        }
         if (aside === true) throw new ApiRequestError(400, "a session can't become a side thread")
         // Promote: an ordinary session from here on (lists, counts, the sidebar).
         if (aside === false) s.aside = false

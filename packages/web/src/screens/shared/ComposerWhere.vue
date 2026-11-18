@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Where the session runs: this checkout, or a new worktree (optionally on a named branch). One quiet chip in the
-// composer toolbar that opens a small popover. It never opens on its own focus-wise: focus moves in only when you
+// Where the session runs: this checkout, or a new worktree (optionally on a named branch). One quiet chip beside the
+// project and harness pickers that opens a small popover. It never opens on its own focus-wise: focus moves in only when you
 // open it yourself.
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue'
 import { IuButton } from '@/components/Button'
@@ -198,10 +198,10 @@ const options = [
 }
 .composer-where__pop {
   position: absolute;
-  bottom: 100%;
+  top: 100%;
   left: 0;
   z-index: 30;
-  margin-bottom: 6px;
+  margin-top: 6px;
   width: 300px;
   max-width: 90vw;
   padding: 6px;
@@ -241,7 +241,7 @@ const options = [
   outline-offset: -2px;
 }
 .composer-where__mark {
-  color: var(--iu-accent);
+  color: var(--iu-text-2);
   font-size: var(--iu-font-size-12);
 }
 .composer-where__text {

@@ -6,6 +6,7 @@ import { useApi } from '@/api'
 import { IuButton } from '@/components/Button'
 import { IuCallout } from '@/components/Callout'
 import { IuField } from '@/components/Fields'
+import SelectField from '@/screens/shared/SelectField.vue'
 import { IuDialog } from '@/components/Modal'
 import { idError, slugify, starterFiles, kindNoun } from './assetForm'
 
@@ -18,6 +19,14 @@ const id = ref('')
 const idTouched = ref(false)
 const name = ref('')
 const description = ref('')
+const transport = ref<'stdio' | 'http' | 'sse'>('stdio')
+const command = ref('')
+const url = ref('')
+const TRANSPORTS = [
+  { id: 'stdio', label: 'Local command — Odin starts it on this machine' },
+  { id: 'http', label: 'Remote URL (streamable HTTP)' },
+  { id: 'sse', label: 'Remote URL (SSE, older servers)' },
+]
 const busy = ref(false)
 const error = ref<string | null>(null)
 
@@ -29,6 +38,9 @@ watch(
     idTouched.value = false
     name.value = ''
     description.value = ''
+    transport.value = 'stdio'
+    command.value = ''
+    url.value = ''
     error.value = null
   },
   { immediate: true },
@@ -39,7 +51,14 @@ watch(name, n => {
   if (!idTouched.value) id.value = slugify(n)
 })
 const idProblem = computed(() => (id.value ? idError(id.value, props.taken) : null))
-const valid = computed(() => !idError(id.value, props.taken))
+const specReady = computed(() =>
+  props.kind !== 'mcp'
+    ? true
+    : transport.value === 'stdio'
+      ? !!command.value.trim()
+      : /^https?:\/\/\S+$/.test(url.value.trim()),
+)
+const valid = computed(() => !idError(id.value, props.taken) && specReady.value)
 
 function setId(value: string) {
   idTouched.value = true
@@ -54,7 +73,11 @@ async function create() {
     await api.saveAsset(
       props.kind,
       id.value,
-      starterFiles(props.kind, id.value, name.value.trim() || id.value, description.value.trim()),
+      starterFiles(props.kind, id.value, name.value.trim() || id.value, description.value.trim(), {
+        type: transport.value,
+        command: command.value,
+        url: url.value,
+      }),
     )
     open.value = false
     emit('created', props.kind, id.value)
@@ -81,7 +104,35 @@ async function create() {
         :error="idProblem ?? undefined"
         @update:model-value="setId(String($event))"
       />
-      <IuField v-model="description" label="Description" />
+      <IuField
+        v-model="description"
+        label="Description"
+        :hint="
+          kind === 'mcp'
+            ? 'Optional. What the server gives an agent.'
+            : 'Optional. Shown in the library list.'
+        "
+      />
+      <template v-if="kind === 'mcp'">
+        <SelectField v-model="transport" label="How does it run?" :options="TRANSPORTS" />
+        <IuField
+          v-if="transport === 'stdio'"
+          v-model="command"
+          label="Command"
+          mono
+          placeholder="npx -y @modelcontextprotocol/server-filesystem"
+          hint="What to run, including its arguments. Add environment variables and secrets after creating it."
+        />
+        <IuField
+          v-else
+          v-model="url"
+          label="URL"
+          mono
+          placeholder="https://example.com/mcp"
+          hint="The server's address. Add headers after creating it."
+          :error="url && !specReady ? 'Enter a full http(s) URL.' : undefined"
+        />
+      </template>
       <IuCallout v-if="error" intent="danger" variant="inline" live>{{ error }}</IuCallout>
     </form>
     <template #footer>
