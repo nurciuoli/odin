@@ -246,7 +246,6 @@ const span$ = (n: number) => ({ '--ov-span': String(n) })
         v-if="hasSessions"
         class="overview__cell"
         :style="span$(row4.b)"
-        :project="name"
         :models="rangeData.data.value?.models ?? null"
         :harnesses="rangeData.data.value?.harnesses ?? null"
         :loading="rangeLoading"
