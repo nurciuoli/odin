@@ -9,10 +9,9 @@ interface Bird {
   hot: boolean
 }
 export interface FlockInput {
-  energy: number
-  caret: number
   pointer: { x: number; y: number } | null
-  burst: boolean
+  /** 0..1 how far the storm clouds have come in: the flock settles lower and tighter beneath them */
+  gather: number
 }
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
 
@@ -41,11 +40,10 @@ export function createFlock(w: number, h: number) {
   )
   return {
     step(t: number, dt: number, s: FlockInput) {
-      const typing = s.energy > 0.04
       const f = Math.min(dt * 60, 3)
-      const tx = typing ? w * (0.3 + 0.4 * s.caret) : w / 2 + w * 0.33 * Math.sin(t * 0.23)
-      const ty = typing ? h * 0.8 : h * 0.5 + h * 0.24 * Math.sin(t * 0.41 + 1)
-      const pull = typing ? 0.02 : 0.006
+      const tx = w / 2 + w * (0.33 - 0.12 * s.gather) * Math.sin(t * 0.23)
+      const ty = h * (0.5 + 0.12 * s.gather) + h * (0.24 - 0.08 * s.gather) * Math.sin(t * 0.41 + 1)
+      const pull = 0.006
       for (const b of birds) {
         let cx = 0,
           cy = 0,
@@ -87,20 +85,17 @@ export function createFlock(w: number, h: number) {
             fy += dy * k
           }
         }
-        if (s.burst) {
-          fx += (b.x - w / 2) * 0.1
-          fy += (b.y - h) * 0.1
-        }
         if (b.x < 22) fx += (22 - b.x) * 0.3
         if (b.x > w - 22) fx -= (b.x - w + 22) * 0.3
-        if (b.y < 14) fy += (14 - b.y) * 0.3
+        const ceiling = 14 + s.gather * h * 0.42
+        if (b.y < ceiling) fy += (ceiling - b.y) * 0.3
         if (b.y > h - 14) fy -= (b.y - h + 14) * 0.3
         b.nx = b.vx + fx * f
         b.ny = b.vy + fy * f
       }
       for (const b of birds) {
         const speed = Math.hypot(b.nx, b.ny) || 1
-        const k = clamp(speed, typing ? 30 : 46, s.burst ? 260 : 126) / speed
+        const k = clamp(speed, 46, 126) / speed
         b.vx = b.nx * k
         b.vy = b.ny * k
         b.x += b.vx * dt

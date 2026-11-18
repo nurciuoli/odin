@@ -5,13 +5,16 @@ import { useApi } from '@/api'
 import { ApiRequestError } from '@/api/types'
 import { IuBadge } from '@/components/Badge'
 import { IuButton } from '@/components/Button'
+import { IuCheckbox } from '@/components/Fields'
 import { IuCodeBlock } from '@/components/CodeBlock'
 import IuCsvViewer from '@/components/CsvViewer/CsvViewer.vue'
 import { IuIcon } from '@/components/Icon'
+import { IuMenu, type MenuItem } from '@/components/Menu'
 import IuMarkdown from '@/components/Markdown/Markdown.vue'
 import { IuSegmented } from '@/components/Segmented'
 import { IuEmpty, IuErrorState, IuSkeleton } from '@/components/States'
 import { fileKind as previewKind } from '@/screens/session/documents'
+import { useToast } from '@/components/Toast'
 import { useResource } from '@/screens/shared/useResource'
 import type { ProjectFileMap } from '@odin/shared/api'
 import { useProject } from '../useProject'
@@ -19,6 +22,7 @@ import {
   buildTree,
   chain,
   deltaText,
+  folderPaths,
   formatBytes,
   indexTree,
   lean,
@@ -28,9 +32,13 @@ import {
   type FileNode,
 } from './files'
 import { treemap } from './treemap'
+import MoveFilesDialog from './MoveFilesDialog.vue'
+import RenameFileDialog from './RenameFileDialog.vue'
+import TrashDialog from './TrashDialog.vue'
 
 const { detail } = useProject()
 const api = useApi()
+const { toast } = useToast()
 const res = useResource<ProjectFileMap>(() => api.getProjectFileMap(detail.value.name))
 const tree = computed(() => buildTree(detail.value.title, res.data.value?.files ?? []))
 const idx = computed(() => indexTree(tree.value))
@@ -94,6 +102,140 @@ watch(selected, () => {
 
 function close() {
   selectedId.value = null
+}
+
+// ── managing files: rename, move, duplicate, trash ──────────────────────────
+const checked = ref(new Set<string>())
+const renaming = ref<string | null>(null)
+const moving = ref<string[] | null>(null)
+const trashOpen = ref(false)
+const renameOpen = computed({
+  get: () => renaming.value !== null,
+  set: v => {
+    if (!v) renaming.value = null
+  },
+})
+const moveOpen = computed({
+  get: () => moving.value !== null,
+  set: v => {
+    if (!v) moving.value = null
+  },
+})
+const folders = computed(() => folderPaths(tree.value))
+const leaf = (p: string) => p.split('/').pop() ?? p
+
+const fail = (title: string, e: unknown) =>
+  toast({ title, description: e instanceof Error ? e.message : String(e), intent: 'danger' })
+
+/** Reload the map and drop selections that no longer exist. */
+async function refresh() {
+  await res.load()
+  checked.value = new Set([...checked.value].filter(p => idx.value.has(p)))
+  if (selectedId.value !== null && !idx.value.has(selectedId.value)) selectedId.value = null
+  if (!idx.value.has(focusId.value)) focusId.value = ''
+}
+function renamed(from: string, to: string) {
+  toast({ title: `Renamed to ${leaf(to)}`, intent: 'success' })
+  if (selectedId.value === from) selectedId.value = to
+  checked.value = new Set()
+  void refresh()
+}
+function moved(result: { moved: { from: string; to: string }[] }) {
+  const first = result.moved[0]
+  toast({
+    title:
+      result.moved.length === 1 && first
+        ? `Moved ${leaf(first.to)}`
+        : `Moved ${result.moved.length} items`,
+    intent: 'success',
+  })
+  checked.value = new Set()
+  void refresh()
+}
+async function duplicate(path: string) {
+  try {
+    const { path: copy } = await api.duplicateProjectFile(name.value, path)
+    toast({ title: `Created ${leaf(copy)}`, intent: 'success' })
+    await refresh()
+  } catch (e) {
+    fail("Couldn't duplicate", e)
+  }
+}
+async function trash(paths: string[]) {
+  try {
+    const entries = await api.trashProjectFiles(name.value, paths)
+    checked.value = new Set()
+    toast({
+      title:
+        paths.length === 1
+          ? `Moved ${leaf(paths[0]!)} to trash`
+          : `Moved ${paths.length} items to trash`,
+      description: 'Kept for 7 days.',
+      intent: 'success',
+      action: {
+        label: 'Undo',
+        onClick: () =>
+          void Promise.all(entries.map(t => api.restoreProjectTrash(name.value, t.id)))
+            .then(() => refresh())
+            .catch(e => fail("Couldn't restore", e)),
+      },
+    })
+    await refresh()
+  } catch (e) {
+    fail("Couldn't move to trash", e)
+  }
+}
+function copyPath(path: string) {
+  void navigator.clipboard
+    ?.writeText(path)
+    .then(() => toast({ title: 'Path copied', intent: 'success' }))
+}
+const fileMenu = (n: FileNode): MenuItem[] => [
+  { id: 'open', label: n.kind === 'folder' ? 'Open' : 'Preview', icon: 'file' },
+  { id: 'rename', label: 'Rename', icon: 'pencil', shortcut: 'F2' },
+  { id: 'move', label: 'Move to…', icon: 'folder' },
+  ...(n.kind === 'folder'
+    ? []
+    : [{ id: 'duplicate', label: 'Duplicate', icon: 'copy' } as MenuItem]),
+  { id: 'copy', label: 'Copy path', icon: 'link' },
+  { type: 'separator' },
+  { id: 'trash', label: 'Move to trash', icon: 'trash', destructive: true, shortcut: 'Del' },
+]
+function onFileAction(n: FileNode, action: string) {
+  if (action === 'open') {
+    if (n.kind === 'folder') drill(n.id)
+    else selectedId.value = n.id
+  } else if (action === 'rename') renaming.value = n.id
+  else if (action === 'move') moving.value = [n.id]
+  else if (action === 'duplicate') void duplicate(n.id)
+  else if (action === 'copy') copyPath(n.id)
+  else void trash([n.id])
+}
+function toggleChecked(id: string) {
+  const next = new Set(checked.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  checked.value = next
+}
+const picked = computed(() => [...checked.value])
+
+// Drag a row onto a folder row to move it (and the other checked rows with it).
+const dragging = ref<string[] | null>(null)
+const dropOn = ref<string | null>(null)
+function dragStart(e: DragEvent, id: string) {
+  dragging.value = checked.value.has(id) ? picked.value : [id]
+  e.dataTransfer?.setData('text/plain', dragging.value.join('\n'))
+  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+}
+function dropInto(folder: FileNode) {
+  const paths = dragging.value
+  dragging.value = null
+  dropOn.value = null
+  if (!paths || paths.some(p => p === folder.id || folder.id.startsWith(`${p}/`))) return
+  void api
+    .moveProjectFiles(name.value, paths, folder.id)
+    .then(moved)
+    .catch(e => fail("Couldn't move", e))
 }
 
 function drill(id: string) {
@@ -218,6 +360,14 @@ function step(by: number) {
   )
 }
 function onKey(e: KeyboardEvent) {
+  const row = e.target instanceof HTMLElement ? e.target.closest<HTMLElement>('[data-path]') : null
+  if (row && (e.key === 'F2' || e.key === 'Delete') && !e.altKey && !e.ctrlKey && !e.metaKey) {
+    e.preventDefault()
+    const path = row.dataset.path!
+    if (e.key === 'F2') renaming.value = path
+    else void trash(checked.value.has(path) ? picked.value : [path])
+    return
+  }
   if (e.key === 'Escape' && selected.value) {
     close()
     return
@@ -286,6 +436,10 @@ const changed = computed(() => {
           >{{ changed.files }} files · +{{ changed.added }} −{{ changed.removed }}</span
         >
       </p>
+      <IuButton size="sm" variant="ghost" @click="trashOpen = true">
+        <template #icon><IuIcon name="trash" :size="14" /></template>
+        Trash
+      </IuButton>
       <IuSegmented
         v-model="view"
         label="View"
@@ -304,6 +458,24 @@ const changed = computed(() => {
       />
     </div>
 
+    <div
+      v-if="view === 'list' && picked.length"
+      class="files__select"
+      role="toolbar"
+      aria-label="Selection actions"
+    >
+      <strong>{{ picked.length }} selected</strong>
+      <IuButton
+        size="sm"
+        variant="secondary"
+        :disabled="picked.length > 1"
+        @click="renaming = picked[0]!"
+        >Rename</IuButton
+      >
+      <IuButton size="sm" variant="secondary" @click="moving = picked">Move to…</IuButton>
+      <IuButton size="sm" variant="secondary" @click="trash(picked)">Trash</IuButton>
+      <IuButton size="sm" variant="ghost" @click="checked = new Set()">Clear</IuButton>
+    </div>
     <IuSkeleton v-if="res.phase.value === 'loading' && !res.data.value" shape="card" :rows="3" />
     <IuErrorState
       v-else-if="res.phase.value === 'error' && !res.data.value"
@@ -319,7 +491,26 @@ const changed = computed(() => {
     />
     <div v-else class="files__stage">
       <ul v-if="view === 'list'" class="files__list" aria-label="Files">
-        <li v-for="n in rows" :key="n.id">
+        <li
+          v-for="n in rows"
+          :key="n.id"
+          class="files__item"
+          :class="{ 'files__item--drop': dropOn === n.id }"
+          :data-path="n.id"
+          draggable="true"
+          @dragstart="dragStart($event, n.id)"
+          @dragend="(dragging = null), (dropOn = null)"
+          @dragover="
+            n.kind === 'folder' && dragging ? ($event.preventDefault(), (dropOn = n.id)) : undefined
+          "
+          @dragleave="dropOn === n.id ? (dropOn = null) : undefined"
+          @drop.prevent="n.kind === 'folder' && dropInto(n)"
+        >
+          <IuCheckbox
+            :model-value="checked.has(n.id)"
+            :aria-label="`Select ${n.name}`"
+            @update:model-value="toggleChecked(n.id)"
+          />
           <button
             type="button"
             class="files__row"
@@ -332,6 +523,19 @@ const changed = computed(() => {
             <span v-if="diff && n.delta" class="files__row-delta">{{ deltaText(n.delta) }}</span>
             <span class="files__row-size">{{ formatBytes(nodeBytes(n)) }}</span>
           </button>
+          <IuMenu :items="fileMenu(n)" fixed @select="onFileAction(n, $event)">
+            <template #trigger="{ toggle }">
+              <IuButton
+                variant="ghost"
+                size="sm"
+                icon-only
+                :aria-label="`More actions for ${n.name}`"
+                @click="toggle"
+              >
+                <template #icon><IuIcon name="more" /></template>
+              </IuButton>
+            </template>
+          </IuMenu>
         </li>
         <li v-if="!rows.length" class="files__note">This folder is empty.</li>
       </ul>
@@ -401,6 +605,14 @@ const changed = computed(() => {
         </div>
         <h2 class="files__title">{{ selected.name }}</h2>
         <p class="files__path">{{ selected.id }}</p>
+        <div class="files__actions">
+          <IuButton size="sm" variant="secondary" @click="renaming = selected.id">Rename</IuButton>
+          <IuButton size="sm" variant="secondary" @click="moving = [selected.id]">Move…</IuButton>
+          <IuButton size="sm" variant="secondary" @click="duplicate(selected.id)"
+            >Duplicate</IuButton
+          >
+          <IuButton size="sm" variant="ghost" @click="trash([selected.id])">Trash</IuButton>
+        </div>
         <p class="files__meta">
           <IuBadge variant="tag" size="xs">{{ selected.kind }}</IuBadge>
           <span>{{ formatBytes(selected.bytes) }}</span>
@@ -434,6 +646,24 @@ const changed = computed(() => {
         </div>
       </aside>
     </div>
+
+    <RenameFileDialog
+      v-if="renaming !== null"
+      v-model:open="renameOpen"
+      :project="name"
+      :path="renaming"
+      @renamed="renamed"
+    />
+    <MoveFilesDialog
+      v-if="moving !== null"
+      v-model:open="moveOpen"
+      :project="name"
+      :paths="moving"
+      :folders="folders"
+      :root-name="tree.name"
+      @moved="moved"
+    />
+    <TrashDialog v-model:open="trashOpen" :project="name" @changed="refresh" />
   </div>
 </template>
 
@@ -518,10 +748,107 @@ const changed = computed(() => {
   max-height: 520px;
   overflow-y: auto;
 }
+.files__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 4px;
+  border-radius: var(--iu-radius-md);
+}
+.files__item--drop {
+  outline: 2px solid var(--iu-border-strong, var(--iu-border));
+  background: var(--iu-surface-2);
+}
+.files__select {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--iu-border);
+  border-radius: var(--iu-radius-md);
+  background: var(--iu-surface-2);
+  font-size: var(--iu-font-size-13);
+}
+.files__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+.files__dialog-h {
+  margin: 0;
+  font-size: var(--iu-font-size-14);
+  font-weight: var(--iu-font-weight-semibold);
+}
+.files__dialog-p {
+  margin: 0 0 12px;
+  font-size: var(--iu-font-size-13);
+  color: var(--iu-text-2);
+}
+.files__dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.files__tree {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 4px;
+  border: 1px solid var(--iu-border);
+  border-radius: var(--iu-radius-md);
+  max-height: 280px;
+  overflow-y: auto;
+}
+.files__tree li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: var(--iu-radius-md);
+  cursor: pointer;
+  font-size: var(--iu-font-size-13);
+}
+.files__tree li:focus-visible {
+  outline: 2px solid var(--iu-focus, currentColor);
+}
+.files__tree li svg:last-child {
+  margin-left: auto;
+}
+.files__tree-on {
+  background: var(--iu-surface-2);
+  font-weight: var(--iu-font-weight-medium);
+}
+.files__trash {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.files__trash li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--iu-border-quiet);
+  font-size: var(--iu-font-size-13);
+}
+.files__trash-name {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--iu-font-mono);
+  overflow-wrap: anywhere;
+}
+.files__trash-meta {
+  color: var(--iu-text-muted);
+  font-size: var(--iu-font-size-12);
+}
 .files__row {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex: 1;
+  min-width: 0;
   width: 100%;
   padding: 6px 8px;
   border: 0;

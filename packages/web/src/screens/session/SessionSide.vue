@@ -7,6 +7,8 @@ import { useApi } from '@/api'
 import { hasDesktop, openPath, type OpenTarget } from '@/app/desktop'
 import { IuBadge } from '@/components/Badge'
 import { IuButton } from '@/components/Button'
+import { IuHoverCard } from '@/components/HoverCard'
+import ProjectHoverCard from '@/app/hovercards/ProjectHoverCard.vue'
 import { IuIcon } from '@/components/Icon'
 import { IuFilePath } from '@/components/FilePath'
 import { IuMeter } from '@/components/Meter'
@@ -207,12 +209,10 @@ function addTag(e: KeyboardEvent) {
           class="session-side__row"
         >
           <IuIcon name="folder" :size="14" />
-          <RouterLink
-            class="session-side__link"
-            :to="`/p/${name}`"
-            :title="name === session.project ? 'Working repository' : 'Additional repository'"
-            >{{ name }}</RouterLink
-          >
+          <IuHoverCard placement="bottom-start" :label="`${name} overview`">
+            <RouterLink class="session-side__link" :to="`/p/${name}`">{{ name }}</RouterLink>
+            <template #card><ProjectHoverCard :name="name" /></template>
+          </IuHoverCard>
           <IuBadge
             v-if="name === session.project && session.workspace.kind === 'worktree'"
             variant="tag"

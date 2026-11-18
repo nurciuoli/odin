@@ -1,0 +1,1 @@
+- Home's flock now has weather: dark storm clouds roll in from both sides while a session is running, and a faint flash of light inside them marks a session that finished or needs you. Typing and sending no longer move the flock. With reduced motion, the clouds hold still and a flash is one slow, dim swell.

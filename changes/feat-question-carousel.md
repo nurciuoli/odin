@@ -1,0 +1,1 @@
+- When an agent asks several questions at once, they now show one at a time with a step indicator, Back/Next, arrow-key and number-key navigation, Enter to confirm and a review step before submitting.
