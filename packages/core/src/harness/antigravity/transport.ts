@@ -173,6 +173,8 @@ export function attachAntigravity(child: ChildProcessWithoutNullStreams, timeout
       } catch {
         continue;
       }
+      // `null`, a number or an array is valid JSON but not a message; skip it rather than throw inside the stream handler.
+      if (!message || typeof message !== "object" || Array.isArray(message)) continue;
       if (typeof message.id === "number" && pending.has(message.id)) {
         const waiter = pending.get(message.id)!;
         pending.delete(message.id);
@@ -180,12 +182,20 @@ export function attachAntigravity(child: ChildProcessWithoutNullStreams, timeout
         if (message.error) waiter.reject(antigravityRpcError(message.error));
         else waiter.resolve(message.result ?? {});
       } else {
-        rpc.onMessage(message);
+        try {
+          rpc.onMessage(message);
+        } catch {
+          // One bad event must not take the server down or end the session.
+        }
       }
     }
   });
 
+  // Drain diagnostics so a full pipe never stalls the agent; they aren't logged (they may hold user config).
+  child.stderr?.resume();
+  // A write to a dead process is an 'error' event on stdin: unhandled, it would crash the server.
+  child.stdin.on("error", () => finish(new Error("Antigravity input closed")));
   child.on("error", (error) => finish(error));
-  child.on("close", () => finish(null));
+  child.on("close", (code) => finish(ended ? null : new Error(`Antigravity exited (${code ?? "signal"})`)));
   return rpc;
 }

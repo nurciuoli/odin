@@ -1,0 +1,1 @@
+- Antigravity sessions no longer crash Odin on a malformed message or a closed pipe, and an unexpected Antigravity exit now ends the session as failed with its exit code.

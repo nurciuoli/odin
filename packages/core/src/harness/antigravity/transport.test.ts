@@ -59,3 +59,47 @@ test("attachAntigravity handles request/response matching and timeout", async ()
 
   rpc.close();
 });
+
+test("attachAntigravity ignores non-object frames and a throwing event handler", async () => {
+  const child = new EventEmitter() as any;
+  child.stdin = new PassThrough();
+  child.stdout = new PassThrough();
+  const rpc = attachAntigravity(child, 100);
+  const seen: unknown[] = [];
+  rpc.onMessage = (m) => {
+    seen.push(m);
+    if (m.method === "boom") throw new Error("bad payload");
+  };
+  for (const frame of ["null", "5", "[1]", '"x"', "{not json", JSON.stringify({ method: "boom" }), JSON.stringify({ method: "ok" })]) child.stdout.write(`${frame}\n`);
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(seen.map((m: any) => m.method), ["boom", "ok"]);
+  rpc.close();
+});
+
+test("attachAntigravity reports an unexpected exit and a dead stdin as failures", async () => {
+  const exits: (Error | null)[] = [];
+  const crashed = new EventEmitter() as any;
+  crashed.stdin = new PassThrough();
+  crashed.stdout = new PassThrough();
+  const a = attachAntigravity(crashed, 100);
+  a.onExit = (e) => exits.push(e);
+  crashed.emit("close", 1);
+  assert.equal(exits[0]?.message, "Antigravity exited (1)");
+
+  const broken = new EventEmitter() as any;
+  broken.stdin = new PassThrough();
+  broken.stdout = new PassThrough();
+  const b = attachAntigravity(broken, 100);
+  b.onExit = (e) => exits.push(e);
+  broken.stdin.emit("error", new Error("EPIPE"));
+  assert.equal(exits[1]?.message, "Antigravity input closed");
+
+  const quiet = new EventEmitter() as any;
+  quiet.stdin = new PassThrough();
+  quiet.stdout = new PassThrough();
+  const c = attachAntigravity(quiet, 100);
+  c.onExit = (e) => exits.push(e);
+  c.close();
+  quiet.emit("close", 0);
+  assert.equal(exits.length, 2, "a deliberate close is not reported");
+});
