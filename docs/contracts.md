@@ -360,6 +360,26 @@ no commits has none. Deleted files are left out. Read-only git, argv only, cache
 project save). It has the session viewer's confinement and limits: relative paths inside the project folder, no
 `.git`, symlinks, binary or non-UTF-8 files (415) or files above 2 MiB (413). 404 unknown project or file.
 
+#### Project file management
+
+Rename, move, duplicate and a trash for the Files tab. All paths are relative to the project folder and reached
+without symlinks; `.git` and paths escaping the folder are refused (403); unknown project or path → 404. Each change
+calls `projects.noteWritten`. Nothing is committed.
+
+- `POST /api/projects/:name/files/rename` `{ path, name }` → `{ path }`. `name` is one segment (no separators, `..`,
+  `.git`, trailing dot or space, `\/:*?"<>|`; 400). 409 when the name is taken (a case-only rename is allowed).
+- `POST /api/projects/:name/files/move` `{ paths: string[1..200], to }` (`to` = folder, `""` = root) →
+  `{ moved: [{ from, to }] }`. 409 on a name clash (nothing is overwritten) or when the file is already there; 400
+  into itself. All checks run before the first move.
+- `POST /api/projects/:name/files/duplicate` `{ path }` → 201 `{ path }` (`<name> copy<ext>`, `copy 2`, ...). Files only
+  (400), up to 50 MiB (413).
+- Trash: `POST .../files/trash` `{ paths }` → `FileTrashEntry[]` moves items to `<home>/trash/<project>/<id>/`
+  (never unlinks; a copy + remove across devices). `GET .../files/trash` lists, newest first; items older than 7 days
+  are purged whenever the trash is listed or added to. `POST .../files/trash/:id/restore` → `{ path }` puts it back,
+  recreating missing folders; 409 when something is at the original path. `DELETE .../files/trash/:id` or
+  `DELETE .../files/trash` deletes one or all for good (204).
+- Rename, move and trash answer 409 when a running notebook kernel's folder is inside the path (`notebooks.usesPath`).
+
 ### Project worktree default
 
 `ProjectSettings.defaultWorktree` (optional boolean, saved override only, `null` clears it) sets whether new sessions in the

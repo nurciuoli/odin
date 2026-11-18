@@ -3,6 +3,7 @@ import { closeSync, fstatSync, fsyncSync, lstatSync, openSync, readdirSync, read
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { SessionFileEntry, SessionTextFile } from "@odin/shared/api";
 import { HttpError } from "../http/util.ts";
+import { createFileManager } from "./manage.ts";
 import { createFileMap } from "./map.ts";
 import { createFileSearch } from "./search.ts";
 import type { Deps, FilesService, Services } from "../services.ts";
@@ -36,6 +37,7 @@ function translateError(err: unknown): never {
 export function createFilesService(_deps: Deps, services: Services): FilesService {
   const searchIn = createFileSearch();
   const mapIn = createFileMap();
+  const manage = createFileManager(_deps, services);
   function target(sessionId: string, input: string, directory = false) {
     const session = services.sessions.get(sessionId);
     if (!session) throw new HttpError(404, "Unknown session");
@@ -81,6 +83,13 @@ export function createFilesService(_deps: Deps, services: Services): FilesServic
   }
 
   return {
+    renameProject: manage.rename,
+    moveProject: manage.move,
+    duplicateProject: manage.duplicate,
+    trashProject: manage.trash,
+    listTrash: manage.listTrash,
+    restoreTrash: manage.restore,
+    purgeTrash: manage.purge,
     search(sessionId, query) {
       const session = services.sessions.get(sessionId);
       if (!session) throw new HttpError(404, "Unknown session");
