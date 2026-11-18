@@ -389,7 +389,7 @@ AppSettings.defaultWorktree`.
   project (an external session that never ran here), else `[]`. A later `init` or `commands` replaces them in the view.
   Drivers leave out commands Odin owns or that make no sense here (Claude: `clear`/`reset`/`new`, `model`,
   `rename`, `send`/`now`, `color`, `focus`, `heapdump`, `__*`). The web adds Odin's own: `/clear` (aliases `reset`, `new`) opens
-  a new session in the project, `/model <model>` and `/rename <title>` use PATCH, and `/send` (alias `now`) sends now;
+  a new session in the project, `/model <model>` and `/rename <title>` use PATCH, `/send` (alias `now`) sends now, and `/status` and `/cost` show the session's settings and usage in a toast;
   these never reach the harness. Send
   and start reject a message starting with `/clear`, `/reset` or `/new` with 400 (the CLI would reset the
   conversation under Odin).

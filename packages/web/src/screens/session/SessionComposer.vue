@@ -38,7 +38,12 @@ import { IuCallout } from '@/components/Callout'
 import { IuIcon } from '@/components/Icon'
 import type { MenuItem } from '@/components/Menu'
 import { PROJECTS_KEY } from '@/app/projects'
-import { harnessLabel, PERMISSION_MODE_LABELS } from '@/screens/shared/format'
+import {
+  formatCost,
+  formatTokens,
+  harnessLabel,
+  PERMISSION_MODE_LABELS,
+} from '@/screens/shared/format'
 import { useToast } from '@/components/Toast'
 import { attachmentProblem, messageProblem, readAttachment } from './attachments'
 import { composerMode } from './sessionView'
@@ -75,6 +80,8 @@ const props = withDefaults(
     /** From the harness's init event; empty until one arrives. */
     slashCommands?: SlashCommand[]
     context?: { used: number; max: number }
+    /** From the session record, for `/cost`. */
+    usage?: { costUsd: number | null; tokens: import('@odin/shared/api').TokenUsage }
     /** Something waits for the user: the `replacement` slot shows instead of the message box. */
     replaced?: boolean
     /** Queued messages that Send now can release. Messages already handed off are not counted. */
@@ -498,6 +505,27 @@ function runOwnCommand(message: string): boolean {
     // /btw with a question is handled before this; bare /btw asks for one.
     void nextTick(() => (text.value = message))
     toast({ title: 'Ask a question', description: 'Usage: /btw <question>', intent: 'warning' })
+  } else if (cmd.name === 'status') {
+    const parts = [
+      harnessLabel(props.harness),
+      currentModel.value || 'default model',
+      props.effort ? `effort ${props.effort}` : null,
+      PERMISSION_MODE_LABELS[props.permissionMode] ?? props.permissionMode,
+      props.context
+        ? `context ${formatTokens(props.context.used)} of ${formatTokens(props.context.max)}`
+        : null,
+    ].filter(Boolean)
+    toast({ title: 'Session status', description: parts.join(' · '), intent: 'info' })
+  } else if (cmd.name === 'cost') {
+    const u = props.usage
+    toast({
+      title: 'Session usage',
+      description: u
+        ? `${formatTokens(u.tokens.input + u.tokens.cacheRead + u.tokens.cacheWrite)} in · ${formatTokens(u.tokens.output)} out` +
+          (u.costUsd === null ? '' : ` · ${formatCost(u.costUsd)}`)
+        : 'No usage recorded yet',
+      intent: 'info',
+    })
   } else if (cmd.name === 'send') {
     if (cmd.arg) {
       const attempt = messageAttempt(props.sessionId, { text: cmd.arg })

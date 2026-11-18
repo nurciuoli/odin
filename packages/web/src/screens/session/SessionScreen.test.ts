@@ -442,6 +442,17 @@ describe('SessionScreen', () => {
     expect(send).not.toHaveBeenCalled()
   })
 
+  it('answers /status and /cost itself and never sends them', async () => {
+    const { api } = await mountSession(FIXTURE_SESSION_IDS.idle)
+    const send = vi.spyOn(api, 'sendMessage')
+    for (const cmd of ['/status', '/cost']) {
+      await textarea().setValue(cmd)
+      await textarea().trigger('keydown', { key: 'Enter' })
+      await flushPromises()
+    }
+    expect(send).not.toHaveBeenCalled()
+  })
+
   it('puts the waiting prompt in the input area, one at a time, and brings the composer back', async () => {
     const { api } = await mountSession(FIXTURE_SESSION_IDS.waiting)
     const takeover = () => wrapper!.find('.session-composer__takeover')
