@@ -95,6 +95,11 @@ export function messageOutbox(db: DatabaseSync, now: () => string, changed: (id:
       const result = db.prepare("UPDATE session_messages SET state = ?, payload = CASE WHEN ? THEN '{}' ELSE payload END, updated_at = ? WHERE session_id = ? AND state = 'sending'").run(completed ? "completed" : "uncertain", completed ? 1 : 0, now(), id);
       if (result.changes) publish(id);
     },
+    /** A stop beat the agent: the message in flight goes back to waiting its turn, payload intact. */
+    requeue(id: string) {
+      const result = db.prepare("UPDATE session_messages SET state = 'queued', updated_at = ? WHERE session_id = ? AND state = 'sending'").run(now(), id);
+      if (result.changes) publish(id);
+    },
     edit(id: string, messageId: string, message: UserMessage) {
       const existing = snapshot(id).messages.find(m => m.id === messageId);
       const edited = { text: message.text, ...(message.attachments?.length ? { attachments: message.attachments } : {}), ...(existing?.message.clientId ? { clientId: existing.message.clientId } : {}) };

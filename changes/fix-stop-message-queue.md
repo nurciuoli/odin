@@ -1,0 +1,1 @@
+- Stopping a run no longer leaves the message you just sent as "Delivery uncertain" and blocks later sends. If the agent had already started on it, it simply counts as delivered; if you stopped before it did anything, the message goes back to the paused queue to edit, resend or cancel.

@@ -419,7 +419,10 @@ AppSettings.defaultWorktree`.
   separate from native transcript entries; no optimistic transcript entry claims native acceptance.
   The service reserves one message synchronously before invoking a runtime, dispatches only between turns, and
   completes a receipt on successful `turn.end`. Unsuccessful turn completion pauses remaining work and retains the
-  active receipt as uncertain, because tool effects may already have occurred. Send now is the exception: that
+  active receipt as uncertain, because tool effects may already have occurred. A stop (`turn.end` with
+  `error: "interrupted"`) is not a failure: if the agent had already acted on the message (any reply, tool call or
+  prompt) the receipt completes, and if the stop beat the agent the receipt returns to `queued` with its payload and
+  the queue stays paused, so nothing is lost or duplicated. Send now is the exception: that
   interrupt completes the in-flight receipt and dispatches the next message. Exit/restart also turns sending into
   uncertain; boot restores outstanding work paused, never automatically replayed. End/interrupt pause before stopping
   the runtime. Idle-handle cleanup preserves the outbox. A new send does not release retained paused work; when no
