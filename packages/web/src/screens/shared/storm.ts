@@ -97,6 +97,7 @@ function paintBank(
   top: [number, number, number],
   gain: number,
   seed: number,
+  shade: number,
 ) {
   const g = el.getContext('2d')
   if (!g) return
@@ -128,6 +129,13 @@ function paintBank(
     blob(p.x - p.r * 0.1, p.y - p.r * 0.5, p.r * 0.34, top, 0.16)
   }
   g.filter = 'none'
+  // storm-dark underbelly: a slate shadow over the lower half of every lobe, only where there is cloud
+  g.globalCompositeOperation = 'source-atop'
+  const belly = g.createLinearGradient(0, bh * 0.3, 0, bh * 0.78)
+  belly.addColorStop(0, 'rgba(10,11,14,0)')
+  belly.addColorStop(1, `rgba(10,11,14,${shade})`)
+  g.fillStyle = belly
+  g.fillRect(0, 0, bw, bh)
   // shade the underside and keep the base flat: fade everything out toward the bottom
   g.globalCompositeOperation = 'destination-out'
   const fall = g.createLinearGradient(0, bh * 0.52, 0, bh * 0.8)
@@ -155,14 +163,29 @@ export function createStorm(w: number, h: number, scale = 1) {
   function build(ctx: CanvasRenderingContext2D, c: StormColors) {
     const key = `${c.cloud}|${c.lit}`
     if (sprites && paintedWith === key) return sprites
-    const body = rgb(ctx, c.cloud)
-    const top = rgb(ctx, c.lit)
+    const mix = (a: number[], b: number[], k: number) =>
+      a.map((v, i) => v + (b[i]! - v) * k) as [number, number, number]
+    const flash = rgb(ctx, c.lit)
+    // resting clouds are dark slate with dim tops; the lit painting keeps the bright theme colours
+    const body = mix(rgb(ctx, c.cloud), [52, 58, 70], 0.6)
+    const top = mix(flash, body, 0.42)
     sprites = [0, 1].map(side =>
-      [0.9, 2.1].map((gain, lit) => {
+      [1.9, 2.4].map((gain, lit) => {
         const el = document.createElement('canvas')
         el.width = Math.max(1, Math.round(bw * scale))
         el.height = Math.max(1, Math.round(bh * scale))
-        paintBank(el, puffs[side]!, bw, bh, scale, lit ? top : body, top, gain, 90 + side)
+        paintBank(
+          el,
+          puffs[side]!,
+          bw,
+          bh,
+          scale,
+          lit ? flash : body,
+          lit ? flash : top,
+          gain,
+          90 + side,
+          lit ? 0.3 : 0.6,
+        )
         return el
       }),
     )
@@ -225,6 +248,14 @@ export function createStorm(w: number, h: number, scale = 1) {
           (m, f) => (f.side === 2 || f.side === side ? Math.max(m, envelope(f, t - f.t0)) : m),
           0,
         )
+      // an overcast haze behind the banks, so dark cloud has a lighter sky to read against
+      const [hr, hg, hb] = rgb(ctx, c.glow)
+      const haze = ctx.createLinearGradient(0, 0, 0, h * 0.7)
+      haze.addColorStop(0, `rgba(${hr},${hg},${hb},${0.12 * present})`)
+      haze.addColorStop(1, `rgba(${hr},${hg},${hb},0)`)
+      ctx.globalAlpha = 1
+      ctx.fillStyle = haze
+      ctx.fillRect(0, 0, w, h * 0.7)
       for (const side of [0, 1] as const) {
         const lit = level(side) * calm
         const lead = e * bw // the bank's leading edge sits this far in from its canvas edge
