@@ -59,6 +59,8 @@ import { useDrafts, type DraftAttachment } from '@/app/drafts'
 import { registerCommand } from '@/app/commands'
 import { keyLabel, registerShortcut } from '@/app/shortcuts'
 import { parseSideCommand } from './SideThreads'
+import SessionShellRuns from './SessionShellRuns.vue'
+import { parseShellCommand, withShellContext, type ShellRun } from './shellRuns'
 import { completeMessageAttempt, messageAttempt, unresolvedMessages } from './sendAttempt'
 
 const SIDE_KEYS = 'Alt+/'
@@ -574,8 +576,44 @@ async function onAttach(list: File[]) {
   }
 }
 
+// ── `!` shell mode: runs in the session's folder through Odin; results ride along with the next message ──
+const shellRuns = ref<ShellRun[]>([])
+const shellRunning = ref(false)
+watch(
+  () => props.sessionId,
+  () => (shellRuns.value = []),
+)
+async function runShell(command: string, original: string) {
+  if (!command) {
+    void nextTick(() => (text.value = original))
+    toast({ title: 'Type a command', description: 'Usage: !<command>', intent: 'warning' })
+    return
+  }
+  const id = props.sessionId
+  shellRunning.value = true
+  try {
+    const result = await api.runShell(id, command)
+    if (id === props.sessionId)
+      shellRuns.value = [...shellRuns.value, { ...result, id: crypto.randomUUID() }]
+  } catch (e) {
+    void nextTick(() => (text.value = original))
+    toast({
+      title: "Couldn't run that command",
+      description: e instanceof Error ? e.message : String(e),
+      intent: 'danger',
+    })
+  } finally {
+    shellRunning.value = false
+  }
+}
+
 async function onSubmit(payload: { text: string; attachments: ChatAttachment[] }) {
   if (sending.value) return
+  const shell = parseShellCommand(payload.text)
+  if (shell !== null && !sideMode.value && !payload.attachments.length) {
+    if (!shellRunning.value) await runShell(shell, payload.text)
+    return
+  }
   const question = parseSideCommand(payload.text)
   if (sideMode.value || question !== null) {
     void askSide(question !== null ? { ...payload, text: question } : payload)
@@ -593,9 +631,10 @@ async function onSubmit(payload: { text: string; attachments: ChatAttachment[] }
     return
   }
   const message = messageAttempt(id, {
-    text: payload.text,
+    text: withShellContext(payload.text, shellRuns.value),
     ...(attachments.length ? { attachments } : {}),
   })
+  shellRuns.value = []
   await sendAttempt(id, message)
   for (const a of payload.attachments)
     if (!files.value.some(file => file.id === a.id)) payloads.delete(a.id)
@@ -687,8 +726,10 @@ function draftMessage(): UserMessage | undefined {
   if (!body && !attachments.length) return undefined
   text.value = ''
   files.value = []
+  const runs = shellRuns.value
+  shellRuns.value = []
   return messageAttempt(props.sessionId, {
-    text: body,
+    text: withShellContext(body, runs),
     ...(attachments.length ? { attachments } : {}),
   })
 }
@@ -798,6 +839,12 @@ function onTakeoverBlur(e: FocusEvent) {
         </template>
       </IuCallout>
     </template>
+    <SessionShellRuns
+      :runs="shellRuns"
+      :running="shellRunning"
+      @dismiss="id => (shellRuns = shellRuns.filter(r => r.id !== id))"
+      @clear="shellRuns = []"
+    />
     <div class="session-composer__row">
       <div class="session-composer__box">
         <IuComposerSurface :joined="hasActivity">
@@ -871,7 +918,7 @@ function onTakeoverBlur(e: FocusEvent) {
               <span v-else-if="state === 'running'"
                 >↵ send queues · Send now interrupts · /send</span
               >
-              <span v-else>↵ send · ⌥↵ side question · / commands · @ files</span>
+              <span v-else>↵ send · ⌥↵ side question · / commands · @ files · ! shell</span>
             </template>
           </IuComposer>
         </IuComposerSurface>

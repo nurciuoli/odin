@@ -453,6 +453,26 @@ describe('SessionScreen', () => {
     expect(send).not.toHaveBeenCalled()
   })
 
+  it('runs !commands through Odin and sends their output with the next message', async () => {
+    const { api } = await mountSession(FIXTURE_SESSION_IDS.idle)
+    const send = vi.spyOn(api, 'sendMessage')
+    const shell = vi.spyOn(api, 'runShell')
+    await textarea().setValue('!git status')
+    await textarea().trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+    expect(shell).toHaveBeenCalledWith(FIXTURE_SESSION_IDS.idle, 'git status')
+    expect(send).not.toHaveBeenCalled()
+    expect(wrapper!.find('.session-shell').text()).toContain('git status')
+    await textarea().setValue('what changed?')
+    await textarea().trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+    const text = send.mock.calls[0]![1].text
+    expect(text).toContain('<shell-run')
+    expect(text).toContain('$ git status')
+    expect(text.endsWith('what changed?')).toBe(true)
+    expect(wrapper!.find('.session-shell').exists()).toBe(false)
+  })
+
   it('puts the waiting prompt in the input area, one at a time, and brings the composer back', async () => {
     const { api } = await mountSession(FIXTURE_SESSION_IDS.waiting)
     const takeover = () => wrapper!.find('.session-composer__takeover')

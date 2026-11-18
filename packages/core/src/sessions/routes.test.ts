@@ -128,3 +128,22 @@ test("the real app serves the sessions routes", async () => {
     await app.close();
   }
 });
+
+test("POST /api/sessions/:id/shell runs a command in the session cwd and validates input", async () => {
+  const s = setup();
+  const app = await serve(s);
+  try {
+    const started = await (await app.post("/api/sessions", { project: PROJECT, prompt: { text: "hi" } })).json();
+    const url = `/api/sessions/${started.id}/shell`;
+    const ok = await app.post(url, { command: "echo hello && echo oops 1>&2; exit 3" });
+    assert.equal(ok.status, 200);
+    const result = await ok.json();
+    assert.match(result.output, /hello/);
+    assert.match(result.output, /oops/);
+    assert.equal(result.exitCode, process.platform === "win32" ? result.exitCode : 3);
+    assert.equal(result.timedOut, false);
+    assert.equal((await app.post(url, { command: "  " })).status, 400);
+    assert.equal((await app.post(url, {})).status, 400);
+    assert.equal((await app.post("/api/sessions/nope/shell", { command: "echo" })).status, 404);
+  } finally { await app.close(); }
+});
