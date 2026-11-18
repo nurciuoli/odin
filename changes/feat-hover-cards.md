@@ -1,0 +1,1 @@
+- Hovering (or keyboard-focusing) a project or session in the sidebar, or a project in a session's Details panel, shows a quick overview card: counts, branch and recent sessions for a project; status, model, last message, cost and context for a session.
