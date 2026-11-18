@@ -163,6 +163,13 @@ export function createHttpApi(options: HttpApiOptions = {}): Api {
     getProjectAssetFiles: (name, kind, id) =>
       get(`${project(name)}/library/${seg(kind)}/${seg(id)}/files`),
 
+    listSecrets: () => get('/api/secrets'),
+    putSecret: (name, value) => send('PUT', `/api/secrets/${seg(name)}`, { value }),
+    deleteSecret: name => send('DELETE', `/api/secrets/${seg(name)}`),
+    getMcpOAuth: id => get(`/api/mcp/${seg(id)}/oauth`),
+    startMcpOAuth: (id, origin) => send('POST', `/api/mcp/${seg(id)}/oauth/start`, { origin }),
+    disconnectMcpOAuth: id => send('DELETE', `/api/mcp/${seg(id)}/oauth`),
+
     syncProject: name => send('POST', `${project(name)}/sync`),
 
     getProjectActivity: (name, days) =>

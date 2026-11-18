@@ -1,6 +1,6 @@
 # Plan: MCP servers with real auth, and plugins
 
-Status: **phase 1 (vault) in review (#18), phase 2 (OAuth) in review, phases 3 and 4 not started.** Owner: open.
+Status: **phase 1 (vault) in review (#18), phase 2 (OAuth) in review (#21), phase 3 (servers screen) in review, phase 4 not started.** Owner: open.
 
 ## Why
 
@@ -14,7 +14,7 @@ same experience in every harness: set a server up once in Odin, sign in once, an
    launch. See `docs/contracts.md#secrets`.
 2. **OAuth for remote servers** (done): discovery, PKCE sign-in through `/api/oauth/callback`, token storage and
    refresh, `Authorization` header at launch. See `docs/contracts.md#mcp-oauth`.
-3. **MCP servers screen**: a page listing library servers with connection state (connected, needs sign-in, missing
+3. **MCP servers screen** (done, except the native catalog and test-connection parts): a page listing library servers with connection state (connected, needs sign-in, missing
    secret), a Connect button that opens `authorizationUrl` and polls status, Disconnect, secret entry, and the
    native catalog's per-harness status and tool counts. Needs `api.ts`/`mock.ts` methods and fixtures. A "test
    connection" action (initialize + list tools through core) probably needs its own small contract.
