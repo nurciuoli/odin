@@ -711,6 +711,31 @@ and `forget`; `push` is 400. A plugin has no files of its own in a project (`INS
   (`adopted`) and not ones another installed plugin lists. Copy files stay and merged fragments come out, as for
   any `forget`.
 
+
+#### Import and export
+
+Plugins come from and go to Claude Code plugins. Sources are a git address or a local folder only (`PluginSource`).
+
+- `POST /api/library/import` (`ImportRequest`: `source`, optional `id`) → `ImportPreview`, writing nothing. A git source
+  is https, ssh or `git@` (never `file:`) and an optional branch, tag or commit; Odin runs `git init`, `fetch --depth 1`
+  and `checkout` by argv (never a shell, no hooks, no prompts, 60 s) in a temp folder under `<home>/tmp` and removes
+  it. A local source is an absolute folder. Everything read is untrusted: symlinks are ignored, at most 500 files,
+  1 MB each and 16 MB in all, text only, library path rules.
+- **Conversion**: `skills/<id>/…` and `agents/<id>.md` are kept; `commands/<id>.md` become skills (a name clash becomes
+  `command-<id>`); `hooks/hooks.json` becomes the own member `settings/hooks`; each `.mcp.json` server becomes
+  `mcp/<name>`; `README.md` is kept; the manifest keeps name, description and version and records `source` for git.
+  Members that do not parse are skipped with a warning, as are files with no place (`scripts/`, and so on). Hooks or
+  servers that use `${CLAUDE_PLUGIN_ROOT}` or `${NAME}` environment references get a warning, since Odin has neither.
+  Own members stay in the plugin; nothing is split into the shared library. A plugin id already in the library is 409.
+- The preview lists members, `runs` (hooks, local commands and remote servers, with exact text), `secrets` and
+  `warnings`, plus a `previewId` valid for 10 minutes and one use. `POST /api/library/import/:previewId` writes the
+  plugin (201, `LibraryAsset`). Nothing runs at import; installing it into a project is the confirmed preview of the
+  section above.
+- `POST /api/library/plugin/:id/export` (`ExportRequest`: absolute `path`, absent or an empty folder, else 409) →
+  `ExportResult`. It writes `.claude-plugin/plugin.json`, `skills/`, `agents/`, `hooks/hooks.json` (hooks from settings
+  members) and `.mcp.json`, with included assets at their current or pinned version. `${secret:NAME}` stays as a
+  placeholder (never a value), `oauth` is dropped with a note, and members a Claude Code plugin cannot express
+  (instruction fragments, settings with no hooks) are listed in `skipped`. Files are written without the executable bit.
 ## Notebooks and Python analysis
 
 A notebook is an ordinary `.ipynb` file in the project, addressed by a project-relative path (forward slashes, ends
@@ -1022,6 +1047,9 @@ The main routes; each module's `routes.ts` has the full list. All JSON. Errors: 
 | PUT `/api/library/:kind/:id` (`SaveAssetRequest`) | `LibraryAsset` (201 when new) |
 | DELETE `/api/library/:kind/:id` | 204 |
 | POST `/api/library/rescan` | 204 |
+| POST `/api/library/import` (`ImportRequest`) | `ImportPreview` |
+| POST `/api/library/import/:previewId` | `LibraryAsset` (201) |
+| POST `/api/library/plugin/:id/export` (`ExportRequest`) | `ExportResult` |
 | GET `/api/projects/:name/library` | `Installation[]` |
 | POST `/api/projects/:name/library` (`InstallRequest`) | `InstallResult` |
 | GET `/api/projects/:name/library/:kind/:id/files` | `AssetFiles` (404 when missing) |
