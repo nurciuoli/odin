@@ -15,6 +15,8 @@ export type Inline =
 // threaded through the parser; `mentions` is longest-first so "Rae Okafor" beats "Rae"
 interface Ctx {
   mentions: string[]
+  /** file preview: all six heading levels, and a newline inside a paragraph reflows as a space */
+  document: boolean
 }
 
 export interface ListItem {
@@ -31,7 +33,7 @@ export interface ListBlock {
 
 export type Block =
   | { kind: 'paragraph'; children: Inline[] }
-  | { kind: 'heading'; level: 3 | 4; children: Inline[] }
+  | { kind: 'heading'; level: 1 | 2 | 3 | 4 | 5 | 6; children: Inline[] }
   | { kind: 'code'; lang: string; value: string }
   | ListBlock
   | { kind: 'quote'; blocks: Block[] }
@@ -52,11 +54,14 @@ const PUNCT = /[\p{P}\p{S}]/u
 
 export function parseMarkdown(
   source: string,
-  opts: { streaming?: boolean; mentions?: string[] } = {},
+  opts: { streaming?: boolean; mentions?: string[]; document?: boolean } = {},
 ): Block[] {
   const lines = source.replace(/\r\n?/g, '\n').replace(/\t/g, '    ').split('\n')
   const names = [...new Set((opts.mentions ?? []).map(m => m.trim()).filter(Boolean))]
-  const ctx: Ctx = { mentions: names.sort((a, b) => b.length - a.length) }
+  const ctx: Ctx = {
+    mentions: names.sort((a, b) => b.length - a.length),
+    document: !!opts.document,
+  }
   return parseBlocks(lines, 0, !!opts.streaming, ctx)
 }
 
@@ -129,7 +134,9 @@ function parseBlocks(lines: string[], depth: number, atEnd: boolean, ctx: Ctx): 
       if (text) {
         out.push({
           kind: 'heading',
-          level: Math.min(4, Math.max(3, heading[1].length)) as 3 | 4,
+          level: (ctx.document
+            ? heading[1].length
+            : Math.min(4, Math.max(3, heading[1].length))) as 1 | 2 | 3 | 4 | 5 | 6,
           children: parseInline(text, tailAt(i + 1), ctx),
         })
         i++
@@ -358,6 +365,12 @@ function tokenize(s: string, drop: boolean, ctx: Ctx, links: boolean, mentions: 
     if (c === '\\' && i + 1 < n && '\\`*_[]'.includes(s.charAt(i + 1))) {
       buf += s.charAt(i + 1)
       i += 2
+      continue
+    }
+
+    if (c === '\n' && ctx.document) {
+      buf += ' '
+      i++
       continue
     }
 
