@@ -10,6 +10,7 @@ import {
 export const PROJECT_SECTIONS = [
   { id: 'overview', label: 'Overview' },
   { id: 'sessions', label: 'Sessions' },
+  { id: 'threads', label: 'Threads' },
   { id: 'files', label: 'Files' },
   { id: 'outputs', label: 'Outputs' },
   { id: 'resources', label: 'Resources' },
@@ -31,6 +32,7 @@ declare module 'vue-router' {
 const sectionScreens: Record<ProjectSection, () => Promise<unknown>> = {
   overview: () => import('@/screens/project/overview/OverviewScreen.vue'),
   sessions: () => import('@/screens/project/sessions/ProjectSessionsScreen.vue'),
+  threads: () => import('@/screens/project/threads/ThreadsScreen.vue'),
   files: () => import('@/screens/project/files/FilesScreen.vue'),
   outputs: () => import('@/screens/project/outputs/OutputsScreen.vue'),
   resources: () => import('@/screens/project/resources/ResourcesScreen.vue'),

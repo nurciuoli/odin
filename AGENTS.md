@@ -19,7 +19,7 @@ Read by anyone working in this repo: contributors, and coding agents (including 
   labels, pricing, agent files).
 - `packages/core`: the server. `node:http`, `node:sqlite`, SSE, agent sessions through harness drivers. One folder
   per module (`projects`, `sessions`, `launch`, `library`, `artifacts`, `sync`, `ingest`, `metrics`,
-  `settings`, `tracking`), each with `service.ts` (implements an interface from `services.ts`) and `routes.ts`.
+  `settings`, `tracking`, `coordination`), each with `service.ts` (implements an interface from `services.ts`) and `routes.ts`.
   `harness/` holds the `Harness` interface (`types.ts`), the scriptable fake driver (`fake.ts`) and the Claude driver
   (`claude/`, the only code allowed to import `@anthropic-ai/claude-agent-sdk`).
 - `packages/web`: Vue 3.5 app. `src/components`, `src/styles`, `src/composables` are **Instrument UI**, a vendored design system

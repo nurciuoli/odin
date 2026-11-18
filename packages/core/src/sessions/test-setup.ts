@@ -80,6 +80,7 @@ export function setup(o: SetupOptions = {}) {
   services.library = createLibraryService(deps, services);
   services.launch = createLaunchService(deps, services);
   services.notebooks = createNotebooksService(deps, services);
+  services.coordination = { hostTools: () => [], instructions: () => null, close: () => {} } as unknown as Services["coordination"];
   services.sessions = createSessionsService(deps, services, o);
   return { deps, harness, services, sessions: services.sessions, projectPath, worktrees, harnessEvents, baselines, refreshed };
 }

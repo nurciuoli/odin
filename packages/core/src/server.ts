@@ -33,6 +33,7 @@ import { createSettingsService } from "./settings/service.ts";
 import { getToolPathSource, setToolPathSource } from "./tools/resolve.ts";
 import { createFilesService } from "./files/service.ts";
 import { createNotebooksService } from "./notebooks/service.ts";
+import { createCoordinationService } from "./coordination/service.ts";
 
 export interface AppOptions {
   config: Config;
@@ -101,6 +102,8 @@ export function createApp(options: AppOptions): App {
   services.sessions = createSessionsService(deps, services);
   services.files = createFilesService(deps, services);
   services.notebooks = createNotebooksService(deps, services);
+  // Subscribes to sessions.onUpdated at construction, so it comes after sessions.
+  services.coordination = createCoordinationService(deps, services);
 
   const router = apiRouter(deps, services);
   const hub = new SseHub(bus, options.heartbeatMs);
@@ -146,7 +149,7 @@ export function createApp(options: AppOptions): App {
       new Promise((resolve) => server.listen(config.port, config.host, () => resolve(server.address() as AddressInfo))),
     async close() {
       hub.close();
-      for (const s of [services.sessions, services.notebooks, services.metrics, services.library, services.sync, services.projects]) await s.close();
+      for (const s of [services.coordination, services.sessions, services.notebooks, services.metrics, services.library, services.sync, services.projects]) await s.close();
       for (const harness of Object.values(deps.harnesses)) await harness.close?.();
       await new Promise<void>((resolve) => server.close(() => resolve()));
       server.closeAllConnections();
