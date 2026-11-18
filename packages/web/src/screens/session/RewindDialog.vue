@@ -231,7 +231,7 @@ async function confirm() {
             :value="c.mode"
             :disabled="!available[c.mode]"
           />
-          <IuIcon :name="c.icon" :size="18" class="rewind__card-icon" />
+          <IuIcon :name="c.icon" :size="20" class="rewind__card-icon" />
           <span class="rewind__card-title">{{ c.title }}</span>
           <span class="rewind__card-blurb">{{ available[c.mode] ? c.blurb : whyNot(c.mode) }}</span>
         </label>
