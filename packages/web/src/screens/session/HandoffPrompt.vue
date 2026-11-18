@@ -138,6 +138,7 @@ async function onAnswer(a: PermissionPromptAnswer) {
     :busy="busy"
     :autofocus="false"
     cancellable
+    choices-only
     cancel-label="Cancel handoff"
     @answer="onAnswer"
     @cancel="closeHandoff"

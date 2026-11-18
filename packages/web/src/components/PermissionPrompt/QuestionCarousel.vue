@@ -10,8 +10,13 @@ import IuTextarea from '@/components/Fields/Textarea.vue'
 // One question at a time, with a step indicator, Prev/Next and a review step before submitting. Owns the answers;
 // the parent reads them through `update:answers` and the final `submit`.
 const props = withDefaults(
-  defineProps<{ questions: PermissionPromptQuestion[]; busy?: boolean }>(),
-  { busy: false },
+  defineProps<{
+    questions: PermissionPromptQuestion[]
+    busy?: boolean
+    /** Fixed choices only: no free-text "Other answer" box. */
+    choicesOnly?: boolean
+  }>(),
+  { busy: false, choicesOnly: false },
 )
 const emit = defineEmits<{
   'update:answers': [answers: Record<string, string>]
@@ -195,6 +200,7 @@ const stepLabel = (i: number) => {
           </div>
         </div>
         <IuTextarea
+          v-if="!choicesOnly || !question.options.length"
           v-model="written[keyOf(question)]"
           :label="
             question.options.length ? 'Other answer (overrides selected choices)' : 'Your answer'

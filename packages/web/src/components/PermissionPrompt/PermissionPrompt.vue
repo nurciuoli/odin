@@ -32,6 +32,11 @@ const props = withDefaults(
     autofocus?: boolean
     /** Offer a Cancel action that gives up on the request (and whatever waits on it): emits `cancel`. */
     cancellable?: boolean
+    /**
+     * A plain choice: a question with fixed options only. No free-text answer, no Deny and no message to the agent;
+     * Cancel (when `cancellable`) is the way out.
+     */
+    choicesOnly?: boolean
     /** Accessible name of the Cancel button, saying what cancelling does. */
     cancelLabel?: string
   }>(),
@@ -40,6 +45,7 @@ const props = withDefaults(
     scopes: () => ['session', 'project', 'local', 'user'],
     autofocus: true,
     cancellable: false,
+    choicesOnly: false,
     cancelLabel: 'Cancel',
   },
 )
@@ -215,6 +221,7 @@ const denyLabel = computed(() => (props.request.kind === 'plan' ? 'Keep planning
         :key="request.id"
         :questions="request.questions ?? []"
         :busy="busy"
+        :choices-only="choicesOnly"
         @update:answers="answers = $event"
         @hint="hint = $event"
         @submit="allow()"
@@ -270,6 +277,7 @@ const denyLabel = computed(() => (props.request.kind === 'plan' ? 'Keep planning
       </IuMenu>
 
       <IuButton
+        v-if="!choicesOnly"
         :variant="request.kind === 'question' ? 'ghost' : 'secondary'"
         size="sm"
         class="iu-permission-prompt__deny"
@@ -279,6 +287,7 @@ const denyLabel = computed(() => (props.request.kind === 'plan' ? 'Keep planning
         {{ denyLabel }}
       </IuButton>
       <IuButton
+        v-if="!choicesOnly"
         variant="ghost"
         size="sm"
         class="iu-permission-prompt__msg"

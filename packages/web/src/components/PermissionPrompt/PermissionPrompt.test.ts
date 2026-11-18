@@ -135,6 +135,24 @@ describe('IuPermissionPrompt', () => {
     expect(w.text().split('Change').length - 1).toBe(1)
     w.unmount()
   })
+  it('choicesOnly leaves out the free-text box, Deny and the message button', () => {
+    const request = req({
+      kind: 'question',
+      tool: 'Handoff',
+      input: undefined,
+      questions: [{ question: 'Which?', header: 'H', options: [{ label: 'a' }, { label: 'b' }] }],
+    })
+    const plain = mountIt(request)
+    expect(plain.find('textarea').exists()).toBe(true)
+    expect(button(plain, 'Deny')).toBeDefined()
+    plain.unmount()
+    const w = mountIt(request, { choicesOnly: true, cancellable: true })
+    expect(w.find('textarea').exists()).toBe(false)
+    expect(w.findAll('button').some(b => /Deny|Add a message/.test(b.text()))).toBe(false)
+    expect(w.find('.iu-permission-prompt__cancel').exists()).toBe(true)
+    w.unmount()
+  })
+
   it('collects question answers keyed by question text', async () => {
     const w = mountIt(
       req({
