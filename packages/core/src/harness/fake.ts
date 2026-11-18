@@ -113,6 +113,14 @@ export function fakeHarness(options: FakeHarnessOptions = {}): FakeHarness {
   const handles = new Map<string, FakeHandle>();
   const answers: FakeHarness["answers"] = [];
 
+  /** Where a fork's copied history ends: just before `forkAtMessageId`, or the whole history. */
+  function cutIndex(entries: TranscriptEntry[], opts: StartOptions): number {
+    if (!opts.fork || !opts.forkAtMessageId) return entries.length;
+    const at = entries.findIndex((e) => e.id === opts.forkAtMessageId && e.kind === "user");
+    if (at < 0) throw new Error(`${opts.forkAtMessageId} is not a user message of session ${opts.resume}`);
+    return at;
+  }
+
   function startHandle(opts: StartOptions): FakeHandle {
     starts.push(opts);
     const sessionId = opts.fork || !opts.resume ? (opts.sessionId ?? randomUUID()) : opts.resume;
@@ -127,7 +135,7 @@ export function fakeHarness(options: FakeHarnessOptions = {}): FakeHarness {
         createdAt: now().toISOString(),
         updatedAt: now().toISOString(),
       },
-      entries: source ? source.entries.map((e) => ({ ...e })) : [],
+      entries: source ? source.entries.slice(0, cutIndex(source.entries, opts)).map((e) => ({ ...e })) : [],
     };
     store.set(sessionId, stored);
 
@@ -396,6 +404,15 @@ export function fakeHarness(options: FakeHarnessOptions = {}): FakeHarness {
       if (!s) throw new Error(`unknown session ${sessionId}`);
       const newId = randomUUID();
       store.set(newId, { info: { ...s.info, sessionId: newId, createdAt: now().toISOString(), updatedAt: now().toISOString() }, entries: s.entries.map((e) => ({ ...e })) });
+      return newId;
+    },
+    async forkAt(sessionId, messageId) {
+      const s = findStored(sessionId);
+      if (!s) throw new Error(`unknown session ${sessionId}`);
+      const at = s.entries.findIndex((e) => e.id === messageId && e.kind === "user");
+      if (at < 0) throw new Error(`${messageId} is not a user message of session ${sessionId}`);
+      const newId = randomUUID();
+      store.set(newId, { info: { ...s.info, sessionId: newId, createdAt: now().toISOString(), updatedAt: now().toISOString() }, entries: s.entries.slice(0, at).map((e) => ({ ...e })) });
       return newId;
     },
     async delete(sessionId) {

@@ -1424,6 +1424,13 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
         harnessEvent(id, { type: 'exit', outcome: 'closed', error: null })
         return sessionOf(id)
       }),
+    listCheckpoints: id => respond(() => (sessionOf(id), [])),
+    checkpointDiff: (_id, checkpointId, against) =>
+      respond(() => ({ checkpointId, against: against ?? 'turn', files: [], truncated: false })),
+    restoreCheckpoint: () =>
+      respond(() => {
+        throw new ApiRequestError(501, 'checkpoints are not in the mock yet')
+      }),
     forkSession: (id, req) =>
       respond(() => {
         const parent = sessionOf(id)

@@ -57,6 +57,8 @@ export interface StartOptions {
   /** Resume this harness session. With `fork: true`, the history is copied into `sessionId` instead. */
   resume?: string;
   fork?: boolean;
+  /** With `fork`: copy history only up to, not including, this user message (a transcript entry id). Needs `forkAt`. */
+  forkAtMessageId?: string;
   /** First user message; omitted on a resume that just reattaches. */
   prompt?: UserMessage;
   title?: string;
@@ -138,6 +140,11 @@ export interface Harness {
   rename(sessionId: string, title: string, projectPath?: string): Promise<void>;
   /** Copy a stored session into a new one without running it. Returns the new id. */
   fork(sessionId: string, projectPath?: string): Promise<string>;
+  /**
+   * Like `fork`, but the copy ends just before the user message `messageId` (an id from `messages()`). Throws when the
+   * message is not a user message of that session. Present only when `capabilities.checkpoints.forkAt` is true.
+   */
+  forkAt?(sessionId: string, messageId: string, projectPath?: string): Promise<string>;
   delete(sessionId: string, projectPath?: string): Promise<void>;
   models(): Promise<ModelInfo[]>;
 }

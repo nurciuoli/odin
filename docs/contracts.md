@@ -104,6 +104,7 @@ optional dependency, `@anthropic-ai/claude-agent-sdk-<os>-<arch>`):
 | Additional repositories | Supported | Supported | Rejected | Supported | Supported |
 | Supplemental instructions | Supported | Supported | Warning, unsupported | Supported | Supported |
 | Attachments | Images/text | Images/text | Images/text | Supported | Supported |
+| Fork at a message (`checkpoints.forkAt`) | Planned | Planned | Not supported | Planned | Not supported |
 
 Claude, Codex and Grok rebuild selected MCP servers from library IDs on resume and fork, and discover project and
 worktree sessions. Optional capability fields omitted by a driver keep their default behaviour.
@@ -569,6 +570,39 @@ and its advertised default level when resetting. Permission mode remains indepen
 
 The composer offers `/effort <level>` and `/effort default` for models with advertised effort levels, with the
 same behavior as its effort selector. Unsupported commands remain native harness commands.
+
+## Checkpoints
+
+Status: contracts only; behaviour lands in later PRs (`docs/plans/checkpoints.md`). Until then `list` is empty and
+`capture` does nothing.
+
+- A **checkpoint** is the state of a session just before the agent acted on one user message: the conversation up to
+  but not including that message, and the working tree at that moment. One per turn (`kind: "turn"`, id
+  `<sessionId>:<n>`), plus a `pre-restore` safety snapshot (`<sessionId>:undo:<n>`) taken before any restore writes files.
+- **Files** are snapshotted by core for every harness, in a bare git repository Odin owns at
+  `<home>/checkpoints/<project>/<hash of cwd>.git`, driven as `git --git-dir=<store> --work-tree=<cwd>` with argv
+  (never a shell string). The user's own `.git`, index, refs and hooks are never touched, so "Odin never commits, resets,
+  pushes" still holds. The session's `cwd` only: `additionalDirectories` are not snapshotted. Nested repositories,
+  submodules and files over 5 MB are skipped; over 20,000 files or 10 s the checkpoint is `snapshot: "skipped"`.
+  Ignored files (`.gitignore`) are neither captured nor deleted by a restore.
+- **Turn boundaries.** `capture("turn.start", messageId)` runs before the harness gets the message and records the
+  `before` tree; `capture("turn.end", …)` records the end tree and `files`. Captures run off the request path, never
+  throw and never delay a turn; each change is announced with `checkpoint.updated`.
+- **Conversation** rewind is a fork cut before the message: optional `Harness.forkAt` / `StartOptions.forkAtMessageId`,
+  declared by `capabilities.checkpoints.forkAt`. Odin keeps no transcript of its own, so a harness without it can only
+  do files-only restores (`conversation: true` is a 400).
+- **Fork** with `atMessageId` is the conversation fork cut there; with `restoreFiles: true` (needs `worktree: true`) the
+  fork's fresh worktree is filled from that checkpoint's tree through `materialize`, and the fork inherits the
+  parent's checkpoints before that message.
+- **Restore** (`POST …/restore`) needs an idle session and an empty queue (409 otherwise). `files` writes the tree back
+  in the session's own workspace after a `pre-restore` snapshot, deleting only files that the latest snapshot had and
+  the target lacks. `conversation` forks at the message and archives the original, which is kept: the result's
+  `session` is the new fork and `archivedSessionId` the original. Undo is a files-only restore of `undoCheckpointId`
+  and unarchiving the original.
+- **Retention**: per project, `ProjectSettings.checkpoints` (`enabled` default true, `maxCount` 200, `maxBytes`
+  500 MB); the oldest are pruned. Deleting a session or project removes its checkpoints and unreferenced objects.
+- Checkpoints are keyed by Odin session id and transcript message id, not by harness, so a handoff to another harness
+  can anchor on one.
 
 ## Launch
 
@@ -1079,6 +1113,9 @@ The main routes; each module's `routes.ts` has the full list. All JSON. Errors: 
 | POST `/api/sessions/:id/interrupt` | 204 |
 | POST `/api/sessions/:id/end` | `Session` |
 | POST `/api/sessions/:id/fork` (`ForkSessionRequest`) | `Session` (201) |
+| GET `/api/sessions/:id/checkpoints` | `Checkpoint[]` (oldest first) |
+| GET `/api/sessions/:id/checkpoints/:cid/diff?against=turn\|current` | `CheckpointDiff` |
+| POST `/api/sessions/:id/checkpoints/:cid/restore` (`RestoreCheckpointRequest`) | `RestoreCheckpointResult` |
 | POST `/api/projects/:name/discover` | `{ added }` |
 | GET `/api/models?harness=claude` | `ModelInfo[]` |
 | GET `/api/artifacts/:id` | `ArtifactDetail` |
@@ -1118,7 +1155,7 @@ The main routes; each module's `routes.ts` has the full list. All JSON. Errors: 
 - Frames: `event: <type>\ndata: <json>\n\n`, typed `ServerEvent`. A `heartbeat` on connect and every 20s.
 - The client reconnects with backoff when nothing arrives for `STALE_MS`, and refetches REST state on reconnect.
 - `session.updated` carries the full record; `session.event` carries one `HarnessEvent` for live views;
-  `project.updated` means "refetch this project".
+  `project.updated` means "refetch this project". `checkpoint.updated` carries one `Checkpoint` (merge by `id`).
 
 ## SQLite
 
@@ -1133,6 +1170,7 @@ The main routes; each module's `routes.ts` has the full list. All JSON. Errors: 
 | settings | `app_settings` |
 | projects | `projects` |
 | sessions | `sessions` |
+| checkpoints | `checkpoints` |
 | sync | `gh_map`, `sync_state`, `pulls` |
 | ingest | `session_events` |
 | artifacts | `artifacts`, `artifact_versions` |

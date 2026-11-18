@@ -157,6 +157,13 @@ export function createHttpApi(options: HttpApiOptions = {}): Api {
     interruptSession: id => send('POST', `${session(id)}/interrupt`),
     endSession: id => send('POST', `${session(id)}/end`),
     forkSession: (id, req) => send('POST', `${session(id)}/fork`, req),
+    listCheckpoints: id => get(`${session(id)}/checkpoints`),
+    checkpointDiff: (id, checkpointId, against) =>
+      get(
+        `${session(id)}/checkpoints/${seg(checkpointId)}/diff${against ? `?against=${against}` : ''}`,
+      ),
+    restoreCheckpoint: (id, checkpointId, req) =>
+      send('POST', `${session(id)}/checkpoints/${seg(checkpointId)}/restore`, req),
     listModels: harness => get(`/api/models${query({ harness })}`),
     getNativeCatalog: (harness, project) =>
       get(`/api/harnesses/${seg(harness)}/native${query({ project })}`),
