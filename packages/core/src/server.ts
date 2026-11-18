@@ -34,8 +34,7 @@ import { createSecretsService } from "./secrets/service.ts";
 import { createSettingsService } from "./settings/service.ts";
 import { getToolPathSource, setToolPathSource } from "./tools/resolve.ts";
 import { createFilesService } from "./files/service.ts";
-import { partialStub } from "./stub.ts";
-import type { CheckpointsService } from "./services.ts";
+import { createCheckpointsService } from "./checkpoints/service.ts";
 import { createNotebooksService } from "./notebooks/service.ts";
 
 export interface AppOptions {
@@ -106,8 +105,7 @@ export function createApp(options: AppOptions): App {
   services.launch = createLaunchService(deps, services);
   services.ingest = createIngestService(deps, services);
   services.metrics = createMetricsService(deps, services);
-  // Placeholder until the checkpoint store lands: no checkpoints, and turn-boundary captures do nothing.
-  services.checkpoints = partialStub<CheckpointsService>("checkpoints", { list: () => [], capture: async () => {}, inherit: () => {}, forget: async () => {} });
+  services.checkpoints = createCheckpointsService(deps, services);
   services.sessions = createSessionsService(deps, services);
   services.files = createFilesService(deps, services);
   services.notebooks = createNotebooksService(deps, services);
