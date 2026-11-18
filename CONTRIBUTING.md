@@ -29,7 +29,8 @@ Thanks for your interest. Bug reports, fixes, docs improvements and new harness 
 ## Pull requests
 
 `main` is protected: every change lands through a PR with green CI (core and web on Ubuntu, plus the PR title
-check). PRs are **squash-merged**, so one PR is one commit on `main` and the merged branch is deleted.
+check). CI skips jobs the diff cannot affect, and runs Windows on a PR only when something outside
+`packages/web` changed; `main` always runs everything. PRs are **squash-merged**, so one PR is one commit on `main` and the merged branch is deleted.
 
 **The PR title becomes that commit**, so it follows [Conventional Commits](https://www.conventionalcommits.org/):
 
