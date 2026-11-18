@@ -14,38 +14,121 @@ env:
   ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
   PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
 
+# Required checks on main: `core (ubuntu-latest)`, `web (ubuntu-latest)` and `PR title`. Keep those job names.
+# A job skipped by its `if` counts as passing for a required check, so docs-only PRs still merge.
 jobs:
-  # Core/shared/adapters/desktop and web run as separate jobs, so CI takes as long as the slower one.
-  gates:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        suite: [core, web]
-    name: ${{ matrix.suite }} (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+  # Decides what the diff can affect, and runs the changelog check (needs only Node, no install).
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      core: ${{ steps.filter.outputs.core }}
+      web: ${{ steps.filter.outputs.web }}
+      windows: ${{ steps.filter.outputs.windows }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      # After setup-node, so `yarn` is this Node's Corepack shim (Yarn 4) and not the runner image's Yarn 1.
-      - run: corepack enable
-      - run: yarn --version
-      # Restoring node_modules itself skips the fetch and link steps; yarn install then only verifies.
-      - uses: actions/cache@v4
-        with:
-          path: |
-            node_modules
-            */*/node_modules
-          key: node-modules-${{ runner.os }}-${{ hashFiles('yarn.lock', '.yarnrc.yml') }}
-      - run: yarn install --immutable
-      - if: matrix.suite == 'core'
-        run: yarn changelog:check
-      - if: matrix.suite == 'core'
-        run: yarn typecheck:core
-      - if: matrix.suite == 'core'
-        run: yarn test:core
-      # verify:web covers the web type-check, so `yarn typecheck` (which repeats it) is not run here.
-      - if: matrix.suite == 'web'
-        run: yarn verify:web
+      - run: node scripts/changelog.ts check
+      - id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          HEAD: ${{ github.sha }}
+        run: |
+          base="$PR_BASE"
+          [ "$EVENT" = push ] && base="$PUSH_BEFORE"
+          core=true web=true
+          if [ -n "$base" ] && git cat-file -e "$base^{commit}" 2>/dev/null; then
+            files=$(git diff --name-only "$base" "$HEAD")
+            # Anything that is not clearly docs/changelog/web-only counts as core, so unknown paths run everything.
+            core=false web=false
+            while IFS= read -r f; do
+              [ -z "$f" ] && continue
+              case "$f" in
+                docs/*|changes/*|*.md|LICENSE|NOTICE|.github/ISSUE_TEMPLATE/*|.github/pull_request_template.md) ;;
+                packages/web/*) web=true ;;
+                packages/shared/*|package.json|yarn.lock|.yarnrc.yml|tsconfig.json|.github/workflows/ci.yml) core=true web=true ;;
+                *) core=true ;;
+              esac
+            done <<< "$files"
+          fi
+          # Windows costs the most wall time: on PRs only when something outside packages/web changed
+          # (path handling, line endings and processes live in core); main always runs both.
+          windows=$core
+          if [ "$EVENT" = push ]; then windows=true; [ "$core" = false ] && [ "$web" = false ] && windows=false; fi
+          echo "core=$core" >> "$GITHUB_OUTPUT"
+          echo "web=$web" >> "$GITHUB_OUTPUT"
+          echo "windows=$windows" >> "$GITHUB_OUTPUT"
+          echo "core=$core web=$web windows=$windows"
+
+  core-ubuntu:
+    name: core (ubuntu-latest)
+    needs: changes
+    if: needs.changes.outputs.core == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: yarn typecheck:core
+      - run: yarn test:core
+
+  core-windows:
+    name: core (windows-latest)
+    needs: changes
+    if: needs.changes.outputs.core == 'true' && needs.changes.outputs.windows == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: yarn typecheck:core
+      - run: yarn test:core
+
+  # Windows runs the whole web gate in one job.
+  web-windows:
+    name: web (windows-latest)
+    needs: changes
+    if: needs.changes.outputs.web == 'true' && needs.changes.outputs.windows == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: yarn verify:web
+
+  # Ubuntu splits the web gate so its parts run in parallel; `verify:web` is these three steps in series.
+  web-parts:
+    name: web ${{ matrix.part }}
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [static, test, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - if: matrix.part == 'static'
+        run: yarn workspace @odin/web verify:static
+      - if: matrix.part == 'test'
+        run: yarn workspace @odin/web test
+      - if: matrix.part == 'build'
+        run: yarn workspace @odin/web verify:build
+
+  # Keeps the required check name `web (ubuntu-latest)` stable while the work is split above.
+  web-ubuntu:
+    name: web (ubuntu-latest)
+    needs: [changes, web-parts]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          CHANGES: ${{ needs.changes.result }}
+          PARTS: ${{ needs.web-parts.result }}
+        run: |
+          echo "changes: $CHANGES, web parts: $PARTS"
+          [ "$CHANGES" = success ] && { [ "$PARTS" = success ] || [ "$PARTS" = skipped ]; }

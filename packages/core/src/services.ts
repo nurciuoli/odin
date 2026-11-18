@@ -121,6 +121,8 @@ export interface ExternalSessionInput {
 export interface SessionsService extends Closeable {
   nativeState(id: string): Promise<import("@odin/shared/api").NativeSessionState>;
   nativeAction(id: string, action: import("@odin/shared/api").NativeSessionAction): Promise<import("@odin/shared/api").NativeSessionState>;
+  /** Runs one user-typed command in the session's working directory (the composer's `!` mode). Any harness. */
+  shell(id: string, request: import("@odin/shared/api").ShellRunRequest): Promise<import("@odin/shared/api").ShellRunResult>;
   list(filter?: SessionFilter): Session[];
   get(id: string): Session | null;
   /** The record plus the harness transcript, open prompts, todos and artifacts. */

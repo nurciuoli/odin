@@ -1,12 +1,17 @@
 <script setup lang="ts">
 // Files: the project's tree as a treemap. Cell area is file size; Diff mode tints files by lines added and removed.
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useApi } from '@/api'
 import { ApiRequestError } from '@/api/types'
 import { IuBadge } from '@/components/Badge'
+import { IuButton } from '@/components/Button'
 import { IuCodeBlock } from '@/components/CodeBlock'
+import IuCsvViewer from '@/components/CsvViewer/CsvViewer.vue'
+import { IuIcon } from '@/components/Icon'
+import IuMarkdown from '@/components/Markdown/Markdown.vue'
 import { IuSegmented } from '@/components/Segmented'
 import { IuEmpty, IuErrorState, IuSkeleton } from '@/components/States'
+import { fileKind as previewKind } from '@/screens/session/documents'
 import { useResource } from '@/screens/shared/useResource'
 import type { ProjectFileMap } from '@odin/shared/api'
 import { useProject } from '../useProject'
@@ -31,6 +36,7 @@ const tree = computed(() => buildTree(detail.value.title, res.data.value?.files 
 const idx = computed(() => indexTree(tree.value))
 
 const mode = ref('state')
+const view = ref('map')
 const focusId = ref('')
 const selectedId = ref<string | null>(null)
 
@@ -78,6 +84,17 @@ watch(selected, async file => {
       preview.value = { phase: 'error', text: '', error: previewMessage(e) }
   }
 })
+
+// How a markdown file shows in the panel; other kinds have one view.
+const asSource = ref(false)
+const kind = computed(() => (selected.value ? previewKind(selected.value.id) : 'text'))
+watch(selected, () => {
+  asSource.value = false
+})
+
+function close() {
+  selectedId.value = null
+}
 
 function drill(id: string) {
   focusId.value = id
@@ -151,6 +168,17 @@ const cells = computed(() => {
   return out
 })
 
+// List view: the focused folder's children, folders first, then biggest first.
+const rows = computed(() => {
+  const kids = idx.value.get(focusId.value)?.node.children ?? []
+  return kids
+    .slice()
+    .sort(
+      (a, b) =>
+        Number(b.kind === 'folder') - Number(a.kind === 'folder') || nodeBytes(b) - nodeBytes(a),
+    )
+})
+
 const diff = computed(() => mode.value === 'diff')
 
 function tint(node: FileNode): Record<string, string> | undefined {
@@ -175,6 +203,45 @@ function cellStyle(c: Cell) {
   }
 }
 
+// The files on the map right now, in map order: what Previous and Next step through.
+const files = computed(() => cells.value.filter(c => !c.nest && c.node.kind !== 'folder'))
+const position = computed(() => files.value.findIndex(c => c.node.id === selectedId.value))
+function step(by: number) {
+  const next = files.value[position.value + by]
+  if (!next) return
+  selectedId.value = next.node.id
+  // Keep focus on the control that was used, so the keyboard keeps flowing.
+  void nextTick(() =>
+    box.value
+      ?.querySelector<HTMLElement>('[aria-pressed="true"]')
+      ?.scrollIntoView?.({ block: 'nearest' }),
+  )
+}
+function onKey(e: KeyboardEvent) {
+  if (e.key === 'Escape' && selected.value) {
+    close()
+    return
+  }
+  const t = e.target
+  if (!selected.value || !(t instanceof HTMLButtonElement) || e.altKey || e.ctrlKey || e.metaKey)
+    return
+  const by =
+    e.key === 'ArrowDown' || e.key === 'ArrowRight'
+      ? 1
+      : e.key === 'ArrowUp' || e.key === 'ArrowLeft'
+        ? -1
+        : 0
+  if (!by) return
+  e.preventDefault()
+  step(by)
+  void nextTick(() =>
+    (t.classList.contains('files__cell')
+      ? box.value?.querySelector<HTMLElement>('[aria-pressed="true"]')
+      : t
+    )?.focus(),
+  )
+}
+
 function press(c: Cell) {
   if (c.node.kind === 'folder') drill(c.node.id)
   else selectedId.value = c.node.id
@@ -196,7 +263,7 @@ const changed = computed(() => {
 </script>
 
 <template>
-  <div class="files" @keydown.backspace.prevent="up">
+  <div class="files" @keydown.backspace.prevent="up" @keydown="onKey">
     <div class="files__bar">
       <nav class="files__crumbs" aria-label="Folder">
         <template v-for="(c, i) in crumbs" :key="c.id">
@@ -219,6 +286,14 @@ const changed = computed(() => {
           >{{ changed.files }} files · +{{ changed.added }} −{{ changed.removed }}</span
         >
       </p>
+      <IuSegmented
+        v-model="view"
+        label="View"
+        :options="[
+          { value: 'map', label: 'Heatmap' },
+          { value: 'list', label: 'List' },
+        ]"
+      />
       <IuSegmented
         v-model="mode"
         label="Map"
@@ -243,7 +318,24 @@ const changed = computed(() => {
       body="This project's folder is missing or empty."
     />
     <div v-else class="files__stage">
-      <div ref="box" class="files__map" role="group" aria-label="File map">
+      <ul v-if="view === 'list'" class="files__list" aria-label="Files">
+        <li v-for="n in rows" :key="n.id">
+          <button
+            type="button"
+            class="files__row"
+            :class="{ 'files__row--selected': n.id === selectedId }"
+            :aria-pressed="n.kind === 'folder' ? undefined : n.id === selectedId"
+            @click="n.kind === 'folder' ? drill(n.id) : (selectedId = n.id)"
+          >
+            <span class="files__row-name">{{ n.name }}{{ n.kind === 'folder' ? '/' : '' }}</span>
+            <IuBadge variant="tag" size="xs">{{ n.kind }}</IuBadge>
+            <span v-if="diff && n.delta" class="files__row-delta">{{ deltaText(n.delta) }}</span>
+            <span class="files__row-size">{{ formatBytes(nodeBytes(n)) }}</span>
+          </button>
+        </li>
+        <li v-if="!rows.length" class="files__note">This folder is empty.</li>
+      </ul>
+      <div v-else ref="box" class="files__map" role="group" aria-label="File map">
         <template v-for="c in cells" :key="c.node.id">
           <div v-if="c.nest" class="files__cell files__cell--nest" :style="cellStyle(c)">
             <button
@@ -275,25 +367,71 @@ const changed = computed(() => {
         </template>
       </div>
 
-      <aside v-if="selected" class="files__plate" aria-label="File details">
-        <p class="files__kicker">
-          {{ diff ? deltaText(selected.delta) || 'unchanged' : formatBytes(selected.bytes) }}
-        </p>
+      <aside v-if="selected" class="files__plate" aria-label="File preview">
+        <div class="files__bar2">
+          <p class="files__kicker">
+            {{ diff ? deltaText(selected.delta) || 'unchanged' : formatBytes(selected.bytes) }}
+            <template v-if="position >= 0"> · {{ position + 1 }} of {{ files.length }}</template>
+          </p>
+          <span class="files__nav">
+            <IuButton
+              size="sm"
+              variant="ghost"
+              icon-only
+              aria-label="Previous file"
+              :disabled="position <= 0"
+              @click="step(-1)"
+            >
+              <template #icon><IuIcon name="chevronLeft" :size="14" /></template>
+            </IuButton>
+            <IuButton
+              size="sm"
+              variant="ghost"
+              icon-only
+              aria-label="Next file"
+              :disabled="position < 0 || position >= files.length - 1"
+              @click="step(1)"
+            >
+              <template #icon><IuIcon name="chevronRight" :size="14" /></template>
+            </IuButton>
+            <IuButton size="sm" variant="ghost" icon-only aria-label="Close preview" @click="close">
+              <template #icon><IuIcon name="close" :size="14" /></template>
+            </IuButton>
+          </span>
+        </div>
         <h2 class="files__title">{{ selected.name }}</h2>
         <p class="files__path">{{ selected.id }}</p>
         <p class="files__meta">
           <IuBadge variant="tag" size="xs">{{ selected.kind }}</IuBadge>
           <span>{{ formatBytes(selected.bytes) }}</span>
+          <IuSegmented
+            v-if="kind === 'markdown' && preview.phase === 'ready'"
+            class="files__view"
+            :model-value="asSource ? 'source' : 'rendered'"
+            label="View"
+            :options="[
+              { value: 'rendered', label: 'Rendered' },
+              { value: 'source', label: 'Source' },
+            ]"
+            @update:model-value="asSource = $event === 'source'"
+          />
         </p>
-        <p v-if="preview.phase === 'loading'" class="files__note" role="status">Loading…</p>
-        <p v-else-if="preview.phase === 'error'" class="files__note">{{ preview.error }}</p>
-        <IuCodeBlock
-          v-else
-          :code="preview.text"
-          :filename="selected.name"
-          line-numbers
-          max-height="420px"
-        />
+        <div class="files__body">
+          <p v-if="preview.phase === 'loading'" class="files__note" role="status">Loading…</p>
+          <p v-else-if="preview.phase === 'error'" class="files__note">{{ preview.error }}</p>
+          <IuCsvViewer
+            v-else-if="kind === 'table'"
+            :source="preview.text"
+            :filename="selected.name"
+          />
+          <IuMarkdown
+            v-else-if="kind === 'markdown' && !asSource"
+            :source="preview.text"
+            document
+            size="md"
+          />
+          <IuCodeBlock v-else :code="preview.text" :filename="selected.name" line-numbers />
+        </div>
       </aside>
     </div>
   </div>
@@ -368,6 +506,58 @@ const changed = computed(() => {
   background: var(--iu-surface-sunken);
   overflow: hidden;
 }
+.files__list {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--iu-border-quiet);
+  border-radius: var(--iu-radius-lg);
+  background: var(--iu-surface);
+  max-height: 520px;
+  overflow-y: auto;
+}
+.files__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--iu-radius-md);
+  background: none;
+  font-family: var(--iu-font-sans);
+  font-size: var(--iu-font-size-13);
+  color: var(--iu-text);
+  text-align: left;
+  cursor: pointer;
+}
+.files__row:hover {
+  background: var(--iu-surface-sunken);
+}
+.files__row--selected,
+.files__row--selected:hover {
+  box-shadow: inset 0 0 0 2px var(--iu-accent);
+}
+.files__row:focus-visible {
+  outline: 2px solid var(--iu-accent);
+  outline-offset: -2px;
+}
+.files__row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.files__row-delta,
+.files__row-size {
+  flex: none;
+  font-family: var(--iu-font-mono);
+  font-size: var(--iu-font-size-12);
+  color: var(--iu-text-2);
+}
 .files__cell {
   position: absolute;
   overflow: hidden;
@@ -433,8 +623,11 @@ const changed = computed(() => {
 }
 .files__plate {
   flex: none;
+  display: flex;
+  flex-direction: column;
   width: 440px;
   min-width: 0;
+  height: 520px;
   padding: 16px;
   border: 1px solid var(--iu-border-quiet);
   border-radius: var(--iu-radius-lg);
@@ -445,6 +638,26 @@ const changed = computed(() => {
   font-family: var(--iu-font-mono);
   font-size: var(--iu-font-size-12);
   color: var(--iu-text-muted);
+}
+.files__bar2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.files__nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.files__body {
+  flex: 1;
+  min-height: 0;
+  margin-top: 12px;
+  overflow: auto;
+}
+.files__view {
+  margin-left: auto;
 }
 .files__title {
   margin: 6px 0 2px;
@@ -473,7 +686,7 @@ const changed = computed(() => {
   }
 }
 .files__note {
-  margin: 12px 0 0;
+  margin: 0;
   font-size: var(--iu-font-size-13);
   color: var(--iu-text-2);
 }
@@ -483,6 +696,7 @@ const changed = computed(() => {
   }
   .files__plate {
     width: auto;
+    height: 420px;
   }
 }
 </style>

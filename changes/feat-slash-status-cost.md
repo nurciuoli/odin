@@ -1,0 +1,1 @@
+- `/status` and `/cost` now work in every session's composer, whichever harness it runs: they show the harness, model, effort and permission mode, and the session's token usage and cost.

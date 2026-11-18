@@ -127,6 +127,7 @@ export function createHttpApi(options: HttpApiOptions = {}): Api {
     updateSession: (id, req) => send('PATCH', session(id), req),
     deleteSession: id => send('DELETE', session(id)),
     sendMessage: (id, message) => send('POST', `${session(id)}/messages`, message),
+    runShell: (id, command) => send('POST', `${session(id)}/shell`, { command }),
     queue: id => get(`${session(id)}/queue`),
     editQueuedMessage: (id, messageId, message) =>
       send('PATCH', `${session(id)}/queue/${seg(messageId)}`, message),

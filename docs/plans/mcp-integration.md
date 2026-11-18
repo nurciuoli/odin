@@ -1,6 +1,6 @@
 # Plan: MCP servers with real auth, and plugins
 
-Status: **phase 1 (vault) in review (#18), phase 2 (OAuth) in review (#21), phase 3 (servers screen) in review, phase 4 not started.** Owner: open.
+Status: **phase 1 (vault) in review (#18), phase 2 (OAuth) done (#21), phase 3 (servers screen) in review, phase 4 not started.** Owner: open.
 
 ## Why
 

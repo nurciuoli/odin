@@ -20,6 +20,8 @@ import { IuButton } from '@/components/Button'
 import { IuCallout } from '@/components/Callout'
 import { IuIcon } from '@/components/Icon'
 import { IuMenu, type MenuItem } from '@/components/Menu'
+import { IuSegmented } from '@/components/Segmented'
+import FileHeatmap, { type HeatItem } from '@/screens/shared/FileHeatmap.vue'
 import { IuErrorState, IuSkeleton } from '@/components/States'
 import { IuField } from '@/components/Fields'
 import { IuDialog } from '@/components/Modal'
@@ -89,6 +91,25 @@ const error = ref('')
 const busy = ref(false)
 const expanded = ref(false)
 const sidebarCollapsed = ref(false)
+const browseView = ref('list')
+/** Folders have no size from the listing, so they weigh as much as the average file to stay visible. */
+const heatItems = computed<HeatItem[]>(() => {
+  const sizes = listing.value.entries.flatMap(e => (e.size ? [e.size] : []))
+  const avg = sizes.length ? sizes.reduce((a, b) => a + b, 0) / sizes.length : 1
+  return listing.value.entries.map(e => ({
+    id: e.path,
+    label: e.kind === 'directory' ? `${e.name}/` : e.name,
+    value: e.kind === 'directory' ? avg : (e.size ?? 1),
+    folder: e.kind === 'directory',
+    title: e.kind === 'directory' ? `${e.name}/` : e.name,
+  }))
+})
+function pressEntry(path: string) {
+  const e = listing.value.entries.find(x => x.path === path)
+  if (!e) return
+  if (e.kind === 'directory') void browse(e.path)
+  else void open(e.path)
+}
 let browseRequest = 0
 let openRequest = 0
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e))
@@ -481,6 +502,15 @@ defineExpose({ open })
           </IuMenu>
         </div>
         <div class="session-files__location">{{ listing.path || 'Working directory' }}</div>
+        <IuSegmented
+          v-model="browseView"
+          class="session-files__view"
+          label="Browser view"
+          :options="[
+            { value: 'list', label: 'List' },
+            { value: 'heatmap', label: 'Heatmap' },
+          ]"
+        />
         <div v-if="!listed" class="session-files__state" aria-busy="true">
           <IuSkeleton shape="text" :rows="4" />
         </div>
@@ -493,7 +523,18 @@ defineExpose({ open })
           />
         </div>
         <template v-else>
-          <div class="session-files__listing" aria-label="Directory entries">
+          <div v-if="browseView === 'heatmap'" class="session-files__listing">
+            <FileHeatmap
+              v-if="listing.entries.length"
+              label="Directory entries, sized by file size"
+              :items="heatItems"
+              :selected-id="activePath"
+              :height="220"
+              @select="pressEntry"
+            />
+            <p v-else class="session-files__truncated">This folder is empty.</p>
+          </div>
+          <div v-else class="session-files__listing" aria-label="Directory entries">
             <button
               v-for="entry in listing.entries"
               :key="entry.path"
@@ -816,6 +857,9 @@ defineExpose({ open })
 .session-files--browse-only .session-files__sidebar:not(.session-files__sidebar--collapsed) {
   flex: 1 1 auto;
   border-bottom: 0;
+}
+.session-files__view {
+  margin: 4px 8px;
 }
 .session-files__listing {
   flex: 1;

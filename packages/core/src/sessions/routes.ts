@@ -90,6 +90,7 @@ export const registerSessionsRoutes: RegisterRoutes = (router, deps, services) =
   });
 
   router.post("/api/sessions/:id/messages", async ({ req, params }) => sessions.send(params.id!, await readJson(req, MESSAGE_BODY_MAX_BYTES)));
+  router.post("/api/sessions/:id/shell", async ({ req, params }) => sessions.shell(params.id!, await readJson(req, 16 * 1024)));
   router.get("/api/sessions/:id/queue", ({ params }) => sessions.queue(params.id!));
   router.patch("/api/sessions/:id/queue/:messageId", async ({ req, params }) => sessions.editQueuedMessage(params.id!, params.messageId!, await readJson(req, MESSAGE_BODY_MAX_BYTES)));
   router.delete("/api/sessions/:id/queue/:messageId", ({ params }) => sessions.cancelQueuedMessage(params.id!, params.messageId!));

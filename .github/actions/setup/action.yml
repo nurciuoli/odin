@@ -1,0 +1,25 @@
+name: Set up Odin
+description: Node 24, Corepack (Yarn 4) and node_modules, restored from cache when yarn.lock is unchanged.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 24
+    # After setup-node, so `yarn` is this Node's Corepack shim (Yarn 4) and not the runner image's Yarn 1.
+    - run: corepack enable
+      shell: bash
+    - run: yarn --version
+      shell: bash
+    # The cache holds node_modules and Yarn's install state, so a hit needs no `yarn install` at all.
+    - id: cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          node_modules
+          */*/node_modules
+          .yarn/install-state.gz
+        key: node-modules-v2-${{ runner.os }}-${{ hashFiles('yarn.lock', '.yarnrc.yml') }}
+    - if: steps.cache.outputs.cache-hit != 'true'
+      run: yarn install --immutable
+      shell: bash

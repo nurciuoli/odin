@@ -391,7 +391,7 @@ AppSettings.defaultWorktree`.
   project (an external session that never ran here), else `[]`. A later `init` or `commands` replaces them in the view.
   Drivers leave out commands Odin owns or that make no sense here (Claude: `clear`/`reset`/`new`, `model`,
   `rename`, `send`/`now`, `color`, `focus`, `heapdump`, `__*`). The web adds Odin's own: `/clear` (aliases `reset`, `new`) opens
-  a new session in the project, `/model <model>` and `/rename <title>` use PATCH, and `/send` (alias `now`) sends now;
+  a new session in the project, `/model <model>` and `/rename <title>` use PATCH, `/send` (alias `now`) sends now, and `/status` and `/cost` show the session's settings and usage in a toast;
   these never reach the harness. Send
   and start reject a message starting with `/clear`, `/reset` or `/new` with 400 (the CLI would reset the
   conversation under Odin).
@@ -404,6 +404,13 @@ AppSettings.defaultWorktree`.
   reusing the key for different original content is 409. Editing preserves the original receipt/key. Completed and
   cancelled records retain a content hash for deduplication, with their content/attachments removed from the outbox.
   Initial start/fork prompts keep their existing launch behavior and are not outbox messages.
+- **Shell commands (`!`)**: `POST /api/sessions/:id/shell` with `ShellRunRequest` runs one user-typed command in the
+  session's working directory (`/bin/sh -c`, `cmd.exe /c` on Windows) and returns `ShellRunResult` (`output` is stdout
+  and stderr combined, capped at 128 KiB with `truncated`; 120 s timeout kills the process tree, `timedOut`, `exitCode`
+  null). Odin runs it, so it works for every harness and needs no live handle. Nothing is persisted or added to the
+  transcript: the web shows the result and prefixes it to the user's next message. Odin's own token and secret
+  environment variables (`ODIN_*TOKEN|SECRET|KEY`, `GITHUB_TOKEN`, `GH_TOKEN`) are removed from the child's environment.
+  400 empty or oversized (8 KiB) command, 404 unknown session, 409 while another command runs in that session.
 - **Message queue**: `SessionDetail.messageQueue` and `GET /:id/queue` return `{ revision, paused, messages }`.
   `revision` is monotonic per session. `session.queue` SSE carries `{ sessionId, queue }`; clients merge by revision
   and refetch on reconnect. Each message has `{ id, message: UserMessage, state, createdAt, updatedAt }`, ordered by

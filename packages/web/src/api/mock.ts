@@ -20,6 +20,7 @@ import type {
   SessionFilter,
   MessageQueue,
   UserMessage,
+  ShellRunResult,
 } from '@odin/shared/api'
 import { emptyProjectContext, parseProjectSources } from '@odin/shared/api'
 import type { HarnessEvent, PermissionRequest, SlashCommand } from '@odin/shared/harness'
@@ -1118,6 +1119,21 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
         db.sessions = db.sessions.filter(s => s.id !== id)
         delete db.transcripts[id]
         emit({ type: 'session.removed', sessionId: id })
+      }),
+    runShell: (id, command) =>
+      respond((): ShellRunResult => {
+        const s = sessionOf(id)
+        if (!command.trim()) throw new ApiRequestError(400, 'command must be a non-empty string')
+        const failed = /^\s*(false|exit\s+[1-9])/.test(command)
+        return {
+          command,
+          cwd: s.cwd,
+          output: failed ? '' : `On branch main\nnothing to commit, working tree clean\n`,
+          exitCode: failed ? 1 : 0,
+          timedOut: false,
+          truncated: false,
+          durationMs: 42,
+        }
       }),
     sendMessage: (id, message) =>
       respond(() => {

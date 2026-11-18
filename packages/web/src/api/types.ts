@@ -35,6 +35,7 @@ import type {
   SessionFileListing,
   SessionFilter,
   SessionTextFile,
+  ShellRunResult,
   ReadinessResponse,
   SettingsResponse,
   StartSessionRequest,
@@ -142,6 +143,8 @@ export interface Api {
   updateSession(id: string, req: UpdateSessionRequest): Promise<Session>
   deleteSession(id: string): Promise<void>
   sendMessage(id: string, message: UserMessage): Promise<Session>
+  /** The composer's `!` mode: runs a command in the session's working directory (any harness). */
+  runShell(id: string, command: string): Promise<ShellRunResult>
   queue(id: string): Promise<MessageQueue>
   editQueuedMessage(id: string, messageId: string, message: UserMessage): Promise<MessageQueue>
   cancelQueuedMessage(id: string, messageId: string): Promise<MessageQueue>
