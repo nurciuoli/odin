@@ -45,7 +45,8 @@ export const KIND_INFO: Record<AssetKind, { label: string; plural: string; blurb
   plugin: {
     label: 'Plugin',
     plural: 'Plugins',
-    blurb: 'A bundle of skills, subagents, MCP servers and settings that installs and updates together.',
+    blurb:
+      'A bundle of skills, subagents, MCP servers and settings that installs and updates together.',
   },
 }
 
