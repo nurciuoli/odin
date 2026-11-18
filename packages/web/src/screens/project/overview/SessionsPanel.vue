@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// The latest sessions as one table, the live flock on running and waiting rows. A waiting tool prompt can be
+// The latest sessions as one compact list, the live flock on running and waiting rows. A waiting tool prompt can be
 // allowed once or denied in place; questions and plans open the session. Updates never move focus.
 import { computed, ref, watch } from 'vue'
 import type { PermissionRequest } from '@odin/shared/harness'
@@ -9,7 +9,6 @@ import { IuButton } from '@/components/Button'
 import { IuFlock } from '@/components/Spinner'
 import { IuEmpty, IuErrorState } from '@/components/States'
 import { IuStatusDot } from '@/components/StatusDot'
-import { IuTable, type Column } from '@/components/Table'
 import type { LoadError } from '@/screens/shared/useResource'
 import { SESSION_DISPLAY, formatCost, relativeTime } from '@/screens/shared/format'
 import { useQuickAnswer } from '@/screens/shared/useQuickAnswer'
@@ -66,14 +65,13 @@ async function quick(s: Session, allow: boolean) {
   prompts.value = { ...prompts.value, [s.id]: null }
 }
 
-interface Row extends Record<string, unknown> {
+interface Row {
   id: string
   title: string
   state: string
   model: string
   active: string
   cost: string
-  lines: string
   session: Session
 }
 const rows = computed<Row[]>(() =>
@@ -84,19 +82,9 @@ const rows = computed<Row[]>(() =>
     model: s.model ? s.model.replace(/^claude-/, '') : '—',
     active: s.metrics.activeMs ? formatDuration(s.metrics.activeMs) : '—',
     cost: formatCost(s.metrics.costUsd) || '—',
-    lines: '',
     session: s,
   })),
 )
-const columns = computed<Column<Row>[]>(() => [
-  { key: 'title', header: 'Session', width: '40%' },
-  { key: 'state', header: 'State' },
-  { key: 'model', header: 'Model' },
-  { key: 'active', header: 'Active', align: 'end', numeric: true },
-  { key: 'cost', header: 'Cost', align: 'end', numeric: true },
-  ...(props.git ? [{ key: 'lines', header: 'Lines', align: 'end', numeric: true } as const] : []),
-])
-
 const WORD: Record<Session['state'], string> = {
   running: 'Working',
   waiting: 'Waiting for you',
@@ -127,42 +115,48 @@ const WORD: Record<Session['state'], string> = {
       title="No sessions yet"
       body="Sessions you start in this project show up here."
     />
-    <IuTable
-      v-else
-      :columns="columns"
-      :rows="rows"
-      :row-key="r => r.id"
-      :loading="loading && !sessions"
-      :sticky-header="false"
-      density="compact"
-      min-width="560px"
-      aria-live="polite"
-    >
-      <template #cell:title="{ row }">
-        <RouterLink :to="{ name: 'session', params: { id: row.id } }" class="ov-sessions__link">{{
-          row.title
-        }}</RouterLink>
-      </template>
-      <template #cell:state="{ row }">
-        <span class="ov-sessions__state">
-          <template v-if="row.session.state === 'running' || row.session.state === 'waiting'">
-            <IuFlock
-              :state="row.session.state === 'waiting' ? 'waiting' : 'working'"
-              tone="neutral"
-              size="sm"
-            />
-            <span>{{ WORD[row.session.state] }}</span>
-          </template>
-          <template v-else>
-            <IuStatusDot :status="SESSION_DISPLAY[row.session.state].status" decorative />
-            <span
-              >{{ WORD[row.session.state] }}
-              <time :datetime="row.session.updatedAt">{{
-                relativeTime(row.session.updatedAt)
-              }}</time></span
+    <ul v-else class="ov-sessions__list" aria-live="polite">
+      <li v-for="row in rows" :key="row.id" class="ov-sessions__row">
+        <div class="ov-sessions__main">
+          <RouterLink
+            :to="{ name: 'session', params: { id: row.id } }"
+            class="ov-sessions__link"
+            :title="row.title"
+            >{{ row.title }}</RouterLink
+          >
+          <span class="ov-sessions__state">
+            <template v-if="row.session.state === 'running' || row.session.state === 'waiting'">
+              <IuFlock
+                :state="row.session.state === 'waiting' ? 'waiting' : 'working'"
+                tone="neutral"
+                size="sm"
+              />
+              <span>{{ WORD[row.session.state] }}</span>
+            </template>
+            <template v-else>
+              <IuStatusDot :status="SESSION_DISPLAY[row.session.state].status" decorative />
+              <span
+                >{{ WORD[row.session.state] }}
+                <time :datetime="row.session.updatedAt">{{
+                  relativeTime(row.session.updatedAt)
+                }}</time></span
+              >
+            </template>
+          </span>
+        </div>
+        <div class="ov-sessions__side">
+          <code class="ov-sessions__mono">{{ row.model }}</code>
+          <span class="ov-sessions__num">{{ row.active }}</span>
+          <span class="ov-sessions__num">{{ row.cost }}</span>
+          <span v-if="git" class="ov-sessions__lines">
+            <template v-if="row.session.metrics.diff"
+              >+{{ formatCount(row.session.metrics.diff.added) }} −{{
+                formatCount(row.session.metrics.diff.removed)
+              }}</template
             >
-          </template>
-        </span>
+            <template v-else>—</template>
+          </span>
+        </div>
         <span v-if="row.session.state === 'waiting'" class="ov-sessions__actions">
           <template v-if="prompts[row.id]?.kind === 'tool'">
             <IuButton
@@ -192,57 +186,87 @@ const WORD: Record<Session['state'], string> = {
             >Answer</IuButton
           >
         </span>
-      </template>
-      <template #cell:model="{ row }">
-        <code class="ov-sessions__mono">{{ row.model }}</code>
-      </template>
-      <template #cell:lines="{ row }">
-        <span v-if="row.session.metrics.diff" class="ov-sessions__lines"
-          ><span>+{{ formatCount(row.session.metrics.diff.added) }}</span>
-          <span>−{{ formatCount(row.session.metrics.diff.removed) }}</span></span
-        >
-        <span v-else>—</span>
-      </template>
-    </IuTable>
+      </li>
+    </ul>
   </OverviewPanel>
 </template>
 
 <style>
-.ov-sessions__more,
-.ov-sessions__link {
-  color: var(--iu-text);
-  font-weight: var(--iu-font-weight-medium);
-}
 .ov-sessions__more {
   font-size: var(--iu-font-size-12);
   color: var(--iu-text-2);
+  font-weight: var(--iu-font-weight-medium);
 }
 .ov-sessions__more:focus-visible,
 .ov-sessions__link:focus-visible {
   outline: 2px solid var(--iu-accent);
   outline-offset: 2px;
 }
+.ov-sessions__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ov-sessions__row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0;
+  min-width: 0;
+  border-top: 1px solid var(--iu-border-quiet);
+}
+.ov-sessions__row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.ov-sessions__main,
+.ov-sessions__side {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.ov-sessions__link {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--iu-text);
+  font-weight: var(--iu-font-weight-medium);
+}
 .ov-sessions__state {
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: 6px;
   white-space: nowrap;
   font-size: var(--iu-font-size-12);
   color: var(--iu-text-2);
 }
+.ov-sessions__side {
+  justify-content: flex-start;
+  font-size: var(--iu-font-size-12);
+  color: var(--iu-text-muted);
+}
+.ov-sessions__side > :nth-child(2) {
+  margin-inline-start: auto;
+}
+.ov-sessions__num,
+.ov-sessions__lines {
+  font-family: var(--iu-font-mono);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 .ov-sessions__actions {
   display: flex;
   gap: 4px;
-  margin-top: 4px;
 }
 .ov-sessions__mono {
   font-family: var(--iu-font-mono);
   font-size: var(--iu-font-size-12);
-  white-space: nowrap;
-}
-.ov-sessions__lines {
-  display: inline-flex;
-  gap: 6px;
   white-space: nowrap;
 }
 </style>

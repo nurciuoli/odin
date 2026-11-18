@@ -16,7 +16,8 @@ Thanks for your interest. Bug reports, fixes, docs improvements and new harness 
    auto-generated branch names (agent worktrees and the like) before opening the PR.
 2. Make your change, with tests next to the code (`*.test.ts`). Commit however you like on the branch: it is
    squashed on merge.
-3. Add a line under `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md) for any user-visible change.
+3. For any user-visible change add a fragment file `changes/<type>-<short-desc>.md` with the entry as a list item (see
+   [changes/README.md](changes/README.md)). Don't edit [CHANGELOG.md](CHANGELOG.md) in the PR: fragments can't conflict.
 4. Run the checks:
    ```sh
    yarn typecheck
@@ -56,8 +57,9 @@ section, gets the `contract` label, and updates `docs/contracts.md` if behaviour
 
 ## Releases
 
-Versions follow [Semantic Versioning](https://semver.org/). To release, move the Unreleased entries in CHANGELOG.md
-under a new version heading in a `chore: release vX.Y.Z` PR, then tag the merge commit `vX.Y.Z`.
+Versions follow [Semantic Versioning](https://semver.org/). To release, run `yarn changelog:release X.Y.Z` in a
+`chore: release vX.Y.Z` PR (it moves the `changes/` fragments and any Unreleased entries under a new version heading
+in CHANGELOG.md), then tag the merge commit `vX.Y.Z`.
 
 ## Ground rules
 

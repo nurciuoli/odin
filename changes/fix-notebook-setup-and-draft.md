@@ -1,0 +1,3 @@
+- Notebooks set up Python in one click from the kernel menu or Environment tab, with no uv required and Windows/WSL found automatically; the Native/WSL toggle is gone.
+- Running a notebook no longer shows "Changed while you were editing"; kernel output is not an external edit.
+- Notebooks scroll natively, and cells no longer label themselves "Python" or "Markdown" unless a Markdown cell is open for editing.

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { detectNotebookEnvironment, managedNotebookPython, notebookChildEnv, notebookCommand, notebookWslPath, provisionNotebookEnvironment } from "./environment.ts";
+import { detectNotebookEnvironment, managedNotebookPython, notebookChildEnv, notebookCommand, notebookWslPath, parseWslDistros, provisionNotebookEnvironment } from "./environment.ts";
 
 test("kernel subprocess environments retain model credentials but remove Odin's tokens", () => {
   assert.deepEqual(notebookChildEnv({ PATH: "bin", ODIN_INGEST_TOKEN: "secret", ODIN_HOME: "home", GITHUB_TOKEN: "gh", GH_TOKEN: "gh", JUPYTER_TOKEN: "jupyter", ANTHROPIC_API_KEY: "model" }), { PATH: "bin", ANTHROPIC_API_KEY: "model" });
@@ -40,4 +40,22 @@ test("explicit new environment provisioning includes the data science baseline",
   assert.equal(env.needsSetup, false);
   assert.ok(calls.some(args => args.includes("pandas") && args.includes("ipykernel")));
   assert.equal(managedNotebookPython("C:\\odin", { kind: "wsl", distro: "Ubuntu" }, "win32").startsWith("/mnt/c/odin/"), true);
+});
+test("setup works without uv, using python -m venv and pip", async () => {
+  const calls: string[][] = [];
+  const env = await provisionNotebookEnvironment({ home: "/odin", cwd: "/repo", platform: "linux", exists: () => false, run: async spec => {
+    calls.push([spec.command, ...spec.args]);
+    if (spec.command === "uv") throw new Error("uv missing");
+    return "";
+  } });
+  assert.equal(env.needsSetup, false);
+  assert.ok(calls.some(c => c[0] === "python3" && c.includes("venv")));
+  assert.ok(calls.some(c => c.includes("pip") && c.includes("ipykernel") && !c.includes("uv")));
+});
+test("a missing Python is explained, not hidden behind a generic failure", async () => {
+  await assert.rejects(provisionNotebookEnvironment({ home: "/odin", cwd: "/repo", platform: "linux", exists: () => false, run: async () => { throw new Error("nope"); } }), /Python 3 was not found/);
+});
+test("WSL distro lists parse UTF-16 output and skip docker's", () => {
+  const raw = "U\0b\0u\0n\0t\0u\0 \0(\0D\0e\0f\0a\0u\0l\0t\0)\0\r\0\n\0d\0o\0c\0k\0e\0r\0-\0d\0e\0s\0k\0t\0o\0p\0\n\0D\0e\0b\0i\0a\0n\0";
+  assert.deepEqual(parseWslDistros(raw), ["Ubuntu", "Debian"]);
 });

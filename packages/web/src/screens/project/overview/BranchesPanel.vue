@@ -1,21 +1,34 @@
 <script setup lang="ts">
 // Local branches against the default branch. Git projects only; removing worktrees stays in the Sessions tab.
-import { computed } from 'vue'
-import type { ProjectBranch } from '@odin/shared/api'
+import { computed, ref } from 'vue'
+import type { ProjectBranch, Session } from '@odin/shared/api'
 import { IuBadge } from '@/components/Badge'
+import { IuButton } from '@/components/Button'
+import { IuSegmented } from '@/components/Segmented'
 import { IuEmpty, IuErrorState } from '@/components/States'
 import { IuTable, type Column } from '@/components/Table'
 import type { LoadError } from '@/screens/shared/useResource'
 import { plural, relativeTime } from '@/screens/shared/format'
+import BranchTree from './BranchTree.vue'
+import type { TreeDensity, TreeFilter } from './branchTree'
 import OverviewPanel from './OverviewPanel.vue'
 
 const props = defineProps<{
   branches: ProjectBranch[] | null
   defaultBranch: string
+  /** GitHub owner/name; null hides the GitHub links. */
+  repo?: string | null
+  sessions?: Session[] | null
   loading: boolean
   error: LoadError | null
 }>()
 const emit = defineEmits<{ retry: [] }>()
+
+const view = ref('tree')
+const filter = ref<TreeFilter>('active')
+const worktreesOnly = ref(false)
+const density = ref<TreeDensity>('comfortable')
+const hasWorktrees = computed(() => (props.branches ?? []).some(b => b.worktreePath && !b.current))
 
 const STALE_MS = 30 * 24 * 60 * 60 * 1000
 
@@ -31,6 +44,12 @@ interface Row extends Record<string, unknown> {
 const rows = computed<Row[]>(() => {
   const now = Date.now()
   return [...(props.branches ?? [])]
+    .filter(b => {
+      if (b.name === props.defaultBranch) return true
+      if (filter.value === 'active' && b.merged) return false
+      if (filter.value === 'merged' && !b.merged) return false
+      return !worktreesOnly.value || (b.worktreePath !== null && !b.current)
+    })
     .sort(
       (a, b) =>
         Number(b.name === props.defaultBranch) - Number(a.name === props.defaultBranch) ||
@@ -74,6 +93,42 @@ const summary = computed(() => {
     <template v-if="branches" #actions>
       <span class="ov-branches__note">{{ summary }}</span>
     </template>
+    <div v-if="branches?.length" class="ov-branches__bar">
+      <IuSegmented
+        v-model="view"
+        label="View"
+        :options="[
+          { value: 'tree', label: 'Graph' },
+          { value: 'list', label: 'List' },
+        ]"
+      />
+      <IuSegmented
+        v-model="filter"
+        label="Show"
+        :options="[
+          { value: 'active', label: 'Active' },
+          { value: 'merged', label: 'Merged' },
+          { value: 'all', label: 'All' },
+        ]"
+      />
+      <IuButton
+        v-if="hasWorktrees"
+        size="sm"
+        :variant="worktreesOnly ? 'primary' : 'secondary'"
+        :aria-pressed="worktreesOnly"
+        @click="worktreesOnly = !worktreesOnly"
+        >Worktrees</IuButton
+      >
+      <IuSegmented
+        v-if="view === 'tree'"
+        v-model="density"
+        label="Zoom"
+        :options="[
+          { value: 'comfortable', label: 'Detailed' },
+          { value: 'compact', label: 'Compact' },
+        ]"
+      />
+    </div>
     <IuErrorState
       v-if="error && !branches"
       title="Couldn't load the branches"
@@ -85,6 +140,17 @@ const summary = computed(() => {
       v-else-if="!loading && !rows.length"
       title="No local branches"
       body="Branches show up here once the repository has a commit."
+    />
+    <BranchTree
+      v-else-if="view === 'tree' && branches"
+      :branches="branches"
+      :default-branch="defaultBranch"
+      :repo="repo ?? null"
+      :sessions="sessions ?? []"
+      :filter="filter"
+      :worktrees-only="worktreesOnly"
+      :density="density"
+      @show-merged="filter = 'all'"
     />
     <IuTable
       v-else
@@ -121,6 +187,12 @@ const summary = computed(() => {
 </template>
 
 <style>
+.ov-branches__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
 .ov-branches__note {
   font-size: var(--iu-font-size-12);
   color: var(--iu-text-muted);

@@ -20,7 +20,7 @@ const models = [
 
 async function open(props: Record<string, unknown>) {
   wrapper = mount(IuComposer, { props, attachTo: document.body })
-  await wrapper.find('button[aria-haspopup="menu"]').trigger('click')
+  await wrapper.find('.iu-composer__model button[aria-haspopup="menu"]').trigger('click')
   await flushPromises()
 }
 

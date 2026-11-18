@@ -68,6 +68,9 @@ describe('SessionFiles', () => {
     await readme.trigger('click')
     await flushPromises()
     const original = await api.readSessionFile(id, 'README.md')
+    // Markdown opens in the rendered view; switch to the editor to type
+    wrapper.findComponent({ name: 'DocumentHeader' }).vm.$emit('select', 'mode:live')
+    await flushPromises()
     wrapper.findComponent(editorStub).vm.$emit('update:modelValue', '# My draft')
     await flushPromises()
     // Collapse and expand the sidebar to verify the draft is preserved
