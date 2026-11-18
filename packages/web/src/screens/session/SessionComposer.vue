@@ -384,6 +384,26 @@ watch(
   },
   { immediate: true },
 )
+// "Switch model: …" in the palette, one per model this session's harness offers, while this composer is mounted
+let withdrawModels: (() => void)[] = []
+watch(
+  () => [props.models, props.model] as const,
+  ([models]) => {
+    withdrawModels.splice(0).forEach(off => off())
+    withdrawModels = models.map(m =>
+      registerCommand({
+        id: `session-model:${m.value}`,
+        label: `Switch model: ${m.displayName}`,
+        icon: 'sparkle',
+        hint: m.value === currentModel.value ? 'Current' : undefined,
+        ...(m.value === currentModel.value ? { disabledReason: 'Already in use' } : {}),
+        run: () => setModel(m.value),
+      }),
+    )
+  },
+  { immediate: true },
+)
+onBeforeUnmount(() => withdrawModels.splice(0).forEach(off => off()))
 const typing = ref(false)
 const editable = (target: EventTarget | null) =>
   target instanceof Element &&
