@@ -9,6 +9,9 @@ import { ApiRequestError, useApi } from '@/api'
 import { useProjects } from '@/app/projects'
 import { IuBadge } from '@/components/Badge'
 import { IuButton } from '@/components/Button'
+import { IuSwitch } from '@/components/Fields'
+import { IuIcon } from '@/components/Icon'
+import { IuMenu } from '@/components/Menu'
 import { IuPageHeader } from '@/components/PageHeader'
 import { IuEmpty, IuErrorState, IuSkeleton } from '@/components/States'
 import { IuTable, type Column } from '@/components/Table'
@@ -18,6 +21,10 @@ import { isInstallable } from '@odin/shared/library'
 import { plural, relativeTime, shortHash } from '@/screens/shared/format'
 import { useResource, useServerEvents } from '@/screens/shared/useResource'
 import { assetDetail, isAssetKind, KIND_INFO, kindNoun } from './assetForm'
+import { assetMenu, copyId, type RowAction } from './libraryActions'
+import McpPanel from '@/screens/mcp/McpPanel.vue'
+import DeleteAssetDialog, { type Target } from './DeleteAssetDialog.vue'
+import ExportPluginModal from './ExportPluginModal.vue'
 import ImportPluginModal from './ImportPluginModal.vue'
 import InstallModal from './InstallModal.vue'
 import NewAssetModal from './NewAssetModal.vue'
@@ -33,8 +40,12 @@ const kind = computed<AssetKind>({
     const q = route.query.kind
     return typeof q === 'string' && isAssetKind(q) ? q : 'instruction'
   },
-  set: k => void router.replace({ query: { ...route.query, kind: k } }),
+  set: k => {
+    selected.value = new Set()
+    void router.replace({ query: { ...route.query, kind: k } })
+  },
 })
+const selected = ref(new Set<string | number>())
 
 // ── data ────────────────────────────────────────────────────────────────────
 const res = useResource<LibraryAsset[]>(() => api.listLibrary())
@@ -91,6 +102,7 @@ type Row = {
   version: string
   updatedAt: string
   installs: number | null
+  enabled: boolean
   actions: null
   error: string | null
 }
@@ -106,6 +118,7 @@ const rows = computed<Row[]>(() =>
       version: shortHash(a.version),
       updatedAt: a.updatedAt,
       installs: installs.value ? (installs.value[`${a.kind}/${a.id}`] ?? 0) : null,
+      enabled: a.enabled,
       actions: null,
       error: a.error,
     })),
@@ -113,15 +126,14 @@ const rows = computed<Row[]>(() =>
 const columns = computed<Column<Row>[]>(
   () =>
     [
-      { key: 'name', header: 'Name', sortable: true, width: '26%' },
+      { key: 'name', header: 'Name', sortable: true, width: '28%' },
       { key: 'description', header: 'Description' },
       { key: 'updatedAt', header: 'Updated', sortable: true, width: '110px' },
       ...(isInstallable(kind.value)
-        ? [
-            { key: 'installs', header: 'Used in', width: '150px' },
-            { key: 'actions', header: '', align: 'end', width: '96px' },
-          ]
+        ? [{ key: 'installs', header: 'Used in', width: '130px' }]
         : []),
+      { key: 'enabled', header: 'Enabled', width: '90px' },
+      { key: 'actions', header: '', align: 'end', width: '56px' },
     ] as Column<Row>[],
 )
 
@@ -136,6 +148,80 @@ function installed(_r: unknown, project: string) {
   toast({ title: `Installed in ${project}`, intent: 'success' })
   void loadInstalls()
 }
+
+// ── row and bulk actions ────────────────────────────────────────────────────
+const errorToast = (title: string, e: unknown) =>
+  toast({ title, description: e instanceof Error ? e.message : String(e), intent: 'danger' })
+
+async function setEnabled(ids: string[], enabled: boolean) {
+  const failed: string[] = []
+  for (const id of ids) {
+    try {
+      await api.setAssetEnabled(kind.value, id, enabled)
+    } catch (e) {
+      failed.push(id)
+      errorToast(`Couldn't ${enabled ? 'enable' : 'disable'} ${id}`, e)
+    }
+  }
+  await res.load()
+  const n = ids.length - failed.length
+  if (n)
+    toast({ title: `${plural(n, 'item')} ${enabled ? 'enabled' : 'disabled'}`, intent: 'success' })
+}
+
+async function duplicate(id: string) {
+  try {
+    const detail = await api.getAsset(kind.value, id)
+    const to = copyId(
+      id,
+      all.value.filter(a => a.kind === kind.value).map(a => a.id),
+    )
+    // A skill or agent keeps its own id inside its files only through the folder or file name, which the key carries.
+    const files = Object.fromEntries(
+      Object.entries(detail.files).map(([path, text]) => [
+        path === `${id}.md` || path === `${id}.json` ? path.replace(id, to) : path,
+        text,
+      ]),
+    )
+    await api.saveAsset(kind.value, to, files)
+    toast({ title: `Duplicated as ${to}`, intent: 'success' })
+    await res.load()
+  } catch (e) {
+    errorToast("Couldn't duplicate", e)
+  }
+}
+
+const exportTarget = ref<{ id: string; name: string } | null>(null)
+const exporting = computed({
+  get: () => exportTarget.value !== null,
+  set: v => {
+    if (!v) exportTarget.value = null
+  },
+})
+const deleteTargets = ref<Target[]>([])
+const deleting = ref(false)
+function askDelete(ids: string[]) {
+  deleteTargets.value = all.value
+    .filter(a => a.kind === kind.value && ids.includes(a.id))
+    .map(a => ({ kind: a.kind, id: a.id, name: a.name, enabled: a.enabled }))
+  deleting.value = true
+}
+function gone() {
+  selected.value = new Set()
+  void res.load()
+}
+
+function onAction(id: string, action: RowAction) {
+  const asset = all.value.find(a => a.kind === kind.value && a.id === id)
+  if (!asset) return
+  if (action === 'edit') open(id)
+  else if (action === 'install') installTarget.value = { id, name: asset.name }
+  else if (action === 'toggle') void setEnabled([id], !asset.enabled)
+  else if (action === 'duplicate') void duplicate(id)
+  else if (action === 'export') exportTarget.value = { id, name: asset.name }
+  else askDelete([id])
+}
+const picked = computed(() => [...selected.value].map(String))
 
 const open = (id: string) =>
   void router.push({ name: 'library-asset', params: { kind: kind.value, id } })
@@ -213,6 +299,17 @@ async function globalInstructions() {
           <p v-if="rows.length && KIND_INFO[k].blurb" class="library__blurb">
             {{ KIND_INFO[k].blurb }}
           </p>
+          <div v-if="picked.length" class="library__bar" role="toolbar" aria-label="Bulk actions">
+            <strong>{{ picked.length }} selected</strong>
+            <IuButton size="sm" variant="secondary" @click="setEnabled(picked, true)"
+              >Enable</IuButton
+            >
+            <IuButton size="sm" variant="secondary" @click="setEnabled(picked, false)"
+              >Disable</IuButton
+            >
+            <IuButton size="sm" variant="secondary" @click="askDelete(picked)">Delete…</IuButton>
+            <IuButton size="sm" variant="ghost" @click="selected = new Set()">Clear</IuButton>
+          </div>
           <IuEmpty
             v-if="!rows.length"
             :eyebrow="false"
@@ -223,11 +320,20 @@ async function globalInstructions() {
               <IuButton variant="primary" @click="creating = true">New {{ kindNoun(k) }}</IuButton>
             </template>
           </IuEmpty>
+          <McpPanel
+            v-else-if="k === 'mcp'"
+            v-model:selected="selected"
+            :installs="installs"
+            @action="onAction"
+            @toggle="(id, on) => setEnabled([id], on)"
+          />
           <IuTable
             v-else
+            v-model:selected="selected"
+            selectable="multi"
             :columns="columns"
             :rows="rows"
-            :row-key="r => r.key"
+            :row-key="r => r.id"
             @row-activate="open($event.id)"
           >
             <template #cell:name="{ row }">
@@ -237,6 +343,7 @@ async function globalInstructions() {
                 >{{ row.name }}</RouterLink
               >
               <IuBadge v-if="row.error" intent="danger" size="xs">Has errors</IuBadge>
+              <IuBadge v-if="!row.enabled" intent="neutral" size="xs">Disabled</IuBadge>
               <span v-if="row.name !== row.id" class="library__id">{{ row.id }}</span>
             </template>
             <template #cell:description="{ row }">
@@ -251,14 +358,32 @@ async function globalInstructions() {
               <span v-else-if="row.installs === 0" class="library__none">Not installed</span>
               <span v-else>{{ plural(row.installs, 'project') }}</span>
             </template>
-            <template #cell:actions="{ row }">
-              <IuButton
-                variant="secondary"
+            <template #cell:enabled="{ row }">
+              <IuSwitch
                 size="sm"
-                :aria-label="`Install ${row.name} into a project`"
-                @click.stop="installTarget = { id: row.id, name: row.name }"
-                >Install…</IuButton
+                :model-value="row.enabled"
+                :aria-label="`Enable ${row.name}`"
+                @update:model-value="setEnabled([row.id], $event)"
+              />
+            </template>
+            <template #cell:actions="{ row }">
+              <IuMenu
+                :items="assetMenu(k, row.enabled)"
+                fixed
+                @select="onAction(row.id, $event as RowAction)"
               >
+                <template #trigger="{ toggle }">
+                  <IuButton
+                    variant="ghost"
+                    size="sm"
+                    icon-only
+                    :aria-label="`More actions for ${row.name}`"
+                    @click.stop="toggle"
+                  >
+                    <template #icon><IuIcon name="more" /></template>
+                  </IuButton>
+                </template>
+              </IuMenu>
             </template>
           </IuTable>
         </div>
@@ -278,6 +403,13 @@ async function globalInstructions() {
       :kind="kind"
       :taken="all.filter(a => a.kind === kind).map(a => a.id)"
       @created="created"
+    />
+    <DeleteAssetDialog v-model:open="deleting" :items="deleteTargets" @changed="gone" />
+    <ExportPluginModal
+      v-if="exportTarget"
+      v-model:open="exporting"
+      :id="exportTarget.id"
+      :name="exportTarget.name"
     />
     <ImportPluginModal v-model:open="importing" @imported="id => open(id)" />
   </div>
@@ -306,6 +438,20 @@ async function globalInstructions() {
 }
 .library__name:hover {
   text-decoration: underline;
+}
+.library__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--iu-border);
+  border-radius: var(--iu-radius-md);
+  background: var(--iu-surface-2);
+  font-size: var(--iu-font-size-13);
+}
+.library__bar strong {
+  margin-right: 8px;
 }
 .library__none {
   color: var(--iu-text-muted);

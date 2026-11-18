@@ -19,6 +19,7 @@ export type McpRow = {
   /** Secrets this server needs that are not set. */
   missing: string[]
   oauth: boolean
+  enabled: boolean
   /** Only the Actions column's key. */
   actions: null
 }
@@ -65,6 +66,7 @@ export function mcpRows(
         auth,
         missing,
         oauth: hasOauth,
+        enabled: a.enabled,
         actions: null,
       }
     })
@@ -76,6 +78,7 @@ export const oauthIds = (rows: McpRow[]) => rows.filter(r => r.oauth).map(r => r
 
 /** True when the server will fail to start until the person does something. */
 export function needsAttention(row: McpRow): boolean {
+  if (!row.enabled) return false
   if (row.auth.kind === 'error' || row.missing.length) return true
   return (
     row.auth.kind === 'oauth' &&

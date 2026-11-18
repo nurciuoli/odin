@@ -1,0 +1,2 @@
+- The Library manages every kind of item the same way: switch items on and off, edit, duplicate, delete (with a "disable instead" choice and a count of where it is installed), select several for bulk actions, and see where each is used.
+- MCP servers are now a tab of the Library instead of a separate screen. The old `/mcp` link still works.

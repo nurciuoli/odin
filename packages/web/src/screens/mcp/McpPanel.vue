@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// MCP servers: the library's servers with whether each can start (signed in, secrets set), a Connect button for the
+// The MCP servers tab of the Library: the library's servers with whether each can start (signed in, secrets set), a Connect button for the
 // ones that use OAuth, and the secrets vault their specs refer to.
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { McpOAuthStatus, SecretsResponse } from '@odin/shared/api'
@@ -8,14 +8,24 @@ import { IuBadge } from '@/components/Badge'
 import { IuButton } from '@/components/Button'
 import { IuCallout } from '@/components/Callout'
 import { IuDialog } from '@/components/Modal'
-import { IuPageHeader } from '@/components/PageHeader'
+import { IuSwitch } from '@/components/Fields'
+import { IuIcon } from '@/components/Icon'
+import { IuMenu } from '@/components/Menu'
 import { IuEmpty, IuErrorState, IuSkeleton } from '@/components/States'
 import { IuTable, type Column } from '@/components/Table'
 import { useToast } from '@/components/Toast'
 import { plural, relativeTime } from '@/screens/shared/format'
 import { useResource, useServerEvents } from '@/screens/shared/useResource'
+import { assetMenu, type RowAction } from '@/screens/library/libraryActions'
 import { mcpRows, needsAttention, oauthIds, type McpRow } from './mcpModel'
 import SecretModal from './SecretModal.vue'
+
+const props = defineProps<{ installs: Record<string, number> | null }>()
+const selected = defineModel<Set<string | number>>('selected', { default: () => new Set() })
+const emit = defineEmits<{
+  action: [id: string, action: RowAction]
+  toggle: [id: string, enabled: boolean]
+}>()
 
 const api = useApi()
 const { toast } = useToast()
@@ -51,7 +61,12 @@ async function refresh() {
   await loadOAuth(oauthIds(rows.value))
 }
 
-const rows = computed(() => mcpRows(lib.data.value ?? [], vault.data.value, oauth.value))
+const rows = computed(() =>
+  mcpRows(lib.data.value ?? [], vault.data.value, oauth.value).map(r => ({
+    ...r,
+    used: props.installs ? (props.installs[`mcp/${r.id}`] ?? 0) : null,
+  })),
+)
 // sign-in states arrive after the library, one request per OAuth server
 watch(
   () => oauthIds(rows.value).join(','),
@@ -61,11 +76,14 @@ watch(
 
 const attention = computed(() => rows.value.filter(needsAttention).length)
 
-const columns: Column<McpRow>[] = [
-  { key: 'name', header: 'Server', sortable: true, width: '24%' },
+type Row = McpRow & { used: number | null }
+const columns: Column<Row>[] = [
+  { key: 'name', header: 'Server', sortable: true, width: '22%' },
   { key: 'target', header: 'Connects to' },
-  { key: 'auth', header: 'Sign-in', width: '30%' },
-  { key: 'actions', header: '', align: 'end', width: '200px' },
+  { key: 'auth', header: 'Sign-in', width: '24%' },
+  { key: 'used', header: 'Used in', width: '110px' },
+  { key: 'enabled', header: 'Enabled', width: '90px' },
+  { key: 'actions', header: '', align: 'end', width: '240px' },
 ]
 
 function oauthState(row: McpRow): McpOAuthStatus | 'loading' | 'unknown' | null {
@@ -199,22 +217,6 @@ async function remove() {
 
 <template>
   <div class="mcp">
-    <IuPageHeader
-      title="MCP servers"
-      subtitle="Servers your sessions can use, and the secrets they need"
-      icon="link"
-    >
-      <template #actions>
-        <IuButton
-          as="RouterLink"
-          :to="{ name: 'library', query: { kind: 'mcp' } }"
-          variant="secondary"
-        >
-          Edit in Library
-        </IuButton>
-      </template>
-    </IuPageHeader>
-
     <IuSkeleton v-if="lib.phase.value === 'loading'" shape="table" :rows="5" />
     <IuErrorState
       v-else-if="lib.phase.value === 'error'"
@@ -241,24 +243,23 @@ async function remove() {
         <IuEmpty
           v-if="!rows.length"
           title="No MCP servers yet"
-          body="Add one in the Library. Remote servers can sign in with OAuth, and any server can keep tokens in the secrets below."
+          body="Add one with New MCP server. Remote servers can sign in with OAuth, and any server can keep tokens in the secrets below."
+        />
+        <IuTable
+          v-else
+          v-model:selected="selected"
+          selectable="multi"
+          :columns="columns"
+          :rows="rows"
+          :row-key="r => r.id"
         >
-          <template #action>
-            <IuButton
-              as="RouterLink"
-              :to="{ name: 'library', query: { kind: 'mcp' } }"
-              variant="primary"
-              >Open the Library</IuButton
-            >
-          </template>
-        </IuEmpty>
-        <IuTable v-else :columns="columns" :rows="rows" :row-key="r => r.id">
           <template #cell:name="{ row }">
             <RouterLink
               class="mcp__name"
               :to="{ name: 'library-asset', params: { kind: 'mcp', id: row.id } }"
               >{{ row.name }}</RouterLink
             >
+            <IuBadge v-if="!row.enabled" size="xs" intent="neutral">Disabled</IuBadge>
             <span v-if="row.description" class="mcp__sub">{{ row.description }}</span>
           </template>
           <template #cell:target="{ row }">
@@ -292,36 +293,68 @@ async function remove() {
             <span v-else-if="row.auth.kind === 'local'" class="mcp__sub">Runs on this machine</span>
             <span v-else class="mcp__sub">No sign-in</span>
           </template>
+          <template #cell:used="{ row }">
+            <span v-if="row.used === null" class="mcp__sub">…</span>
+            <span v-else-if="row.used === 0" class="mcp__sub">Not installed</span>
+            <span v-else>{{ plural(row.used, 'project') }}</span>
+          </template>
+          <template #cell:enabled="{ row }">
+            <IuSwitch
+              size="sm"
+              :model-value="row.enabled"
+              :aria-label="`Enable ${row.name}`"
+              @update:model-value="emit('toggle', row.id, $event)"
+            />
+          </template>
           <template #cell:actions="{ row }">
-            <div v-if="row.oauth" class="mcp__actions">
-              <IuButton
-                size="sm"
-                :variant="
-                  typeof oauthState(row) === 'object' &&
-                  (oauthState(row) as McpOAuthStatus).state === 'connected'
-                    ? 'ghost'
-                    : 'primary'
-                "
-                :loading="signingIn?.id === row.id"
-                @click="connect(row)"
+            <div class="mcp__actions">
+              <template v-if="row.enabled && row.oauth">
+                <IuButton
+                  size="sm"
+                  :variant="
+                    typeof oauthState(row) === 'object' &&
+                    (oauthState(row) as McpOAuthStatus).state === 'connected'
+                      ? 'ghost'
+                      : 'primary'
+                  "
+                  :loading="signingIn?.id === row.id"
+                  @click="connect(row)"
+                >
+                  {{
+                    typeof oauthState(row) === 'object' &&
+                    (oauthState(row) as McpOAuthStatus).state === 'connected'
+                      ? 'Sign in again'
+                      : 'Sign in'
+                  }}
+                </IuButton>
+                <IuButton
+                  v-if="
+                    typeof oauthState(row) === 'object' &&
+                    (oauthState(row) as McpOAuthStatus).state === 'connected'
+                  "
+                  size="sm"
+                  variant="ghost"
+                  @click="disconnect(row)"
+                  >Sign out</IuButton
+                >
+              </template>
+              <IuMenu
+                :items="assetMenu('mcp', row.enabled)"
+                fixed
+                @select="emit('action', row.id, $event as RowAction)"
               >
-                {{
-                  typeof oauthState(row) === 'object' &&
-                  (oauthState(row) as McpOAuthStatus).state === 'connected'
-                    ? 'Sign in again'
-                    : 'Sign in'
-                }}
-              </IuButton>
-              <IuButton
-                v-if="
-                  typeof oauthState(row) === 'object' &&
-                  (oauthState(row) as McpOAuthStatus).state === 'connected'
-                "
-                size="sm"
-                variant="ghost"
-                @click="disconnect(row)"
-                >Sign out</IuButton
-              >
+                <template #trigger="{ toggle }">
+                  <IuButton
+                    variant="ghost"
+                    size="sm"
+                    icon-only
+                    :aria-label="`More actions for ${row.name}`"
+                    @click="toggle"
+                  >
+                    <template #icon><IuIcon name="more" /></template>
+                  </IuButton>
+                </template>
+              </IuMenu>
             </div>
           </template>
         </IuTable>
