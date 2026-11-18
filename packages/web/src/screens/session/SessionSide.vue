@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // The Details column: where the session runs (repository, branch, pull request, quick links, tags), then usage and
-// context, outputs, changes, background tasks and the plan. Each section's header carries a quiet one-glance reading.
+// context, outputs, changes, the plan and, last, background tasks. Each section's header carries a quiet one-glance reading.
 import { computed, ref, watchEffect } from 'vue'
 import type { Session, SessionDetail } from '@odin/shared/api'
 import { useApi } from '@/api'
@@ -542,32 +542,6 @@ function addTag(e: KeyboardEvent) {
       <p v-else class="session-side__none">No edits yet.</p>
     </details>
 
-    <details class="session-side__section" aria-labelledby="side-tasks">
-      <summary id="side-tasks" class="session-side__summary">
-        <span>Background tasks</span>
-        <IuIcon name="chevronRight" :size="14" class="session-side__caret" />
-        <span class="session-side__summary-value"
-          >{{ liveTasks.length }} running, {{ doneTasks.length }} finished</span
-        >
-        <!-- shown only while the section is closed: the shape of the run, the expanded graph's small cousin -->
-        <TaskStrip
-          v-if="taskRows.shown.length"
-          class="session-side__strip"
-          :nodes="taskRows.shown"
-          :now="now"
-        />
-      </summary>
-      <TaskLanes
-        v-if="taskRows.shown.length"
-        :nodes="taskRows.shown"
-        :now="now"
-        :hidden="taskRows.hidden"
-        :running="liveTasks.length > 0"
-        @select="emit('openTask', $event)"
-      />
-      <p v-else class="session-side__none">No background tasks.</p>
-    </details>
-
     <details v-if="session.todos.length" class="session-side__section" aria-labelledby="side-todos">
       <summary id="side-todos" class="session-side__summary">
         <span>To-dos</span>
@@ -597,6 +571,32 @@ function addTag(e: KeyboardEvent) {
           }}</span>
         </li>
       </ul>
+    </details>
+
+    <details class="session-side__section" aria-labelledby="side-tasks">
+      <summary id="side-tasks" class="session-side__summary">
+        <span>Background tasks</span>
+        <IuIcon name="chevronRight" :size="14" class="session-side__caret" />
+        <span class="session-side__summary-value"
+          >{{ liveTasks.length }} running, {{ doneTasks.length }} finished</span
+        >
+        <!-- shown only while the section is closed: the shape of the run, the expanded graph's small cousin -->
+        <TaskStrip
+          v-if="taskRows.shown.length"
+          class="session-side__strip"
+          :nodes="taskRows.shown"
+          :now="now"
+        />
+      </summary>
+      <TaskLanes
+        v-if="taskRows.shown.length"
+        :nodes="taskRows.shown"
+        :now="now"
+        :hidden="taskRows.hidden"
+        :running="liveTasks.length > 0"
+        @select="emit('openTask', $event)"
+      />
+      <p v-else class="session-side__none">No background tasks.</p>
     </details>
   </div>
 </template>
