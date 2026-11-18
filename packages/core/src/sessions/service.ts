@@ -303,7 +303,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
   };
 
   /** Writes record fields (no emit). Returns whether anything changed. */
-  function write(id: string, patch: SessionPatch & { tags?: string[]; pinned?: boolean; archived?: boolean; aside?: boolean }): boolean {
+  function write(id: string, patch: SessionPatch & { tags?: string[]; pinned?: boolean; archived?: boolean; aside?: boolean; projects?: string[] }): boolean {
     const cur = row(id);
     if (!cur) throw new HttpError(404, `unknown session ${id}`);
     const sets: string[] = [];
@@ -322,6 +322,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
     if (patch.pinned !== undefined) set("pinned", patch.pinned ? 1 : 0);
     if (patch.archived !== undefined) set("archived", patch.archived ? 1 : 0);
     if (patch.aside !== undefined) set("aside", patch.aside ? 1 : 0);
+    if (patch.projects !== undefined) set("projects", JSON.stringify(patch.projects));
     if (patch.metrics !== undefined) set("metrics", JSON.stringify({ ...parseJson<object>(cur.metrics, {}), ...patch.metrics }));
     if (!sets.length) return false;
     if (patch.updatedAt === undefined && !sets.some((s) => s.startsWith("metrics"))) {
@@ -1122,6 +1123,22 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       if (req.model !== undefined && (typeof req.model !== "string" || !req.model.trim())) bad("model must be a non-empty string");
       if (req.permissionMode !== undefined && !PERMISSION_MODES.includes(req.permissionMode)) bad("unknown permission mode");
       if (req.aside !== undefined && req.aside !== false) bad(req.aside === true ? "a session can't be made a side thread" : "aside must be false");
+      let projects: string[] | undefined;
+      if (req.addProjects !== undefined) {
+        if (!Array.isArray(req.addProjects) || req.addProjects.some((n) => typeof n !== "string" || !n.trim())) bad("addProjects must be a list of project names");
+        const names = [...new Set(req.addProjects.map((n) => n.trim()))].filter((n) => !s.projects.includes(n));
+        for (const name of names) {
+          const project = services.projects.get(name);
+          if (!project) throw new HttpError(404, `unknown project ${name}`);
+          if (project.missing) throw new HttpError(409, `project ${name} is unavailable`);
+        }
+        if (names.length) {
+          if (harnessFor(s).capabilities?.additionalDirectories === false) bad(`${s.harness} does not support additional project directories`);
+          // The directories are handed to the harness when its process starts, so a turn in flight can't take them.
+          if (s.state === "running" || s.state === "waiting") throw new HttpError(409, "wait for the current turn to finish before adding a project");
+          projects = [...s.projects, ...names];
+        }
+      }
       if (req.runtimeOptions !== undefined) {
         const native = runtimeOptions({ ...s.runtimeOptions, ...req.runtimeOptions }, harnessFor(s).capabilities);
         const l = live.get(id);
@@ -1162,6 +1179,12 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         }
       }
       const patch: Parameters<typeof write>[1] = {};
+      if (projects) {
+        // An idle process keeps its old directories: close it, and the next message resumes with the new list.
+        const l = await openHandle(id);
+        if (l) await closeHandle(l, false);
+        patch.projects = projects;
+      }
       if (req.runtimeOptions !== undefined) patch.updatedAt = now();
       if (req.model !== undefined) patch.model = req.model.trim();
       if (req.effort !== undefined) patch.effort = req.effort;

@@ -41,6 +41,8 @@ jobs:
           key: node-modules-${{ runner.os }}-${{ hashFiles('yarn.lock', '.yarnrc.yml') }}
       - run: yarn install --immutable
       - if: matrix.suite == 'core'
+        run: yarn changelog:check
+      - if: matrix.suite == 'core'
         run: yarn typecheck:core
       - if: matrix.suite == 'core'
         run: yarn test:core

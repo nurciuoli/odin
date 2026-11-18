@@ -51,3 +51,26 @@ describe('IuComposer submit keys', () => {
     named.unmount()
   })
 })
+
+describe('IuComposer + menu', () => {
+  it('offers Attachments and any extra actions, and emits the action picked', async () => {
+    const w = mount(IuComposer, {
+      attachTo: document.body,
+      props: { actions: [{ id: 'add-project', label: 'Add project' }] },
+    })
+    const add = w.find('button[aria-label="Add"]')
+    expect(w.find('button[aria-label="Attach files"]').exists()).toBe(false)
+    await add.trigger('click')
+    const labels = [...document.body.querySelectorAll('[role^="menuitem"]')].map(e => e.textContent)
+    expect(labels.join('|')).toMatch(/Attachments.*Add project/)
+    ;[...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')]
+      .find(e => e.textContent?.includes('Add project'))!
+      .click()
+    expect(w.emitted('action')).toEqual([['add-project']])
+    w.unmount()
+  })
+  it('has no + button when nothing can be added', () => {
+    const w = mount(IuComposer, { props: { attachable: false } })
+    expect(w.find('button[aria-label="Add"]').exists()).toBe(false)
+  })
+})

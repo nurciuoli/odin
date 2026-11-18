@@ -14,10 +14,12 @@ import { IuEmpty, IuErrorState, IuSkeleton } from '@/components/States'
 import { IuTable, type Column } from '@/components/Table'
 import { IuTabs } from '@/components/Tabs'
 import { useToast } from '@/components/Toast'
+import { isInstallable } from '@odin/shared/library'
 import { plural, relativeTime, shortHash } from '@/screens/shared/format'
 import { useResource, useServerEvents } from '@/screens/shared/useResource'
-import { isAssetKind, KIND_INFO, kindNoun } from './assetForm'
+import { assetDetail, isAssetKind, KIND_INFO, kindNoun } from './assetForm'
 import ImportPluginModal from './ImportPluginModal.vue'
+import InstallModal from './InstallModal.vue'
 import NewAssetModal from './NewAssetModal.vue'
 
 const api = useApi()
@@ -85,9 +87,11 @@ type Row = {
   id: string
   name: string
   description: string
+  detail: string
   version: string
   updatedAt: string
   installs: number | null
+  actions: null
   error: string | null
 }
 const rows = computed<Row[]>(() =>
@@ -98,19 +102,40 @@ const rows = computed<Row[]>(() =>
       id: a.id,
       name: a.name,
       description: a.description,
+      detail: assetDetail(a),
       version: shortHash(a.version),
       updatedAt: a.updatedAt,
       installs: installs.value ? (installs.value[`${a.kind}/${a.id}`] ?? 0) : null,
+      actions: null,
       error: a.error,
     })),
 )
-const columns = computed<Column<Row>[]>(() => [
-  { key: 'name', header: 'Name', sortable: true, width: '24%' },
-  { key: 'description', header: 'Description' },
-  { key: 'version', header: 'Version', width: '96px' },
-  { key: 'updatedAt', header: 'Updated', sortable: true, width: '110px' },
-  { key: 'installs', header: 'Installs', numeric: true, align: 'end', width: '90px' },
-])
+const columns = computed<Column<Row>[]>(
+  () =>
+    [
+      { key: 'name', header: 'Name', sortable: true, width: '26%' },
+      { key: 'description', header: 'Description' },
+      { key: 'updatedAt', header: 'Updated', sortable: true, width: '110px' },
+      ...(isInstallable(kind.value)
+        ? [
+            { key: 'installs', header: 'Used in', width: '150px' },
+            { key: 'actions', header: '', align: 'end', width: '96px' },
+          ]
+        : []),
+    ] as Column<Row>[],
+)
+
+const installTarget = ref<{ id: string; name: string } | null>(null)
+const installing = computed({
+  get: () => installTarget.value !== null,
+  set: v => {
+    if (!v) installTarget.value = null
+  },
+})
+function installed(_r: unknown, project: string) {
+  toast({ title: `Installed in ${project}`, intent: 'success' })
+  void loadInstalls()
+}
 
 const open = (id: string) =>
   void router.push({ name: 'library-asset', params: { kind: kind.value, id } })
@@ -185,10 +210,14 @@ async function globalInstructions() {
     <IuTabs v-else v-model="kind" :tabs="tabs" :lazy="false" overflow="wrap">
       <template v-for="k in LIBRARY_KINDS" :key="k" #[`panel:${k}`]>
         <div v-if="k === kind" class="library__panel">
+          <p v-if="rows.length && KIND_INFO[k].blurb" class="library__blurb">
+            {{ KIND_INFO[k].blurb }}
+          </p>
           <IuEmpty
             v-if="!rows.length"
+            :eyebrow="false"
             :title="`No ${KIND_INFO[k].plural.toLowerCase()} yet`"
-            :body="`Create one, or drop files into the library folder and rescan.`"
+            :body="`${KIND_INFO[k].blurb} Create one, or drop files into the library folder and rescan.`"
           >
             <template #action>
               <IuButton variant="primary" @click="creating = true">New {{ kindNoun(k) }}</IuButton>
@@ -212,18 +241,23 @@ async function globalInstructions() {
             </template>
             <template #cell:description="{ row }">
               <span class="library__desc">{{ row.description }}</span>
+              <span v-if="row.detail" class="library__id">{{ row.detail }}</span>
             </template>
-            <template #cell:version="{ row }">
-              <code>{{ row.version }}</code>
+            <template #cell:updatedAt="{ row }"
+              ><span :title="`Version ${row.version}`">{{ relativeTime(row.updatedAt) }}</span>
             </template>
-            <template #cell:updatedAt="{ row }">{{ relativeTime(row.updatedAt) }}</template>
             <template #cell:installs="{ row }">
               <span v-if="row.installs === null" class="library__id">…</span>
-              <template v-else
-                >{{ row.installs
-                }}<span class="library__sr">
-                  {{ plural(row.installs, 'project').replace(/^\d+ /, '') }}</span
-                ></template
+              <span v-else-if="row.installs === 0" class="library__none">Not installed</span>
+              <span v-else>{{ plural(row.installs, 'project') }}</span>
+            </template>
+            <template #cell:actions="{ row }">
+              <IuButton
+                variant="secondary"
+                size="sm"
+                :aria-label="`Install ${row.name} into a project`"
+                @click.stop="installTarget = { id: row.id, name: row.name }"
+                >Install…</IuButton
               >
             </template>
           </IuTable>
@@ -231,6 +265,14 @@ async function globalInstructions() {
       </template>
     </IuTabs>
 
+    <InstallModal
+      v-if="installTarget && isInstallable(kind)"
+      v-model:open="installing"
+      :kind="kind"
+      :id="installTarget.id"
+      :name="installTarget.name"
+      @installed="installed"
+    />
     <NewAssetModal
       v-model:open="creating"
       :kind="kind"
@@ -251,9 +293,22 @@ async function globalInstructions() {
 .library__panel {
   padding-top: 16px;
 }
-.library__name {
+.library__blurb {
+  margin: 0 0 12px;
+  font-size: var(--iu-font-size-13);
+  color: var(--iu-text-2);
+}
+.library__name,
+.library__name:hover {
+  color: var(--iu-text);
   font-weight: var(--iu-font-weight-medium);
   margin-right: 8px;
+}
+.library__name:hover {
+  text-decoration: underline;
+}
+.library__none {
+  color: var(--iu-text-muted);
 }
 .library__id {
   display: block;
@@ -263,13 +318,5 @@ async function globalInstructions() {
 }
 .library__desc {
   color: var(--iu-text-2);
-}
-.library__sr {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
 }
 </style>

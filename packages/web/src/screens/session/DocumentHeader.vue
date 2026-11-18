@@ -84,6 +84,7 @@ const full = computed(() => (props.dir ? `${props.dir}/${props.name}` : props.na
         </template>
       </IuMenu>
       <IuButton
+        v-if="!surface"
         variant="ghost"
         size="sm"
         icon-only

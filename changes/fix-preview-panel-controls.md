@@ -1,0 +1,1 @@
+- Session preview panel: the text "Close preview" link is now an icon-only "Hide preview" button, full screen uses maximize/restore icons instead of the pop-out and close glyphs, and an open file no longer shows a second close button in its header (its tab closes it).

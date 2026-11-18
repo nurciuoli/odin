@@ -1,0 +1,2 @@
+- The home composer's Where chip (this checkout or a new worktree) sits with the project and harness pickers above the input, and the paperclip is a + menu: Attachments, and Add project, which is offered once the session has started so another project can be added later.
+- The composer's project picker no longer leaves the working repository on a project you just unchecked.

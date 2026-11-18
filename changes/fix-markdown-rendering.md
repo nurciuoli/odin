@@ -1,0 +1,1 @@
+- Markdown files in the session's Files panel open in a rendered view (real lists, wrapped paragraphs, inline code, h1-h6) that uses the same renderer as session messages; the header menu switches to the live editor or the source. The live editor shows bullets for list items.

@@ -35,13 +35,15 @@ describe('LibraryScreen', () => {
     expect(router.currentRoute.value.fullPath).toBe('/library/instruction/global')
   })
 
-  it('lists a kind per tab with version and installs', async () => {
+  it('lists a kind per tab with where it is used and an install action', async () => {
     const { wrapper } = await mountScreen(LibraryScreen, '/library?kind=agent')
     await flushPromises()
     const text = wrapper.text()
     expect(text).toContain('reviewer')
     expect(text).toContain('docs-writer')
-    expect(wrapper.find('thead').text()).toContain('Installs')
+    expect(wrapper.find('thead').text()).toContain('Used in')
+    expect(button(wrapper, 'Install…')).toBeTruthy()
+    expect(wrapper.find('thead').text()).not.toContain('Version')
     expect(
       wrapper
         .findAll('[role=tab]')
