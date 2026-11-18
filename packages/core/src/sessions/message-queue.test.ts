@@ -185,3 +185,60 @@ test("a completed idempotency retry succeeds even while a later turn waits", asy
     assert.equal(s.sessions.get(session.id)!.state, "waiting");
   } finally { await s.sessions.close(); }
 });
+
+test("stopping a follow-up the agent already acted on completes it: nothing uncertain, no resurrected message", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const s = setup({ harness: { script: (_message, turn) => turn === 1 ? [{ text: "working" }, { wait: gate }, { text: "never" }] : [{ text: "Done" }] } });
+  try {
+    const session = await s.sessions.start({ project: PROJECT, prompt: { text: "A" } });
+    await waitFor(() => s.sessions.get(session.id)?.state === "idle");
+    await s.sessions.send(session.id, { text: "B" });
+    await waitFor(() => s.harnessEvents.some(e => e.event.type === "entry" && e.event.entry.kind === "assistant" && e.event.entry.text === "working"));
+    await s.sessions.interrupt(session.id);
+    release();
+    await waitFor(() => s.sessions.get(session.id)?.state === "idle");
+    assert.deepEqual(s.sessions.queue(session.id).messages, []);
+    // A message sent after the stop goes straight through.
+    await s.sessions.send(session.id, { text: "C" });
+    await waitFor(() => s.harness.handles.get(session.id)!.sent.some(m => m.text === "C"));
+    await waitFor(() => s.sessions.queue(session.id).messages.length === 0);
+    assert.equal(s.sessions.queue(session.id).paused, false);
+    assert.deepEqual(s.harness.handles.get(session.id)!.sent.map(m => m.text), ["A", "B", "C"]);
+  } finally { release(); await s.sessions.close(); }
+});
+
+test("an immediate stop, before the agent acted, returns the message to the paused queue intact", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const s = setup({ harness: { script: (_message, turn) => turn === 1 ? [{ wait: gate }, { text: "never" }] : [{ text: "Done" }] } });
+  try {
+    const session = await s.sessions.start({ project: PROJECT, prompt: { text: "A" } });
+    await waitFor(() => s.sessions.get(session.id)?.state === "idle");
+    await s.sessions.send(session.id, { text: "B", attachments: [{ name: "n.txt", mediaType: "text/plain", data: "x" }] });
+    await waitFor(() => s.sessions.queue(session.id).messages.some(m => m.state === "sending"));
+    await s.sessions.interrupt(session.id);
+    release();
+    await waitFor(() => s.sessions.get(session.id)?.state === "idle");
+    const q = s.sessions.queue(session.id);
+    assert.equal(q.paused, true);
+    assert.deepEqual(q.messages.map(m => [m.message.text, m.state]), [["B", "queued"]]);
+    assert.equal(q.messages[0]!.message.attachments?.length, 1);
+    // Editing then resuming delivers it exactly once more; a fresh send behind it keeps order.
+    s.sessions.editQueuedMessage(session.id, q.messages[0]!.id, { text: "B2" });
+    await s.sessions.send(session.id, { text: "C" });
+    await s.sessions.resumeQueue(session.id);
+    await waitFor(() => s.sessions.queue(session.id).messages.length === 0);
+    assert.deepEqual(s.harness.handles.get(session.id)!.sent.map(m => m.text), ["A", "B", "B2", "C"]);
+  } finally { release(); await s.sessions.close(); }
+});
+
+test("a real failure still leaves the message uncertain", async () => {
+  const s = setup({ harness: { script: (_message, turn) => turn === 0 ? [{ text: "Done" }] : [{ text: "partial" }, { fail: "boom" }] } });
+  try {
+    const session = await s.sessions.start({ project: PROJECT, prompt: { text: "A" } });
+    await waitFor(() => s.sessions.get(session.id)?.state === "idle");
+    await s.sessions.send(session.id, { text: "B" });
+    await waitFor(() => s.sessions.queue(session.id).messages.some(m => m.state === "uncertain"));
+  } finally { await s.sessions.close(); }
+});

@@ -89,6 +89,8 @@ interface Live {
   /** The close was an explicit end: the record becomes `ended`. */
   ending: boolean;
   turnActive: boolean;
+  /** The harness has produced output (reply, tool call, prompt) for the current turn, so the message was acted on. */
+  acted: boolean;
   /** This interrupt was a send-now: complete the in-flight receipt and dispatch the next queued message. */
   releaseNext: boolean;
   /** The queue was paused. After one message is handed off, pause again. */
@@ -530,6 +532,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         break;
       }
       case "permission.request":
+        l.acted = true;
         l.pending.set(e.request.id, e.request);
         break;
       case "permission.resolved":
@@ -539,16 +542,19 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         l.todos = e.todos;
         break;
       case "delta":
+        l.acted = true;
         l.streaming.add(e.entryId);
         l.tail = applyHarnessEvent(l.tail, e);
         patchAndEmit(l.id, { updatedAt: now() });
         break;
       case "entry":
+        if (e.entry.kind !== "user") l.acted = true;
         l.streaming.delete(e.entry.id);
         l.tail = applyHarnessEvent(l.tail, e);
         patchAndEmit(l.id, { updatedAt: now() });
         break;
       case "task":
+        l.acted = true;
         l.tail = applyHarnessEvent(l.tail, e);
         patchAndEmit(l.id, { updatedAt: now() });
         break;
@@ -569,6 +575,13 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         if (l.releaseNext && (e.ok || e.error === "interrupted")) {
           l.releaseNext = false;
           outbox.settle(l.id, true);
+        } else if (e.error === "interrupted") {
+          // A stop. If the agent already acted on the message it is part of the conversation: done, not uncertain.
+          // If the stop beat the agent, the message goes back to the queue (paused) to edit, resend or cancel.
+          l.releaseNext = false;
+          l.pauseAfterRelease = false;
+          if (l.acted) outbox.settle(l.id, true);
+          else { outbox.requeue(l.id); outbox.pause(l.id); }
         } else {
           l.releaseNext = false;
           l.pauseAfterRelease = false;
@@ -656,6 +669,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       id, harness, handle, pending: new Map(), todos: null, slashCommands: null, tail: [], settled: 0, streaming: new Set(), idleTimer: null, closing: false, ending: false,
       done: Promise.resolve(),
       turnActive,
+      acted: false,
       releaseNext: false,
       pauseAfterRelease: false,
     };
@@ -730,6 +744,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       try {
         if (l) {
           l.turnActive = true;
+          l.acted = false;
           clearIdle(l);
           patchAndEmit(id, { state: "running", waitingFor: null });
           l.handle.send(next.message);
