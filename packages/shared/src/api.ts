@@ -520,6 +520,24 @@ export interface UserMessage {
   attachments?: Attachment[];
 }
 
+/** Body of `POST /api/sessions/:id/shell`: one command Odin runs in the session's working directory (the composer's `!` mode). */
+export interface ShellRunRequest {
+  command: string;
+}
+
+/** What a `!` command produced. Harness-neutral: Odin runs it, not the agent. */
+export interface ShellRunResult {
+  command: string;
+  cwd: string;
+  /** Combined stdout and stderr, capped (`truncated`). */
+  output: string;
+  /** Null when killed by a signal or the timeout. */
+  exitCode: number | null;
+  timedOut: boolean;
+  truncated: boolean;
+  durationMs: number;
+}
+
 export interface QueuedMessage {
   id: string;
   message: UserMessage;
