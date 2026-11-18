@@ -12,6 +12,7 @@ import { IuTable, type Column } from '@/components/Table'
 import { useToast } from '@/components/Toast'
 import { shortHash } from '@/screens/shared/format'
 import { DRIFT_DISPLAY } from './assetForm'
+import InstallModal from './InstallModal.vue'
 
 const props = defineProps<{ detail: AssetDetail; installable: boolean }>()
 const emit = defineEmits<{ changed: []; install: [] }>()
@@ -46,6 +47,17 @@ const byProject = computed(() => new Map(props.detail.installs.map(i => [i.proje
 
 const busy = ref<string | null>(null)
 const confirm = ref<Installation | null>(null)
+// A plugin update is reviewed first (hooks and commands may have changed), so it goes through the install dialog.
+const reviewing = ref<Installation | null>(null)
+const isPlugin = computed(() => props.detail.asset.kind === 'plugin')
+function updateDone(_result: unknown, project: string) {
+  toast({ title: `Updated ${project}`, intent: 'success' })
+  emit('changed')
+}
+function startUpdate(inst: Installation) {
+  if (isPlugin.value) reviewing.value = inst
+  else void run(inst, 'update')
+}
 
 async function run(inst: Installation, action: InstallRequest['action'], force = false) {
   busy.value = `${inst.project}:${action}`
@@ -119,11 +131,12 @@ function overwrite() {
               variant="secondary"
               :loading="busy === `${i.project}:update`"
               :aria-label="`${i.state === 'missing' ? 'Reinstall' : 'Update'} in ${i.project}`"
-              @click="run(i, 'update')"
+              @click="startUpdate(i)"
               >{{ i.state === 'missing' ? 'Reinstall' : 'Update' }}</IuButton
             >
             <template v-if="i.state === 'modified' || i.state === 'conflict'">
               <IuButton
+                v-if="!isPlugin"
                 size="sm"
                 variant="secondary"
                 :loading="busy === `${i.project}:push`"
@@ -135,7 +148,7 @@ function overwrite() {
                 size="sm"
                 variant="secondary"
                 :aria-label="`Overwrite ${i.project}'s copy with the library version`"
-                @click="confirm = i"
+                @click="isPlugin ? (reviewing = i) : (confirm = i)"
                 >Overwrite</IuButton
               >
             </template>
@@ -151,6 +164,18 @@ function overwrite() {
         </div>
       </template>
     </IuTable>
+
+    <InstallModal
+      v-if="reviewing"
+      :open="true"
+      :kind="reviewing.kind"
+      :id="reviewing.id"
+      :name="detail.asset.name"
+      :fixed-project="reviewing.project"
+      action="update"
+      @update:open="!$event && (reviewing = null)"
+      @installed="updateDone"
+    />
 
     <IuDialog :open="!!confirm" size="sm" @update:open="!$event && (confirm = null)">
       <template #header>

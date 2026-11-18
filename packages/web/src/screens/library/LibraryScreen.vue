@@ -4,7 +4,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { AssetKind, LibraryAsset } from '@odin/shared/api'
-import { ASSET_KINDS } from '@odin/shared/library'
+import { LIBRARY_KINDS } from '@odin/shared/library'
 import { ApiRequestError, useApi } from '@/api'
 import { useProjects } from '@/app/projects'
 import { IuBadge } from '@/components/Badge'
@@ -18,6 +18,7 @@ import { isInstallable } from '@odin/shared/library'
 import { plural, relativeTime, shortHash } from '@/screens/shared/format'
 import { useResource, useServerEvents } from '@/screens/shared/useResource'
 import { assetDetail, isAssetKind, KIND_INFO, kindNoun } from './assetForm'
+import ImportPluginModal from './ImportPluginModal.vue'
 import InstallModal from './InstallModal.vue'
 import NewAssetModal from './NewAssetModal.vue'
 
@@ -74,7 +75,7 @@ watch(
 
 const all = computed(() => res.data.value ?? [])
 const tabs = computed(() =>
-  ASSET_KINDS.map(k => ({
+  LIBRARY_KINDS.map(k => ({
     id: k,
     label: KIND_INFO[k].plural,
     badge: all.value.filter(a => a.kind === k).length,
@@ -140,6 +141,7 @@ const open = (id: string) =>
   void router.push({ name: 'library-asset', params: { kind: kind.value, id } })
 
 const creating = ref(false)
+const importing = ref(false)
 function created(k: AssetKind, id: string) {
   toast({ title: `Created ${id}`, intent: 'success' })
   void router.push({ name: 'library-asset', params: { kind: k, id } })
@@ -184,11 +186,14 @@ async function globalInstructions() {
   <div class="library">
     <IuPageHeader
       title="Library"
-      subtitle="Instructions, skills, subagents, MCP servers and settings across projects"
+      subtitle="Instructions, skills, subagents, MCP servers, settings and plugins across projects"
       icon="folder"
     >
       <template #actions>
         <IuButton variant="secondary" @click="globalInstructions">Global instructions</IuButton>
+        <IuButton v-if="kind === 'plugin'" variant="secondary" @click="importing = true"
+          >Import…</IuButton
+        >
         <IuButton variant="ghost" @click="rescan">Rescan</IuButton>
         <IuButton variant="primary" @click="creating = true">New {{ kindNoun(kind) }}</IuButton>
       </template>
@@ -203,7 +208,7 @@ async function globalInstructions() {
       @retry="res.load()"
     />
     <IuTabs v-else v-model="kind" :tabs="tabs" :lazy="false" overflow="wrap">
-      <template v-for="k in ASSET_KINDS" :key="k" #[`panel:${k}`]>
+      <template v-for="k in LIBRARY_KINDS" :key="k" #[`panel:${k}`]>
         <div v-if="k === kind" class="library__panel">
           <p v-if="rows.length && KIND_INFO[k].blurb" class="library__blurb">
             {{ KIND_INFO[k].blurb }}
@@ -274,6 +279,7 @@ async function globalInstructions() {
       :taken="all.filter(a => a.kind === kind).map(a => a.id)"
       @created="created"
     />
+    <ImportPluginModal v-model:open="importing" @imported="id => open(id)" />
   </div>
 </template>
 

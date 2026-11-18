@@ -112,7 +112,7 @@ export const DRIFT_DISPLAY: Record<DriftState, { intent: Intent; label: string; 
 }
 
 export function isAssetKind(value: string): value is AssetKind {
-  return ['instruction', 'skill', 'agent', 'mcp', 'settings'].includes(value)
+  return ['instruction', 'skill', 'agent', 'mcp', 'settings', 'plugin'].includes(value)
 }
 
 /** The file that holds an asset's main content: `<id>.md`, `<id>.json`, or a skill's `SKILL.md`. */

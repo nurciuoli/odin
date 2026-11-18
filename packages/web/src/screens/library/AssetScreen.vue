@@ -25,10 +25,12 @@ import {
   specProblems,
   kindNoun,
 } from './assetForm'
+import ExportPluginModal from './ExportPluginModal.vue'
 import InstallModal from './InstallModal.vue'
 import InstallsPanel from './InstallsPanel.vue'
 import JsonSpecEditor from './JsonSpecEditor.vue'
 import MarkdownEditor from './MarkdownEditor.vue'
+import PluginMembers from './PluginMembers.vue'
 import SkillEditor from './SkillEditor.vue'
 import VersionsPanel from './VersionsPanel.vue'
 
@@ -150,6 +152,7 @@ function revert() {
 }
 
 const installing = ref(false)
+const exporting = ref(false)
 function installed(result: InstallResult, project: string) {
   toast({
     title: `Installed in ${project}`,
@@ -229,6 +232,9 @@ const tabs = computed(() => [
           <IuButton v-if="isInstallable(kind)" variant="secondary" @click="installing = true"
             >Install into…</IuButton
           >
+          <IuButton v-if="kind === 'plugin'" variant="secondary" @click="exporting = true"
+            >Export…</IuButton
+          >
           <IuButton variant="ghost" @click="deleting = true">Delete</IuButton>
         </template>
       </IuPageHeader>
@@ -261,10 +267,21 @@ const tabs = computed(() => [
         >Subagents are available for the default agent to delegate to after installation in a
         project.</IuCallout
       >
+      <IuCallout v-if="kind === 'plugin'" intent="info" variant="inline"
+        >A plugin installs its own files and the library assets it includes together. Installing
+        shows every hook, command and MCP server it adds before anything is written.</IuCallout
+      >
+      <PluginMembers v-if="kind === 'plugin'" :detail="detail" />
       <IuTabs v-model="tab" :tabs="tabs" :lazy="false">
         <template #panel:edit>
           <form v-if="Object.keys(draft).length" class="asset__edit" @submit.prevent="save">
             <SkillEditor v-if="kind === 'skill'" v-model="draft" />
+            <SkillEditor
+              v-else-if="kind === 'plugin'"
+              v-model="draft"
+              entry="plugin.json"
+              noun="plugin"
+            />
             <JsonSpecEditor
               v-else-if="JSON_KINDS.includes(kind)"
               v-model="entryText"
@@ -307,6 +324,13 @@ const tabs = computed(() => [
         :id="id"
         :name="detail.asset.name"
         @installed="installed"
+      />
+
+      <ExportPluginModal
+        v-if="kind === 'plugin'"
+        v-model:open="exporting"
+        :id="id"
+        :name="detail.asset.name"
       />
 
       <IuDialog v-model:open="deleting" size="sm">

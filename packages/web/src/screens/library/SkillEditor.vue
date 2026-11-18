@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // A skill is a folder: SKILL.md plus any other files. A file list on the left, the selected file's editor on the
-// right (SKILL.md gets the frontmatter fields).
+// right (SKILL.md gets the frontmatter fields). A plugin is edited the same way, with plugin.json as its entry.
 import { computed, ref } from 'vue'
 import type { AssetFiles } from '@odin/shared/api'
 import { IuButton } from '@/components/Button'
@@ -8,17 +8,21 @@ import { IuField, IuTextarea } from '@/components/Fields'
 import { IuIcon } from '@/components/Icon'
 import MarkdownEditor from './MarkdownEditor.vue'
 
-const ENTRY = 'SKILL.md'
+const props = withDefaults(defineProps<{ entry?: string; noun?: string }>(), {
+  entry: 'SKILL.md',
+  noun: 'skill',
+})
+const ENTRY = computed(() => props.entry)
 const MAX_FILES = 64
 
 const files = defineModel<AssetFiles>({ required: true })
 
 const names = computed(() =>
-  Object.keys(files.value).sort((a, b) => (a === ENTRY ? -1 : a.localeCompare(b))),
+  Object.keys(files.value).sort((a, b) => (a === ENTRY.value ? -1 : a.localeCompare(b))),
 )
-const selected = ref(names.value[0] ?? ENTRY)
+const selected = ref(names.value[0] ?? ENTRY.value)
 const current = computed(() =>
-  selected.value in files.value ? selected.value : (names.value[0] ?? ENTRY),
+  selected.value in files.value ? selected.value : (names.value[0] ?? ENTRY.value),
 )
 
 const adding = ref(false)
@@ -29,7 +33,7 @@ const nameError = computed(() => {
   if (n.startsWith('/') || n.split('/').some(p => p === '..' || p === ''))
     return 'Use a relative path without “..”.'
   if (n in files.value) return 'That file already exists.'
-  if (names.value.length >= MAX_FILES) return `A skill can have up to ${MAX_FILES} files.`
+  if (names.value.length >= MAX_FILES) return `A ${props.noun} can have up to ${MAX_FILES} files.`
   return ''
 })
 
@@ -47,13 +51,13 @@ function addFile() {
 function removeFile(name: string) {
   const { [name]: _gone, ...rest } = files.value
   files.value = rest
-  selected.value = ENTRY
+  selected.value = ENTRY.value
 }
 </script>
 
 <template>
   <div class="skill-editor">
-    <nav class="skill-editor__files" aria-label="Skill files">
+    <nav class="skill-editor__files" :aria-label="`${props.noun} files`">
       <ul>
         <li v-for="n in names" :key="n">
           <button
@@ -92,7 +96,7 @@ function removeFile(name: string) {
 
     <div class="skill-editor__pane">
       <MarkdownEditor
-        v-if="current === ENTRY"
+        v-if="current === ENTRY && ENTRY === 'SKILL.md'"
         kind="skill"
         :model-value="files[ENTRY] ?? ''"
         @update:model-value="setText(ENTRY, $event)"

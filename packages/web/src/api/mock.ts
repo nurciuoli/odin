@@ -7,7 +7,11 @@ import type {
   FileSearchResult,
   AssetFiles,
   AssetKind,
+  ImportPreview,
   Installation,
+  PluginMemberKind,
+  PluginPreview,
+  PluginRun,
   LibraryAsset,
   MetricsDimension,
   MetricsQuery,
@@ -27,7 +31,7 @@ import type { HarnessEvent, PermissionRequest, SlashCommand } from '@odin/shared
 import type { ServerEvent } from '@odin/shared/events'
 import {
   ASSET_ID_PATTERN,
-  ASSET_KINDS,
+  LIBRARY_KINDS,
   fillPrompt,
   isInstallable,
   libraryAgentId,
@@ -372,6 +376,57 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
     return a
   }
 
+  const pendingImports = new Map<string, ImportPreview>()
+  function pluginPreview(project: string, asset: LibraryAsset): PluginPreview {
+    const meta = asset.meta as {
+      includes?: { kind: PluginMemberKind; id: string }[]
+      own?: { kind: PluginMemberKind; id: string }[]
+    }
+    const files = db.libraryFiles[`plugin/${asset.id}`] ?? {}
+    const runs: PluginRun[] = []
+    for (const [path, text] of Object.entries(files)) {
+      if (path.startsWith('settings/'))
+        for (const [event, v] of Object.entries(
+          (JSON.parse(text) as { hooks?: Record<string, unknown> }).hooks ?? {},
+        ))
+          runs.push({
+            kind: 'hook',
+            member: `settings/${path.slice(9, -5)}`,
+            text: `${event}: ${JSON.stringify(v)}`,
+          })
+      if (path.startsWith('mcp/')) {
+        const spec = JSON.parse(text) as { type?: string; command?: string; url?: string }
+        runs.push(
+          spec.command
+            ? { kind: 'command', member: `mcp/${path.slice(4, -5)}`, text: spec.command }
+            : { kind: 'remote', member: `mcp/${path.slice(4, -5)}`, text: spec.url ?? '' },
+        )
+      }
+    }
+    const secretNames = [...new Set(Object.values(files).flatMap(secretRefs))]
+    return {
+      project,
+      plugin: asset.id,
+      version: asset.version,
+      members: [
+        ...(meta.own ?? []).map(m => ({ ...m, origin: 'own' as const, version: asset.version })),
+        ...(meta.includes ?? []).map(m => ({
+          ...m,
+          origin: 'library' as const,
+          version: db.library.find(a => a.kind === m.kind && a.id === m.id)?.version ?? '',
+        })),
+      ],
+      runs,
+      missing: (meta.includes ?? [])
+        .filter(m => !db.library.some(a => a.kind === m.kind && a.id === m.id))
+        .map(m => `${m.kind}/${m.id}`),
+      secrets: secretNames.map(name => ({ name, set: secrets.has(name) })),
+      oauth: [],
+      confirm: runs.some(r => r.kind !== 'remote')
+        ? fakeHash(JSON.stringify(runs)).slice(0, 16)
+        : null,
+    }
+  }
   const assetOf = (kind: AssetKind, id: string) =>
     db.library.find(a => a.kind === kind && a.id === id) ?? notFound(`${kind} ${id}`)
 
@@ -1423,7 +1478,7 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
     // ── library ──
     listLibrary: kind =>
       respond(() =>
-        db.library.filter(a => ASSET_KINDS.includes(a.kind) && (!kind || a.kind === kind)),
+        db.library.filter(a => LIBRARY_KINDS.includes(a.kind) && (!kind || a.kind === kind)),
       ),
     getAsset: (kind, id) =>
       respond(() => {
@@ -1437,11 +1492,122 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
             .map(installationState),
         }
       }),
+    previewPluginImport: req =>
+      respond(() => {
+        const src = req.source
+        if (src.type === 'git' && !/^(https:\/\/|ssh:\/\/|git@)/.test(src.url))
+          throw new ApiRequestError(400, 'git url must be an https, ssh or git@ address')
+        if (src.type === 'local' && !src.path.startsWith('/'))
+          throw new ApiRequestError(400, 'a local source needs an absolute path')
+        const from = src.type === 'git' ? src.url : src.path
+        const name =
+          from
+            .replace(/\/+$/, '')
+            .replace(/\.git$/, '')
+            .split(/[/:]/)
+            .pop() ?? 'plugin'
+        const id = req.id ?? slugify(name)
+        if (db.library.some(a => a.kind === 'plugin' && a.id === id))
+          throw new ApiRequestError(
+            409,
+            `the library already has a plugin "${id}": pass another id`,
+          )
+        const previewId = fakeHash(`import/${from}/${pendingImports.size}/${Date.now()}`).slice(
+          0,
+          16,
+        )
+        const preview: ImportPreview = {
+          previewId,
+          id,
+          name,
+          description: `Imported from ${name}`,
+          version: '0.3.0',
+          members: [
+            { kind: 'skill', id: 'changelog' },
+            { kind: 'agent', id: 'release-reviewer' },
+            { kind: 'mcp', id: 'github' },
+            { kind: 'settings', id: 'hooks' },
+          ],
+          runs: [
+            {
+              kind: 'command',
+              member: 'mcp/github',
+              text: 'npx @modelcontextprotocol/server-github',
+            },
+            {
+              kind: 'hook',
+              member: 'settings/hooks',
+              text: 'PostToolUse: [{"matcher":"Edit","hooks":[{"type":"command","command":"prettier --write"}]}]',
+            },
+          ],
+          warnings: [
+            'command "ship" became skill "ship" (Odin has no separate slash commands)',
+            'not imported (Odin has no place for them): scripts/guard.sh',
+          ],
+          secrets: ['GITHUB_TOKEN'],
+        }
+        pendingImports.set(previewId, preview)
+        return preview
+      }),
+    confirmPluginImport: previewId =>
+      respond(() => {
+        const preview = pendingImports.get(previewId) ?? notFound('that import preview')
+        pendingImports.delete(previewId)
+        const files: AssetFiles = {
+          'plugin.json': JSON.stringify({
+            name: preview.name,
+            description: preview.description,
+            version: preview.version,
+          }),
+        }
+        const asset: LibraryAsset = {
+          kind: 'plugin',
+          id: preview.id,
+          name: preview.name,
+          description: preview.description,
+          version: fakeHash(`plugin/${preview.id}/${JSON.stringify(files)}`),
+          updatedAt: nowIso(),
+          files: Object.keys(files),
+          meta: {
+            version: preview.version,
+            includes: [],
+            own: preview.members.map(m => ({ ...m, name: m.id, description: '', error: null })),
+          },
+          error: null,
+        }
+        db.library.push(asset)
+        db.libraryFiles[`plugin/${preview.id}`] = files
+        db.libraryVersions[`plugin/${preview.id}`] = [
+          { version: asset.version, firstSeenAt: nowIso(), sessionCount: 0 },
+        ]
+        emit({ type: 'library.updated', kind: 'plugin', id: preview.id })
+        return asset
+      }),
+    exportPlugin: (id, path) =>
+      respond(() => {
+        assetOf('plugin', id)
+        if (!path.startsWith('/'))
+          throw new ApiRequestError(400, 'path must be an absolute folder path')
+        return {
+          path,
+          files: [
+            '.claude-plugin/plugin.json',
+            '.mcp.json',
+            'hooks/hooks.json',
+            'skills/release-notes/SKILL.md',
+            'skills/triage/SKILL.md',
+          ],
+          skipped: [],
+          notes: [
+            'MCP server "publish": OAuth settings were dropped (Claude Code signs in on its own)',
+          ],
+        }
+      }),
     getAssetVersion: (kind, id, version) =>
       respond(() => db.versionFiles[`${kind}/${id}@${version}`] ?? notFound(`version ${version}`)),
     saveAsset: (kind, id, files) =>
       respond(() => {
-        if (!ASSET_KINDS.includes(kind)) throw new ApiRequestError(400, `unknown kind ${kind}`)
+        if (!LIBRARY_KINDS.includes(kind)) throw new ApiRequestError(400, `unknown kind ${kind}`)
         if (!ASSET_ID_PATTERN.test(id)) throw new ApiRequestError(400, `invalid id "${id}"`)
         if (!Object.keys(files).length)
           throw new ApiRequestError(400, 'an asset needs at least one file')
@@ -1546,6 +1712,16 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
         const asset = assetOf(req.kind, req.id)
         if (!isInstallable(req.kind))
           throw new ApiRequestError(400, `${req.kind} assets aren't installed into projects`)
+        if (req.kind === 'plugin' && req.action === 'preview')
+          return { installation: null, changed: [], preview: pluginPreview(project, asset) }
+        if (req.kind === 'plugin' && req.action === 'install') {
+          const pv = pluginPreview(project, asset)
+          if (pv.confirm !== null && req.confirm !== pv.confirm)
+            throw new ApiRequestError(
+              409,
+              `plugin "${req.id}" adds hooks or local commands: send action "preview", read it, and pass its confirm`,
+            )
+        }
         const key = `${project}/${req.kind}/${req.id}`
         let inst = db.installations.find(
           i => i.project === project && i.kind === req.kind && i.id === req.id,
