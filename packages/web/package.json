@@ -14,7 +14,9 @@
     "guard": "node scripts/guard.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check . --log-level warn --cache",
-    "verify": "yarn format:check && yarn type-check && yarn lint && yarn guard && yarn test && node scripts/build-strict.mjs"
+    "verify:static": "yarn format:check && yarn type-check && yarn lint && yarn guard",
+    "verify:build": "node scripts/build-strict.mjs",
+    "verify": "yarn verify:static && yarn test && yarn verify:build"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",
