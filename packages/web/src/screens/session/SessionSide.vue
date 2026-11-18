@@ -1,14 +1,13 @@
 <script setup lang="ts">
 // The Details column: where the session runs (repository, branch, pull request, quick links, tags), then usage and
 // context, outputs, changes, background tasks and the plan. Each section's header carries a quiet one-glance reading.
-import { computed, ref } from 'vue'
+import { computed, ref, watchEffect } from 'vue'
 import type { Session, SessionDetail } from '@odin/shared/api'
 import { useApi } from '@/api'
 import { hasDesktop, openPath, type OpenTarget } from '@/app/desktop'
 import { IuBadge } from '@/components/Badge'
 import { IuButton } from '@/components/Button'
 import { IuIcon } from '@/components/Icon'
-import { IuField } from '@/components/Fields'
 import { IuFilePath } from '@/components/FilePath'
 import { IuMeter } from '@/components/Meter'
 import { IuSegmented } from '@/components/Segmented'
@@ -19,7 +18,7 @@ import { IuStatusDot } from '@/components/StatusDot'
 import { useToast } from '@/components/Toast'
 import type { Status } from '@/styles/status'
 import { contextWindow } from './sessionView'
-import { fileChanges, latestPlan } from './workbench'
+import { fileChanges, latestPlan, latestPlanFile } from './workbench'
 import { IuMarkdown } from '@/components/Markdown'
 import {
   TOKEN_LABEL,
@@ -55,6 +54,13 @@ const TODO_STATUS: Record<
   completed: { status: 'ok', label: 'Done' },
 }
 const plan = computed(() => latestPlan(props.session.transcript))
+const planFile = computed(() => latestPlanFile(props.session.transcript))
+const planName = computed(() => planFile.value?.split(/[\\/]/).pop() ?? 'Latest plan')
+const planOpen = ref(false)
+function openPlan() {
+  if (planFile.value) emit('openFile', planFile.value)
+  else planOpen.value = !planOpen.value
+}
 const todosDone = computed(() => props.session.todos.filter(t => t.status === 'completed').length)
 const todosPct = computed(() =>
   props.session.todos.length ? (todosDone.value / props.session.todos.length) * 100 : 0,
@@ -137,10 +143,33 @@ async function copy(what: string, text: string) {
     toast({ title: `Couldn't copy ${what}`, intent: 'danger' })
   }
 }
-async function openIn(target: OpenTarget, what: string) {
-  if (!(await openPath(workspacePath.value, target)))
-    toast({ title: `Couldn't open ${what}`, intent: 'danger' })
+async function openIn(target: OpenTarget, what: string, path = workspacePath.value) {
+  if (!(await openPath(path, target))) toast({ title: `Couldn't open ${what}`, intent: 'danger' })
 }
+// Each repository's folder and GitHub slug, for the copy and open icons beside it.
+const projectInfo = ref<Record<string, { path: string; repo: string | null }>>({})
+watchEffect(() => {
+  for (const name of props.session.projects ?? [props.session.project]) {
+    if (projectInfo.value[name]) continue
+    api
+      .getProject(name)
+      .then(
+        d => (projectInfo.value = { ...projectInfo.value, [name]: { path: d.path, repo: d.repo } }),
+      )
+      .catch(() => {})
+  }
+})
+function folderPath(name: string): string | null {
+  if (name === props.session.project) return workspacePath.value
+  return projectInfo.value[name]?.path ?? null
+}
+const branchUrl = computed(() => {
+  const repo = projectInfo.value[props.session.project]?.repo
+  const b = props.session.branch
+  return repo && b
+    ? `https://github.com/${repo}/tree/${encodeURIComponent(b).replace(/%2F/g, '/')}`
+    : null
+})
 const prState = computed(() => {
   const pr = props.session.pull
   return pr ? (pr.merged ? 'merged' : pr.state) : ''
@@ -190,10 +219,60 @@ function addTag(e: KeyboardEvent) {
             size="xs"
             >worktree</IuBadge
           >
+          <span class="session-side__grow" />
+          <span v-if="folderPath(name)" class="session-side__acts">
+            <IuButton
+              variant="ghost"
+              size="sm"
+              icon-only
+              :aria-label="`Copy path of ${name}`"
+              :title="`Copy path: ${folderPath(name)}`"
+              @click="copy('path', folderPath(name)!)"
+            >
+              <template #icon><IuIcon name="copy" :size="14" /></template>
+            </IuButton>
+            <IuButton
+              v-if="desktop"
+              variant="ghost"
+              size="sm"
+              icon-only
+              :aria-label="`Show ${name} in files`"
+              title="Show in file manager"
+              @click="openIn('files', 'folder', folderPath(name)!)"
+            >
+              <template #icon><IuIcon name="external" :size="14" /></template>
+            </IuButton>
+          </span>
         </div>
         <div v-if="session.branch" class="session-side__row" aria-label="Branch">
           <IuIcon name="gitBranch" :size="14" />
           <span class="session-side__mono session-side__grow">{{ session.branch }}</span>
+          <span class="session-side__acts">
+            <IuButton
+              variant="ghost"
+              size="sm"
+              icon-only
+              aria-label="Copy branch name"
+              :title="`Copy branch: ${session.branch}`"
+              @click="copy('branch', session.branch)"
+            >
+              <template #icon><IuIcon name="copy" :size="14" /></template>
+            </IuButton>
+            <IuButton
+              v-if="branchUrl"
+              as="a"
+              variant="ghost"
+              size="sm"
+              icon-only
+              aria-label="Open branch on GitHub"
+              title="Open on GitHub"
+              :href="branchUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <template #icon><IuIcon name="external" :size="14" /></template>
+            </IuButton>
+          </span>
         </div>
         <div v-if="session.pull" class="session-side__row" aria-label="Pull request">
           <IuIcon name="gitPullRequest" :size="14" />
@@ -210,82 +289,28 @@ function addTag(e: KeyboardEvent) {
           <IuIcon name="terminal" :size="14" />
           <span class="session-side__grow">From terminal</span>
         </div>
+        <div v-if="plan" class="session-side__row" aria-label="Plan">
+          <IuIcon name="file" :size="14" />
+          <span>Plan</span>
+          <button
+            type="button"
+            class="session-side__plan"
+            :title="planFile ?? 'Show the plan'"
+            :aria-expanded="planFile ? undefined : planOpen"
+            @click="openPlan"
+          >
+            {{ planName }}
+          </button>
+        </div>
+        <div v-if="plan && planOpen && !planFile" class="session-side__planbody">
+          <IuMarkdown :source="plan" size="sm" />
+        </div>
         <div v-if="session.parentId" class="session-side__row">
           <IuIcon name="link" :size="14" />
           <RouterLink class="session-side__link" :to="`/s/${session.parentId}`"
             >Forked from parent</RouterLink
           >
         </div>
-      </div>
-
-      <div class="session-side__links" role="group" aria-label="Quick links">
-        <IuButton
-          variant="ghost"
-          size="sm"
-          icon-only
-          aria-label="Copy path"
-          :title="`Copy path: ${workspacePath}`"
-          @click="copy('path', workspacePath)"
-        >
-          <template #icon><IuIcon name="copy" :size="14" /></template>
-        </IuButton>
-        <IuButton
-          v-if="session.branch"
-          variant="ghost"
-          size="sm"
-          icon-only
-          aria-label="Copy branch name"
-          :title="`Copy branch: ${session.branch}`"
-          @click="copy('branch', session.branch)"
-        >
-          <template #icon><IuIcon name="gitBranch" :size="14" /></template>
-        </IuButton>
-        <IuButton
-          v-if="session.pull"
-          as="a"
-          variant="ghost"
-          size="sm"
-          icon-only
-          aria-label="Open pull request"
-          title="Open pull request"
-          :href="session.pull.url"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <template #icon><IuIcon name="external" :size="14" /></template>
-        </IuButton>
-        <template v-if="desktop">
-          <IuButton
-            variant="ghost"
-            size="sm"
-            icon-only
-            aria-label="Open in editor"
-            title="Open in editor"
-            @click="openIn('editor', 'editor')"
-          >
-            <template #icon><IuIcon name="pencil" :size="14" /></template>
-          </IuButton>
-          <IuButton
-            variant="ghost"
-            size="sm"
-            icon-only
-            aria-label="Open in terminal"
-            title="Open in terminal"
-            @click="openIn('terminal', 'terminal')"
-          >
-            <template #icon><IuIcon name="terminal" :size="14" /></template>
-          </IuButton>
-          <IuButton
-            variant="ghost"
-            size="sm"
-            icon-only
-            aria-label="Show in files"
-            title="Show in files"
-            @click="openIn('files', 'files')"
-          >
-            <template #icon><IuIcon name="folder" :size="14" /></template>
-          </IuButton>
-        </template>
       </div>
 
       <div class="session-side__tags" aria-label="Tags">
@@ -297,13 +322,12 @@ function addTag(e: KeyboardEvent) {
           @remove="setTags(session.tags.filter(x => x !== t))"
           >{{ t }}</IuBadge
         >
-        <IuField
+        <input
           v-model="newTag"
-          class="session-side__tag-field"
-          label="Add a tag"
-          hide-label
-          placeholder="Add a tag ↵"
-          size="sm"
+          class="session-side__tag-input"
+          aria-label="Add a tag"
+          placeholder="+ tag"
+          size="6"
           @keydown="addTag"
         />
       </div>
@@ -536,20 +560,15 @@ function addTag(e: KeyboardEvent) {
       </template>
     </details>
 
-    <details class="session-side__section" aria-labelledby="side-plan">
-      <summary id="side-plan" class="session-side__summary">
-        <span>Plan</span>
+    <details v-if="session.todos.length" class="session-side__section" aria-labelledby="side-todos">
+      <summary id="side-todos" class="session-side__summary">
+        <span>To-dos</span>
         <IuIcon name="chevronRight" :size="14" class="session-side__caret" />
-        <span class="session-side__summary-value">{{
-          session.todos.length
-            ? `${todosDone}/${session.todos.length} done`
-            : plan
-              ? 'Plan'
-              : 'No plan'
-        }}</span>
+        <span class="session-side__summary-value"
+          >{{ todosDone }}/{{ session.todos.length }} done</span
+        >
       </summary>
       <div
-        v-if="session.todos.length"
         class="session-side__bar session-side__bar--thin"
         role="img"
         :aria-label="`${todosDone} of ${session.todos.length} steps done`"
@@ -559,7 +578,7 @@ function addTag(e: KeyboardEvent) {
           :style="{ width: `${todosPct}%` }"
         />
       </div>
-      <ul v-if="session.todos.length" class="session-side__list">
+      <ul class="session-side__list">
         <li v-for="(t, i) in session.todos" :key="i" class="session-side__todo">
           <IuStatusDot
             :status="TODO_STATUS[t.status].status"
@@ -570,8 +589,6 @@ function addTag(e: KeyboardEvent) {
           }}</span>
         </li>
       </ul>
-      <IuMarkdown v-else-if="plan" :source="plan" size="sm" />
-      <p v-else class="session-side__none">No plan yet.</p>
     </details>
   </div>
 </template>
@@ -652,11 +669,38 @@ details[open] > .session-side__summary .session-side__caret {
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.session-side__links {
-  display: flex;
+.session-side__acts {
+  display: inline-flex;
+  flex: none;
   align-items: center;
-  gap: 2px;
-  margin-left: -6px;
+  gap: 0;
+}
+.session-side__plan {
+  min-width: 0;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-family: var(--iu-font-mono);
+  color: var(--iu-text-2);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-side__plan:hover {
+  color: var(--iu-text);
+}
+.session-side__plan:focus-visible {
+  outline: 2px solid var(--iu-accent);
+  outline-offset: 2px;
+}
+.session-side__planbody {
+  max-height: 240px;
+  overflow: auto;
 }
 .session-side__section {
   display: flex;
@@ -921,8 +965,30 @@ details[open] > .session-side__summary .session-side__caret {
   align-items: center;
   gap: 6px;
 }
-.session-side__tag-field {
-  flex: 0 1 120px;
+.session-side__tag-input {
+  width: 6ch;
   min-width: 0;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: var(--iu-radius-sm);
+  background: none;
+  font: inherit;
+  font-size: var(--iu-font-size-12);
+  color: var(--iu-text-2);
+}
+.session-side__tag-input::placeholder {
+  color: var(--iu-text-muted);
+}
+.session-side__tag-input:hover,
+.session-side__tag-input:focus {
+  background: var(--iu-surface-sunken);
+}
+.session-side__tag-input:focus {
+  width: 14ch;
+  outline: 1px solid var(--iu-border);
+  color: var(--iu-text);
+}
+.session-side__tag-input:focus-visible {
+  outline: 2px solid var(--iu-accent);
 }
 </style>

@@ -869,6 +869,16 @@ export function createFixtures(now: number = Date.now()): Fixtures {
         ago(3 * HOUR),
         'claude-haiku-5-5',
       ),
+      tool(
+        'i4',
+        'ExitPlanMode',
+        {
+          plan: '1. Add an FTS table for titles\n2. Page the list query',
+          planFilePath: '/home/nick/.claude/plans/fast-history-search.md',
+        },
+        'Plan approved',
+        ago(3 * HOUR),
+      ),
     ],
     [s.ended]: [
       u('e1', 'Remove Pi, the PM agent, the runner, sprints and topics.', ago(4 * DAY)),

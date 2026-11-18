@@ -56,6 +56,18 @@ export function latestPlan(entries: TranscriptEntry[]): string | null {
   return null
 }
 
+/** The file the latest ExitPlanMode plan was saved to, when the harness reports one. */
+export function latestPlanFile(entries: TranscriptEntry[]): string | null {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const e = entries[i]!
+    if (e.kind === 'tool' && e.name === 'ExitPlanMode')
+      return typeof e.input.planFilePath === 'string' && e.input.planFilePath
+        ? e.input.planFilePath
+        : null
+  }
+  return null
+}
+
 /** Where the column opens: artifacts when there are any, else the plan, else the changes. */
 export function defaultTab(
   detail: Pick<SessionDetail, 'artifacts' | 'todos' | 'transcript'>,
