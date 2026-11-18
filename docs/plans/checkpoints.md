@@ -1,6 +1,6 @@
 # Plan: session checkpoints and rewind
 
-Status: **proposed, nothing built.** Phase 0 (this plan) is in review. Owner: open. Related: the harness handoff plan
+Status: **approved by Nick (Nov 18 2026); phase 1 (contracts) in progress.** Owner: open. Related: the harness handoff plan
 (both features read and write session state; see "Handoff" below).
 
 ## Why
@@ -126,9 +126,12 @@ point: keyed by Odin session id and message id, harness-independent, and carryin
 takes an optional `checkpointId` instead of inventing its own anchor, and the new session inherits the parent's
 checkpoint list up to that point. Whichever lands first owns the shared types; the other rebases on them.
 
-## Open questions
+## Decisions on the open questions
 
-- Snapshot cost on very large repos: is the 20,000 file / 10 s budget acceptable, or should it be a setting?
-- Should `additionalDirectories` (extra repositories) be snapshotted? v1 says no: only the session's `cwd`.
-- In-place rewind on harnesses that can only fork: archive the original (proposed) or delete it?
-- Retention defaults (200 checkpoints, 500 MB) are guesses.
+Nick approved the plan; these defaults were chosen without further input and can change.
+
+- Snapshot budget: 20,000 files / 10 s are constants in core for v1, not a setting.
+- Extra repositories (`additionalDirectories`) are not snapshotted in v1; only the session's `cwd`.
+- In-place rewind on a harness that can only fork: fork at the message and archive the original (it stays reachable in
+  the branch tree), never delete it.
+- Retention: 200 checkpoints and 500 MB per project, as proposed.
