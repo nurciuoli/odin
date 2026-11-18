@@ -1,0 +1,1 @@
+- Planning work for handing a session off to another harness: the API shape is defined, but the feature is not available yet.
