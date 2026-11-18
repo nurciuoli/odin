@@ -1,6 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, useId, watch } from 'vue'
-import type { PermissionPromptAnswer, PermissionPromptRequest, PermissionScope } from './types'
+import { computed, onMounted, ref, useId } from 'vue'
+import type {
+  PermissionPromptAnswer,
+  PermissionPromptQuestion,
+  PermissionPromptRequest,
+  PermissionScope,
+} from './types'
+import QuestionCarousel from './QuestionCarousel.vue'
 import IuButton from '@/components/Button/Button.vue'
 import IuIcon from '@/components/Icon/Icon.vue'
 import IuEyebrow from '@/components/Eyebrow/Eyebrow.vue'
@@ -10,8 +16,6 @@ import IuDiff from '@/components/CodeBlock/Diff.vue'
 import IuMarkdown from '@/components/Markdown/Markdown.vue'
 import IuMenu, { type MenuItem } from '@/components/Menu/Menu.vue'
 import IuPropertyList, { type PropertyItem } from '@/components/PropertyList/PropertyList.vue'
-import IuRadio from '@/components/Fields/Radio.vue'
-import IuCheckbox from '@/components/Fields/Checkbox.vue'
 import IuTextarea from '@/components/Fields/Textarea.vue'
 
 const props = withDefaults(
@@ -100,35 +104,9 @@ const hasDetails = computed(
     Boolean(props.request.description),
 )
 
-// question answers: one string per question, several joined for multi-select
-const picked = reactive<Record<string, string>>({})
-const checked = reactive<Record<string, string[]>>({})
-const written = reactive<Record<string, string>>({})
-const questionKey = (q: NonNullable<PermissionPromptRequest['questions']>[number]) =>
-  q.id ?? q.question
-watch(
-  () => props.request.id,
-  () => {
-    for (const k of Object.keys(picked)) delete picked[k]
-    for (const k of Object.keys(checked)) delete checked[k]
-    for (const k of Object.keys(written)) delete written[k]
-  },
-)
-function toggle(q: string, label: string, on: boolean) {
-  const cur = checked[q] ?? []
-  checked[q] = on ? [...cur, label] : cur.filter(l => l !== label)
-}
-const answers = computed<Record<string, string>>(() => {
-  const out: Record<string, string> = {}
-  for (const q of props.request.questions ?? []) {
-    const key = questionKey(q)
-    const v =
-      written[key]?.trim() ||
-      (q.multiSelect ? (checked[key] ?? []).join(', ') : (picked[key] ?? ''))
-    if (v) out[key] = v
-  }
-  return out
-})
+// question answers come from the carousel: one string per question, several joined for multi-select
+const answers = ref<Record<string, string>>({})
+const questionKey = (q: PermissionPromptQuestion) => q.id ?? q.question
 const complete = computed(
   () =>
     props.request.kind !== 'question' ||
@@ -153,7 +131,8 @@ function deny() {
 }
 
 function onKeydown(e: KeyboardEvent) {
-  if (props.request.defaultToDeny || e.isComposing) return
+  // a question's carousel handles its own Enter / Ctrl+Enter
+  if (props.request.defaultToDeny || props.request.kind === 'question' || e.isComposing) return
   if (e.key === 'Enter' && (isMac ? e.metaKey : e.ctrlKey)) {
     e.preventDefault()
     allow()
@@ -224,51 +203,14 @@ const denyLabel = computed(() => (props.request.kind === 'plan' ? 'Keep planning
         />
       </template>
 
-      <template v-if="request.kind === 'question'">
-        <fieldset
-          v-for="q in request.questions"
-          :key="questionKey(q)"
-          class="iu-permission-prompt__q"
-        >
-          <legend class="iu-permission-prompt__legend">
-            <span class="iu-permission-prompt__qhead">{{ q.header }}</span>
-            {{ q.question }}
-          </legend>
-          <template v-if="q.multiSelect">
-            <div v-for="o in q.options" :key="o.label" class="iu-permission-prompt__opt">
-              <IuCheckbox
-                :label="o.label"
-                :model-value="(checked[questionKey(q)] ?? []).includes(o.label)"
-                :disabled="busy"
-                @update:model-value="toggle(questionKey(q), o.label, $event)"
-              />
-              <span v-if="o.description" class="iu-permission-prompt__optdesc">{{
-                o.description
-              }}</span>
-            </div>
-          </template>
-          <template v-else>
-            <div v-for="o in q.options" :key="o.label" class="iu-permission-prompt__opt">
-              <IuRadio
-                v-model="picked[questionKey(q)]"
-                :name="`${uid}-${questionKey(q)}`"
-                :value="o.label"
-                :label="o.label"
-                :disabled="busy"
-              />
-              <span v-if="o.description" class="iu-permission-prompt__optdesc">{{
-                o.description
-              }}</span>
-            </div>
-          </template>
-          <IuTextarea
-            v-model="written[questionKey(q)]"
-            :label="q.options.length ? 'Other answer (overrides selected choices)' : 'Your answer'"
-            :disabled="busy"
-            :rows="2"
-          />
-        </fieldset>
-      </template>
+      <QuestionCarousel
+        v-if="request.kind === 'question'"
+        :key="request.id"
+        :questions="request.questions ?? []"
+        :busy="busy"
+        @update:answers="answers = $event"
+        @submit="allow()"
+      />
     </div>
 
     <IuTextarea
@@ -282,6 +224,7 @@ const denyLabel = computed(() => (props.request.kind === 'plan' ? 'Keep planning
 
     <div class="iu-permission-prompt__actions">
       <IuButton
+        v-if="request.kind !== 'question'"
         variant="primary"
         size="sm"
         class="iu-permission-prompt__allow"
@@ -411,45 +354,6 @@ const denyLabel = computed(() => (props.request.kind === 'plan' ? 'Keep planning
 .iu-permission-prompt__desc {
   margin: 0;
   font-size: var(--iu-font-size-13);
-  color: var(--iu-text-2);
-}
-
-.iu-permission-prompt__q {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: none;
-}
-
-.iu-permission-prompt__legend {
-  padding: 0;
-  margin-bottom: 4px;
-  font-size: var(--iu-font-size-13);
-  font-weight: var(--iu-font-weight-medium);
-  color: var(--iu-text);
-}
-
-.iu-permission-prompt__qhead {
-  margin-right: 6px;
-  font-family: var(--iu-font-mono);
-  font-size: var(--iu-font-size-11);
-  letter-spacing: var(--iu-tracking-caps);
-  text-transform: uppercase;
-  color: var(--iu-text-muted);
-}
-
-.iu-permission-prompt__opt {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.iu-permission-prompt__optdesc {
-  padding-left: 26px;
-  font-size: var(--iu-font-size-12);
   color: var(--iu-text-2);
 }
 

@@ -31,9 +31,12 @@ describe('IuPermissionPrompt', () => {
         ],
       }),
     )
-    expect(button(w, 'Submit answers').attributes('disabled')).toBeDefined()
-    await w.findAll('textarea')[0]!.setValue('One')
-    await w.findAll('textarea')[1]!.setValue('Two')
+    expect(w.text()).toContain('1 of 2')
+    await w.find('textarea').setValue('One')
+    await button(w, 'Next').trigger('click')
+    await w.find('textarea').setValue('Two')
+    await button(w, 'Review answers').trigger('click')
+    expect(w.text()).toContain('One')
     await button(w, 'Submit answers').trigger('click')
     expect(answers(w)).toEqual([
       { behavior: 'allow', scope: 'once', answers: { first: 'One', second: 'Two' } },
@@ -149,13 +152,16 @@ describe('IuPermissionPrompt', () => {
         ],
       }),
     )
-    const submit = button(w, 'Submit answers')
-    expect(submit.attributes('disabled')).toBeDefined()
-    const radios = w.findAll('input[type="radio"]')
-    await radios[1]!.setValue(true)
+    // one question at a time
+    expect(w.findAll('input[type="radio"]')).toHaveLength(2)
+    expect(w.findAll('input[type="checkbox"]')).toHaveLength(0)
+    await w.findAll('input[type="radio"]')[1]!.setValue(true)
+    await button(w, 'Next').trigger('click')
     const boxes = w.findAll('input[type="checkbox"]')
     await boxes[0]!.setValue(true)
     await boxes[2]!.setValue(true)
+    await button(w, 'Review answers').trigger('click')
+    const submit = button(w, 'Submit answers')
     await submit.trigger('click')
     expect(answers(w)).toEqual([
       {
@@ -183,5 +189,82 @@ describe('IuPermissionPrompt', () => {
     await w.setProps({ busy: true })
     expect(cancel.attributes('disabled')).toBeDefined()
     w.unmount()
+  })
+
+  describe('question carousel keyboard', () => {
+    const three = () =>
+      req({
+        kind: 'question',
+        tool: 'AskUserQuestion',
+        input: undefined,
+        questions: [
+          { question: 'Which db?', header: 'DB', options: [{ label: 'sqlite' }, { label: 'pg' }] },
+          {
+            question: 'Which extras?',
+            header: 'Extras',
+            multiSelect: true,
+            options: [{ label: 'a' }, { label: 'b' }],
+          },
+          { question: 'Name?', header: 'Name', options: [] },
+        ],
+      })
+    const key = (w: ReturnType<typeof mountIt>, k: string) =>
+      w.find('.iu-question-carousel').trigger('keydown', { key: k })
+
+    it('moves with the arrow keys, picks with number keys and confirms with Enter', async () => {
+      const w = mountIt(three())
+      expect(w.text()).toContain('1 of 3')
+      await key(w, '2')
+      await key(w, 'Enter')
+      expect(w.text()).toContain('2 of 3')
+      await key(w, '1')
+      await key(w, '2')
+      await key(w, 'ArrowLeft')
+      expect(w.text()).toContain('1 of 3')
+      expect((w.findAll('input[type="radio"]')[1]!.element as HTMLInputElement).checked).toBe(true)
+      await key(w, 'ArrowRight')
+      await key(w, 'ArrowRight')
+      await w.find('textarea').setValue('Odin')
+      expect(w.text()).toContain('3 of 3')
+      await w.find('.iu-question-carousel').trigger('keydown', { key: 'Enter', ctrlKey: true })
+      expect(w.text()).toContain('Review your answers')
+      await key(w, 'Enter')
+      expect(answers(w)).toEqual([
+        {
+          behavior: 'allow',
+          scope: 'once',
+          answers: { 'Which db?': 'pg', 'Which extras?': 'a, b', 'Name?': 'Odin' },
+        },
+      ])
+      w.unmount()
+    })
+
+    it('does not advance past an unanswered question with Enter and blocks submit until complete', async () => {
+      const w = mountIt(three())
+      await key(w, 'Enter')
+      expect(w.text()).toContain('1 of 3')
+      await button(w, 'Next').trigger('click')
+      await button(w, 'Next').trigger('click')
+      await button(w, 'Review answers').trigger('click')
+      expect(w.text()).toContain('Not answered yet')
+      expect(button(w, 'Submit answers').attributes('disabled')).toBeDefined()
+      await key(w, 'Enter')
+      expect(answers(w)).toBeUndefined()
+      w.unmount()
+    })
+
+    it('shows no step indicator or review for a single question', async () => {
+      const w = mountIt(
+        req({
+          kind: 'question',
+          questions: [{ question: 'Ok?', header: '', options: [{ label: 'yes' }] }],
+        }),
+      )
+      expect(w.text()).not.toContain('1 of 1')
+      await key(w, '1')
+      await button(w, 'Submit answers').trigger('click')
+      expect(answers(w)).toEqual([{ behavior: 'allow', scope: 'once', answers: { 'Ok?': 'yes' } }])
+      w.unmount()
+    })
   })
 })

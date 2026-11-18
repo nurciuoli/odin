@@ -956,6 +956,26 @@ export function createFixtures(now: number = Date.now()): Fixtures {
                 { label: 'Above the input', description: 'Stacks over the message box.' },
               ],
             },
+            {
+              header: 'Several',
+              question: 'How should several questions be shown?',
+              multiSelect: false,
+              options: [
+                { label: 'One at a time', description: 'A carousel with Back and Next.' },
+                { label: 'All stacked', description: 'Every question open at once.' },
+                { label: 'A short form', description: 'Fields in a single grid.' },
+              ],
+            },
+            {
+              header: 'Keys',
+              question: 'Which shortcuts should it support?',
+              multiSelect: true,
+              options: [
+                { label: 'Arrow keys', description: 'Left and right move between questions.' },
+                { label: 'Number keys', description: '1 to 9 pick an option.' },
+                { label: 'Enter', description: 'Confirms and moves on.' },
+              ],
+            },
           ],
         },
         title: 'Claude has a question',
