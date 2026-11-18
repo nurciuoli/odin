@@ -1574,6 +1574,7 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
             own: preview.members.map(m => ({ ...m, name: m.id, description: '', error: null })),
           },
           error: null,
+          enabled: true,
         }
         db.library.push(asset)
         db.libraryFiles[`plugin/${preview.id}`] = files
@@ -1634,6 +1635,7 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
           files: Object.keys(files),
           meta,
           error: null,
+          enabled: existing?.enabled ?? true,
         }
         if (existing) Object.assign(existing, asset)
         else db.library.push(asset)
@@ -1644,6 +1646,13 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
         db.versionFiles[`${key}@${version}`] = files
         emit({ type: 'library.updated', kind, id })
         return existing ?? asset
+      }),
+    setAssetEnabled: (kind, id, enabled) =>
+      respond(() => {
+        const a = assetOf(kind, id)
+        a.enabled = enabled
+        emit({ type: 'library.updated', kind, id })
+        return clone(a)
       }),
     deleteAsset: (kind, id) =>
       respond(() => {

@@ -75,6 +75,13 @@ export const registerLibraryRoutes: RegisterRoutes = (router, _deps, services) =
     send(res, existed ? 200 : 201, asset);
   });
 
+  router.patch("/api/library/:kind/:id", async ({ req, params }) => {
+    const kind = kindOf(params.kind), id = idOf(params.id);
+    const body = await readJson(req);
+    if (!body || typeof body !== "object" || Array.isArray(body) || typeof body.enabled !== "boolean") throw new HttpError(400, "expected { enabled: true | false }");
+    return services.library.setEnabled(kind, id, body.enabled);
+  });
+
   router.delete("/api/library/:kind/:id", ({ params }) => {
     const kind = kindOf(params.kind), id = idOf(params.id);
     services.library.remove(kind, id);

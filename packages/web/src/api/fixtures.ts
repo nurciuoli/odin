@@ -209,6 +209,7 @@ function asset(
     files: Object.keys(files),
     meta,
     error: null,
+    enabled: true,
   }
 }
 

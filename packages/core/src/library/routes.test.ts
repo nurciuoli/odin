@@ -98,3 +98,44 @@ test("project library routes: install, list, files, forget", async () => {
     await t.close();
   }
 });
+
+test("library routes: disabling an asset blocks install and launch use but keeps the asset", async () => {
+  const t = await startApp();
+  try {
+    const put = (kind: string, id: string, files: unknown) => t.api(`/api/library/${kind}/${id}`, { method: "PUT", body: JSON.stringify({ files }) });
+    const patch = (kind: string, id: string, body: unknown) => t.api(`/api/library/${kind}/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+    await put("agent", "helper", { "helper.md": AGENT("One") });
+    assert.equal((await t.json<LibraryAsset[]>("/api/library?kind=agent")).find((a) => a.id === "helper")?.enabled, true);
+
+    assert.equal((await patch("agent", "helper", { enabled: "no" })).status, 400);
+    assert.equal((await patch("agent", "nope", { enabled: false })).status, 404);
+    const off = await patch("agent", "helper", { enabled: false });
+    assert.equal(off.status, 200);
+    assert.equal(((await off.json()) as LibraryAsset).enabled, false);
+    assert.equal((await t.json<AssetDetail>("/api/library/agent/helper")).asset.enabled, false);
+
+    // Editing a disabled asset keeps it disabled.
+    await put("agent", "helper", { "helper.md": AGENT("Two") });
+    assert.equal((await t.json<LibraryAsset[]>("/api/library?kind=agent")).find((a) => a.id === "helper")?.enabled, false);
+
+    const dir = repo("enabled-project");
+    const added = await t.api("/api/projects", { method: "POST", body: JSON.stringify({ path: dir }) });
+    assert.ok(added.status < 300);
+    const name = ((await added.json()) as { name: string }).name;
+    const install = (action: string) => t.api(`/api/projects/${name}/library`, { method: "POST", body: JSON.stringify({ kind: "agent", id: "helper", action }) });
+    assert.equal((await install("install")).status, 409);
+
+    await patch("agent", "helper", { enabled: true });
+    assert.equal((await install("install")).status, 200);
+    // An installed copy can still be forgotten while the asset is disabled.
+    await patch("agent", "helper", { enabled: false });
+    assert.equal((await install("forget")).status, 200);
+
+    // Deleting clears the flag, so a recreated asset starts enabled.
+    assert.equal((await t.api("/api/library/agent/helper", { method: "DELETE" })).status, 204);
+    await put("agent", "helper", { "helper.md": AGENT("Three") });
+    assert.equal((await t.json<LibraryAsset[]>("/api/library?kind=agent")).find((a) => a.id === "helper")?.enabled, true);
+  } finally {
+    await t.close();
+  }
+});

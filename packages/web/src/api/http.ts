@@ -158,6 +158,7 @@ export function createHttpApi(options: HttpApiOptions = {}): Api {
     getAssetVersion: (kind, id, version) => get(`${asset(kind, id)}/versions/${seg(version)}`),
     saveAsset: (kind, id, files) => send('PUT', asset(kind, id), { files }),
     deleteAsset: (kind, id) => send('DELETE', asset(kind, id)),
+    setAssetEnabled: (kind, id, enabled) => send('PATCH', asset(kind, id), { enabled }),
     rescanLibrary: () => send('POST', '/api/library/rescan'),
     listInstallations: name => get(`${project(name)}/library`),
     install: (name, req) => send('POST', `${project(name)}/library`, req),

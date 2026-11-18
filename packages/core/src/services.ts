@@ -179,7 +179,8 @@ export interface LaunchPlan {
 
 export interface LaunchService {
   /** Resolve current library configuration for persisted MCP ids; never persist resolved secrets in sessions. */
-  resolveMcpServers(ids: string[]): Promise<Record<string, McpServerStart>>;
+  /** `skipDisabled`: leave switched-off library servers out instead of failing (resume and fork). */
+  resolveMcpServers(ids: string[], opts?: { skipDisabled?: boolean }): Promise<Record<string, McpServerStart>>;
   /** 400 for a missing message, invalid settings or MCP, or obsolete primary-agent/template selections. */
   plan(req: StartSessionRequest, sessionId: string): Promise<LaunchPlan>;
 }
@@ -214,6 +215,8 @@ export interface LibraryService extends Closeable {
   /** Writes the files (replacing the asset's directory/file), records the version. Emits library.updated. */
   save(kind: AssetKind, id: string, files: AssetFiles): LibraryAsset;
   remove(kind: AssetKind, id: string): void;
+  /** Switches an asset on or off (stored in the database). 404 for an unknown asset. Emits library.updated. */
+  setEnabled(kind: AssetKind, id: string, enabled: boolean): LibraryAsset;
   /** Re-reads the library directory (it's plain files; users may edit them outside Odin). */
   rescan(): void;
   /** Reads a Claude Code plugin from a git address or a local folder and says what importing it would add. Writes nothing. */

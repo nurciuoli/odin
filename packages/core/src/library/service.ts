@@ -136,7 +136,7 @@ export function createLibraryService(deps: Deps, services: Services, opts: { git
     const updatedAt = recordVersion(kind, id, version, files);
     const error = [readError, parsed.error].filter(Boolean).join("; ") || null;
     return {
-      asset: { kind, id, name: parsed.name, description: parsed.description, version, updatedAt, files: Object.keys(files).sort(), meta: parsed.meta, error },
+      asset: { kind, id, name: parsed.name, description: parsed.description, version, updatedAt, files: Object.keys(files).sort(), meta: parsed.meta, error, enabled: true },
       files,
     };
   }
@@ -193,7 +193,7 @@ export function createLibraryService(deps: Deps, services: Services, opts: { git
     const parsed = parseAsset(kind, id, m.files);
     const version = filesHash(m.files);
     const updatedAt = recordVersion(kind, assetKey, version, m.files);
-    return { asset: { kind, id: assetKey, name: parsed.name, description: parsed.description, version, updatedAt, files: Object.keys(m.files).sort(), meta: parsed.meta, error: parsed.error }, files: m.files };
+    return { asset: { kind, id: assetKey, name: parsed.name, description: parsed.description, version, updatedAt, files: Object.keys(m.files).sort(), meta: parsed.meta, error: parsed.error, enabled: true }, files: m.files };
   }
 
   /** The library-side asset for an installation: a library asset (at a pinned version when asked) or a plugin's own member. */
@@ -205,7 +205,7 @@ export function createLibraryService(deps: Deps, services: Services, opts: { git
     if (!files) return null;
     const parsed = parseAsset(kind, assetKey, files);
     const at = firstSeen.get(kind, assetKey, pinned) as { first_seen_at: string } | undefined;
-    return { asset: { kind, id: assetKey, name: parsed.name, description: parsed.description, version: pinned, updatedAt: at?.first_seen_at ?? nowIso(), files: Object.keys(files).sort(), meta: parsed.meta, error: parsed.error }, files };
+    return { asset: { kind, id: assetKey, name: parsed.name, description: parsed.description, version: pinned, updatedAt: at?.first_seen_at ?? nowIso(), files: Object.keys(files).sort(), meta: parsed.meta, error: parsed.error, enabled: true }, files };
   }
 
   function rescan(): void {
@@ -261,11 +261,32 @@ export function createLibraryService(deps: Deps, services: Services, opts: { git
     return entry.asset;
   }
 
+  function isDisabled(kind: AssetKind, id: string): boolean {
+    return db.prepare("SELECT 1 FROM library_disabled WHERE kind = ? AND asset_id = ?").get(kind, id) !== undefined;
+  }
+
+  /** The cached asset with its current enabled flag (the flag lives in the database, not in the scanned entry). */
+  function view(a: LibraryAsset): LibraryAsset {
+    return isDisabled(a.kind, a.id) ? { ...a, enabled: false } : a;
+  }
+
+  function setEnabled(kind: AssetKind, id: string, enabled: boolean): LibraryAsset {
+    checkKindId(kind, id);
+    const e = cache.get(key(kind, id));
+    if (!e) throw new HttpError(404, `no ${kind} "${id}" in the library`);
+    if (typeof enabled !== "boolean") throw new HttpError(400, "enabled must be true or false");
+    if (enabled) db.prepare("DELETE FROM library_disabled WHERE kind = ? AND asset_id = ?").run(kind, id);
+    else db.prepare("INSERT OR IGNORE INTO library_disabled (kind, asset_id, disabled_at) VALUES (?, ?, ?)").run(kind, id, nowIso());
+    bus.emit({ type: "library.updated", kind, id });
+    return view(e.asset);
+  }
+
   function remove(kind: AssetKind, id: string): void {
     checkKindId(kind, id);
     if (!cache.has(key(kind, id))) throw new HttpError(404, `no ${kind} "${id}" in the library`);
     removePath(assetPath(kind, id));
     cache.delete(key(kind, id));
+    db.prepare("DELETE FROM library_disabled WHERE kind = ? AND asset_id = ?").run(kind, id);
     bus.emit({ type: "library.updated", kind, id });
   }
 
@@ -848,16 +869,17 @@ export function createLibraryService(deps: Deps, services: Services, opts: { git
   return {
     root,
     list(kind) {
-      return [...cache.values()].map((e) => e.asset).filter((a) => !kind || a.kind === kind).sort(sortAssets);
+      return [...cache.values()].map((e) => view(e.asset)).filter((a) => !kind || a.kind === kind).sort(sortAssets);
     },
     get(kind, id) {
-      return cache.get(key(kind, id))?.asset ?? null;
+      const e = cache.get(key(kind, id));
+      return e ? view(e.asset) : null;
     },
     detail(kind, id) {
       const e = cache.get(key(kind, id));
       if (!e) return null;
       const out: AssetDetail = {
-        asset: e.asset,
+        asset: view(e.asset),
         files: { ...e.files },
         versions: versions(kind, id, e.asset.version),
         installs: kind === "plugin" ? pluginInstallations("plugin_id = ?", id) : installationsWhere("kind = ? AND asset_id = ?", kind, id),
@@ -871,6 +893,7 @@ export function createLibraryService(deps: Deps, services: Services, opts: { git
     },
     save,
     remove,
+    setEnabled,
     rescan,
     importPreview,
     importConfirm,
@@ -887,6 +910,7 @@ export function createLibraryService(deps: Deps, services: Services, opts: { git
       if (req.confirm !== undefined && typeof req.confirm !== "string") throw new HttpError(400, "confirm must be text");
       const projectPath = projectRoot(project);
       if (req.kind === "plugin") {
+        if ((req.action === "install" || req.action === "update") && isDisabled("plugin", req.id)) throw new HttpError(409, `plugin "${req.id}" is disabled in the library: enable it to install or update`);
         const prev = getPluginRow(project, req.id);
         switch (req.action) {
           case "preview":
@@ -904,6 +928,7 @@ export function createLibraryService(deps: Deps, services: Services, opts: { git
         }
       }
       if (req.action === "preview") throw new HttpError(400, "only plugins have a preview");
+      if ((req.action === "install" || req.action === "update") && isDisabled(req.kind, req.id)) throw new HttpError(409, `${req.kind} "${req.id}" is disabled in the library: enable it to install or update`);
       const row = getRow(project, req.kind, req.id);
       switch (req.action) {
         case "install":

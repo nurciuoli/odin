@@ -200,7 +200,6 @@ onBeforeUnmount(() => {
       to="/library"
       :active="route.name === 'library' || route.name === 'library-asset'"
     />
-    <IuNavItem label="MCP servers" icon="link" to="/mcp" :active="route.name === 'mcp'" />
 
     <IuNavGroup label="Projects">
       <template #actions>

@@ -33,6 +33,7 @@ function stringList(value: unknown, what: string): string[] {
 function libraryAsset(services: Services, kind: AssetKind, id: string) {
   const asset = services.library.get(kind, id);
   if (!asset) bad(`unknown library ${kind} ${id}`);
+  if (asset.enabled === false) bad(`library ${kind} ${id} is disabled`);
   if (asset.error) bad(`library ${kind} ${id} has errors: ${asset.error}`);
   return asset;
 }
@@ -71,9 +72,10 @@ export function createLaunchService(_deps: Deps, services: Services): LaunchServ
     const headers = map(s.headers);
     return { ...s, url: fill(s.url), ...(headers ? { headers } : {}) };
   }
-  async function resolveMcpServers(ids: string[]): Promise<Record<string, McpServerStart>> {
+  async function resolveMcpServers(ids: string[], opts: { skipDisabled?: boolean } = {}): Promise<Record<string, McpServerStart>> {
     const servers: Record<string, McpServerStart> = {};
     for (const id of ids) {
+      if (opts.skipDisabled && services.library.get("mcp", id)?.enabled === false) continue;
       const meta = libraryAsset(services, "mcp", id).meta;
       const start = withSecrets(id, mcpStart(id, meta));
       // A server with oauth gets its current access token as the Authorization header.

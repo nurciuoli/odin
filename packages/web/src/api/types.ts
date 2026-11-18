@@ -176,6 +176,8 @@ export interface Api {
   getAssetVersion(kind: AssetKind, id: string, version: string): Promise<AssetFiles>
   saveAsset(kind: AssetKind, id: string, files: AssetFiles): Promise<LibraryAsset>
   deleteAsset(kind: AssetKind, id: string): Promise<void>
+  /** Switch a library asset on or off without deleting it. */
+  setAssetEnabled(kind: AssetKind, id: string, enabled: boolean): Promise<LibraryAsset>
   rescanLibrary(): Promise<void>
   listInstallations(project: string): Promise<Installation[]>
   install(project: string, req: InstallRequest): Promise<InstallResult>

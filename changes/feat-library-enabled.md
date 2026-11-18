@@ -1,0 +1,1 @@
+- Library items can be switched off without deleting them (API only for now; the Library screen follows).
