@@ -240,7 +240,6 @@ const appCommands = computed<RunItem[]>(() => [
   { id: 'action:history', label: 'All sessions', icon: 'clock', run: go({ name: 'history' }) },
   { id: 'action:library', label: 'Open Library', icon: 'sparkle', run: go({ name: 'library' }) },
   {
-    id: 'action:compare',
     label: 'Compare sessions',
     icon: 'gitPullRequest',
     run: go({ name: 'compare' }),
