@@ -40,3 +40,20 @@ test("session interruption cancels a core notebook approval without execution", 
     assert.equal((await s.sessions.detail(session.id))!.pending.length, 0);
   } finally { await s.sessions.close(); await s.services.notebooks.close(); await s.services.library.close(); s.deps.db.close(); }
 });
+test("a session goes back to running when its last prompt closes, even if the harness sends no running state", async () => {
+  const request = { id: "perm-1", sessionId: "x", kind: "plan", toolName: "ExitPlanMode", toolUseId: "t1", input: { plan: "1. do it" }, title: "Plan", description: null, canAlwaysAllow: false, defaultToDeny: true, createdAt: new Date().toISOString() } as const;
+  const s = setup({ harness: { script: () => [
+    { emit: { type: "permission.request", request } },
+    { emit: { type: "state", state: "waiting" } },
+    { wait: 80 },
+    { emit: { type: "permission.resolved", requestId: "perm-1", behavior: "deny" } },
+    { wait: 400 },
+  ] } });
+  try {
+    const session = await s.sessions.start({ project: "demo", prompt: { text: "plan" } });
+    await until(() => s.sessions.get(session.id)?.state === "waiting");
+    assert.equal(s.sessions.get(session.id)?.waitingFor, "permission");
+    await until(() => s.sessions.get(session.id)?.state === "running");
+    assert.equal(s.sessions.get(session.id)?.waitingFor, null);
+  } finally { await s.sessions.close(); await s.services.library.close(); s.deps.db.close(); }
+});

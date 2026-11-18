@@ -1,0 +1,1 @@
+- A session no longer keeps showing "needs you" after you answer its last prompt (for example "Keep planning" with a note); it returns to running.
