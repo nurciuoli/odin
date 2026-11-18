@@ -296,6 +296,9 @@ export function createClaudeHarness(options: ClaudeHarnessOptions = {}): Harness
       canUseTool,
       includePartialMessages: true,
       settingSources: ["user", "project", "local"],
+      // The SDK's Projects tool reads a hosted claude.ai project; a local session has none. Odin's coordinator
+      // (src/coordination) provides project memory through its own host tools instead.
+      disallowedTools: ["Projects"],
       ...(opts.instructions ? { systemPrompt: { type: "preset" as const, preset: "claude_code" as const, append: opts.instructions } } : {}),
       ...(agents ? { agents } : {}),
       ...(Object.keys(mcpServers).length ? { mcpServers } : {}),

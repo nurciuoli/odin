@@ -16,6 +16,7 @@ import { registerNotebookRoutes } from "../notebooks/routes.ts";
 import { registerNotebookOutputRoutes } from "../notebooks/output.ts";
 import { registerNotebookEnvironmentRoutes } from "../notebooks/environment-routes.ts";
 import { registerNotebookWidgetRoutes } from "../notebooks/widgets.ts";
+import { registerCoordinationRoutes } from "../coordination/routes.ts";
 
 export const VERSION = "2.0.0-dev";
 
@@ -31,6 +32,7 @@ export function apiRouter(deps: Deps, services: Services): Router {
   for (const register of [
     registerProjectsRoutes,
     registerSessionsRoutes,
+    registerCoordinationRoutes,
     registerFilesRoutes,
     registerNotebookRoutes,
     registerNotebookOutputRoutes,
