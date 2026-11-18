@@ -5,7 +5,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { IuIcon } from '@/components/Icon'
 import { IuButton } from '@/components/Button'
-import { IuMenu } from '@/components/Menu'
+import { IuMenu, type MenuItem as AddMenuItem } from '@/components/Menu'
 import { modelMenu } from './modelMenu'
 import EffortSegments from './EffortSegments.vue'
 import { effortTone } from './effortScale'
@@ -42,8 +42,10 @@ const props = withDefaults(
     maxRows?: number
     minRows?: number
     autofocus?: boolean
-    /** false hides the paperclip and ignores pasted or dropped files */
+    /** false drops Attachments from the + menu and ignores pasted or dropped files */
     attachable?: boolean
+    /** More entries for the + menu, after Attachments. A pick is emitted as `action`. */
+    actions?: AddMenuItem[]
     /** Shift+Tab in the textarea emits `cycle` (and keeps focus) instead of moving focus back */
     cycleOnShiftTab?: boolean
     /** work is in progress but messages are still accepted: an empty draft shows Stop in the send spot, typing brings Send back */
@@ -93,6 +95,8 @@ const emit = defineEmits<{
   submitAlt: [payload: { text: string; attachments: Attachment[]; model?: string }]
   stop: []
   attach: [files: File[]]
+  /** an entry from `actions` was picked in the + menu */
+  action: [id: string]
   command: [command: ComposerCommand]
   /** a failed attachment's Retry was pressed — the parent owns the upload */
   retry: [file: Attachment]
@@ -369,6 +373,17 @@ function openPicker() {
   fileInput.value?.click()
 }
 
+const addItems = computed<AddMenuItem[]>(() => [
+  ...(props.attachable
+    ? [{ id: 'attach', label: 'Attachments', icon: 'paperclip' as IconName }]
+    : []),
+  ...(props.actions ?? []),
+])
+function pickAdd(id: string) {
+  if (id === 'attach') openPicker()
+  else emit('action', id)
+}
+
 function onPicked(e: Event) {
   const el = e.target as HTMLInputElement
   const files = Array.from(el.files ?? [])
@@ -584,17 +599,28 @@ onBeforeUnmount(() => {
       </p>
 
       <div class="iu-composer__footer">
-        <IuButton
-          v-if="attachable"
-          variant="ghost"
-          size="sm"
-          icon-only
-          aria-label="Attach files"
-          :disabled="disabled"
-          @click="openPicker"
+        <IuMenu
+          v-if="addItems.length"
+          :items="addItems"
+          placement="top-start"
+          fixed
+          @select="pickAdd"
         >
-          <template #icon><IuIcon name="paperclip" :size="14" /></template>
-        </IuButton>
+          <template #trigger="{ toggle, open }">
+            <IuButton
+              variant="ghost"
+              size="sm"
+              icon-only
+              aria-label="Add"
+              aria-haspopup="menu"
+              :aria-expanded="open"
+              :disabled="disabled"
+              @click="toggle"
+            >
+              <template #icon><IuIcon name="plus" :size="14" /></template>
+            </IuButton>
+          </template>
+        </IuMenu>
 
         <div v-if="models?.length" class="iu-composer__model" @keydown="onModelKeydown">
           <IuMenu :items="modelItems" placement="top-start" fixed @select="pickModel">

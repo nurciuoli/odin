@@ -1,6 +1,6 @@
 ---
 name: odin-pr
-description: Ship a change in the Odin repo as a pull request - branch, checks, Conventional Commit title, PR template, contract label and CHANGELOG line. Use when opening or preparing a PR for Odin.
+description: Ship a change in the Odin repo as a pull request - branch, checks, Conventional Commit title, PR template, contract label and changelog fragment. Use when opening or preparing a PR for Odin.
 ---
 
 # Open an Odin pull request
@@ -45,10 +45,11 @@ If any match: list them and what changed in the PR's **Contract changes** sectio
 update `docs/contracts.md` if behaviour changed. A breaking change gets `!` in the title and an explanation in the
 body. A large contract change should be its own PR, landed first.
 
-## 4. CHANGELOG
+## 4. Changelog fragment
 
-For any user-visible change, add one line under `## [Unreleased]` in `CHANGELOG.md`, written for users (what changed,
-not how). Internal-only changes (tests, refactors, CI, agent tooling) need no entry.
+For any user-visible change, add a fragment file `changes/<type>-<short-desc>.md` containing the entry as a list item
+(`- ...`), written for users (what changed, not how). Do not edit `CHANGELOG.md`: the release PR assembles the
+fragments, and editing it is what made PRs conflict. See `changes/README.md`. Internal-only changes (tests, refactors, CI, agent tooling) need no entry.
 
 ## 5. Title
 

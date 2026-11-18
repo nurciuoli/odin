@@ -1,10 +1,9 @@
 <script setup lang="ts">
-// Tokens and cost by model over the range, the share of cost per model, and the harness share of sessions.
+// One list of cost by model over the range (share bar, sessions and tokens under each name), plus the harness share of sessions.
 import { computed } from 'vue'
 import type { MetricsRow } from '@odin/shared/api'
 import { IuMeter } from '@/components/Meter'
 import { IuEmpty, IuErrorState, IuSkeleton } from '@/components/States'
-import { IuTable, type Column } from '@/components/Table'
 import { formatCost, formatTokens, harnessLabel } from '@/screens/shared/format'
 import OverviewPanel from './OverviewPanel.vue'
 import type { Settled } from './settled'
@@ -21,41 +20,30 @@ const pct = (x: number) => `${Math.round(x * 100)}%`
 const modelRows = computed(() => (props.models?.ok ? props.models.value : []))
 const totalCost = computed(() => modelRows.value.reduce((t, r) => t + (r.total.costUsd ?? 0), 0))
 
-interface Row extends Record<string, unknown> {
+interface Row {
   model: string
-  n: number
-  tokens: string
+  cost: number
+  costLabel: string
+  share: number
+  meta: string
   detail: string
-  cached: string
-  cost: string
 }
 const rows = computed<Row[]>(() =>
-  modelRows.value.map(r => ({
-    model: (r.key.model ?? '∅').replace(/^claude-/, ''),
-    n: r.n,
-    tokens: `${formatTokens(r.total.tokens.input)} / ${formatTokens(r.total.tokens.output)}`,
-    cached: formatTokens(r.total.tokens.cacheRead + r.total.tokens.cacheWrite),
-    detail: `${formatTokens(r.total.tokens.input)} in, ${formatTokens(r.total.tokens.output)} out, ${formatTokens(r.total.tokens.cacheRead + r.total.tokens.cacheWrite)} cached`,
-    cost: formatCost(r.total.costUsd) || '—',
-  })),
-)
-const columns: Column<Row>[] = [
-  { key: 'model', header: 'Model' },
-  { key: 'n', header: 'Sessions', align: 'end', numeric: true },
-  { key: 'tokens', header: 'In / out', align: 'end', numeric: true },
-  { key: 'cost', header: 'Cost', align: 'end', numeric: true },
-]
-const shares = computed(() =>
-  totalCost.value > 0
-    ? modelRows.value
-        .filter(r => (r.total.costUsd ?? 0) > 0)
-        .map(r => ({
-          key: (r.key.model ?? '∅').replace(/^claude-/, ''),
-          cost: r.total.costUsd ?? 0,
-          share: (r.total.costUsd ?? 0) / totalCost.value,
-        }))
-        .sort((a, b) => b.cost - a.cost)
-    : [],
+  modelRows.value
+    .map(r => {
+      const t = r.total.tokens
+      const cost = r.total.costUsd ?? 0
+      const cached = formatTokens(t.cacheRead + t.cacheWrite)
+      return {
+        model: (r.key.model ?? '∅').replace(/^claude-/, ''),
+        cost,
+        costLabel: formatCost(r.total.costUsd) || '—',
+        share: totalCost.value > 0 ? cost / totalCost.value : 0,
+        meta: `${r.n} ${r.n === 1 ? 'session' : 'sessions'} · ${formatTokens(t.input)} in · ${formatTokens(t.output)} out`,
+        detail: `${formatTokens(t.input)} in, ${formatTokens(t.output)} out, ${cached} cached`,
+      }
+    })
+    .sort((a, b) => b.cost - a.cost),
 )
 const harnessShares = computed(() => {
   const rows = props.harnesses?.ok ? props.harnesses.value : []
@@ -93,33 +81,22 @@ const failed = computed(() => (props.models && !props.models.ok ? props.models.e
       body="Pick a longer range to see tokens and cost by model."
     />
     <template v-else>
-      <div v-if="shares.length" class="ov-models__group">
-        <h3 class="ov-models__label">Share of cost</h3>
-        <IuMeter
-          v-for="s in shares"
-          :key="s.key"
-          :value="s.share"
-          :max="1"
-          :label="s.key"
-          :value-label="`${formatCost(s.cost)} · ${pct(s.share)}`"
-        />
-      </div>
-      <IuTable
-        :columns="columns"
-        :rows="rows"
-        :row-key="r => r.model"
-        :sticky-header="false"
-        density="compact"
-      >
-        <template #cell:model="{ row }">
-          <code class="ov-models__mono">{{ row.model }}</code>
-        </template>
-        <template #cell:tokens="{ row }">
-          <span :title="row.detail" class="ov-models__tokens"
-            >{{ row.tokens }}<span class="ov-models__cached">{{ row.cached }} cached</span></span
-          >
-        </template>
-      </IuTable>
+      <ul class="ov-models__list" aria-label="Cost by model">
+        <li v-for="r in rows" :key="r.model" class="ov-models__row" :title="r.detail">
+          <code class="ov-models__mono">{{ r.model }}</code>
+          <span class="ov-models__num">{{ r.costLabel }}</span>
+          <span class="ov-models__pct">{{ r.cost > 0 ? pct(r.share) : '' }}</span>
+          <IuMeter
+            class="ov-models__bar"
+            :value="r.share"
+            :max="1"
+            :aria-label="`${r.model} share of cost`"
+            intent="neutral"
+            value-label=" "
+          />
+          <span class="ov-models__meta">{{ r.meta }}</span>
+        </li>
+      </ul>
       <div v-if="harnessShares.length" class="ov-models__group ov-models__group--rule">
         <h3 class="ov-models__label">Harness, share of sessions</h3>
         <IuMeter
@@ -162,18 +139,48 @@ const failed = computed(() => (props.models && !props.models.ok ? props.models.e
   font-weight: var(--iu-font-weight-regular);
   color: var(--iu-text-muted);
 }
+.ov-models__list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ov-models__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 3ch;
+  column-gap: 12px;
+  row-gap: 4px;
+  align-items: baseline;
+  min-width: 0;
+}
 .ov-models__mono {
   font-family: var(--iu-font-mono);
   font-size: var(--iu-font-size-12);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
-.ov-models__tokens {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: flex-end;
+.ov-models__num,
+.ov-models__pct {
+  font-family: var(--iu-font-mono);
+  font-size: var(--iu-font-size-12);
+  text-align: end;
+  font-variant-numeric: tabular-nums;
 }
-.ov-models__cached {
+.ov-models__pct {
+  color: var(--iu-text-muted);
+}
+.ov-models__bar,
+.ov-models__meta {
+  grid-column: 1 / -1;
+}
+.ov-models__meta {
   font-size: var(--iu-font-size-11);
   color: var(--iu-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

@@ -11,5 +11,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["packages/core/src", "packages/shared/src", "adapters/*/src", "apps/desktop/src"]
+  "include": ["packages/core/src", "packages/shared/src", "adapters/*/src", "apps/desktop/src", "scripts/changelog*.ts"]
 }

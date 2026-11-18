@@ -145,6 +145,10 @@ onBeforeUnmount(() => view?.destroy())
   font-weight: var(--iu-font-weight-semibold);
   padding-top: 8px;
 }
+.iu-markdown-editor__bullet {
+  color: var(--iu-text-muted);
+  padding-right: 2px;
+}
 .iu-markdown-editor__strong {
   font-weight: var(--iu-font-weight-semibold);
 }

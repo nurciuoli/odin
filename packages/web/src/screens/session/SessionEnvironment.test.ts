@@ -23,26 +23,32 @@ async function setup() {
 }
 
 describe('session environment tab', () => {
-  it('shows the detected environment and offers to detect again and set up', async () => {
+  it('shows the detected environment and offers to check again', async () => {
     const { api, session, wrapper, click } = await setup()
     expect(wrapper.text()).toContain('.venv/bin/python')
+    expect(wrapper.text()).toContain('ready for notebooks')
     const detect = vi.spyOn(api, 'notebookEnvironment')
-    const setupEnv = vi.spyOn(api, 'setupNotebookEnvironment')
-    await click('Detect again')
-    expect(detect).toHaveBeenCalledWith(session.project, { kind: 'native' })
-    await click('Set up Python environment')
-    expect(setupEnv).toHaveBeenCalledWith(session.project, { kind: 'native' })
+    await click('Check again')
+    expect(detect).toHaveBeenCalledWith(session.project)
     wrapper.unmount()
   })
-  it('offers WSL only on Windows', async () => {
-    const { wrapper } = await setup()
+  it('sets up Python with one click, without asking where it runs', async () => {
+    const { api, session, wrapper, click } = await setup()
+    vi.spyOn(api, 'notebookEnvironment').mockResolvedValue({
+      kind: 'missing',
+      interpreter: null,
+      managedHostPython: 'odin/python',
+      needsSetup: true,
+      location: { kind: 'native' },
+    })
+    await click('Check again')
+    expect(wrapper.text()).toContain('No Python environment yet')
+    const setupEnv = vi.spyOn(api, 'setupNotebookEnvironment')
+    await click('Set up Python')
+    expect(setupEnv).toHaveBeenCalledWith(session.project)
     expect(wrapper.text()).not.toContain('WSL')
+    expect(wrapper.text()).not.toContain('Native')
     wrapper.unmount()
-    window.odinDesktop = { platform: 'win32' }
-    const win = await setup()
-    expect(win.wrapper.text()).toContain('WSL')
-    win.wrapper.unmount()
-    delete window.odinDesktop
   })
   it('lists the project’s kernels and stops one', async () => {
     const { api, session, wrapper, click } = await setup()

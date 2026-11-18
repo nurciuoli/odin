@@ -1,9 +1,12 @@
 <script setup lang="ts">
-// The side column: usage and context, metrics, the thread, tags, and a tabbed panel (files changed, plan, artifacts).
+// The Details column: where the session runs (repository, branch, pull request, quick links, tags), then usage and
+// context, outputs, changes, background tasks and the plan. Each section's header carries a quiet one-glance reading.
 import { computed, ref } from 'vue'
 import type { Session, SessionDetail } from '@odin/shared/api'
 import { useApi } from '@/api'
+import { hasDesktop, openPath, type OpenTarget } from '@/app/desktop'
 import { IuBadge } from '@/components/Badge'
+import { IuButton } from '@/components/Button'
 import { IuIcon } from '@/components/Icon'
 import { IuField } from '@/components/Fields'
 import { IuFilePath } from '@/components/FilePath'
@@ -16,7 +19,16 @@ import type { Status } from '@/styles/status'
 import { contextWindow } from './sessionView'
 import { fileChanges, latestPlan } from './workbench'
 import { IuMarkdown } from '@/components/Markdown'
-import SessionThreadPanel from './SessionThreadPanel.vue'
+import {
+  TOKEN_LABEL,
+  activeShare,
+  cacheHitRate,
+  changeSplit,
+  duration,
+  fmt,
+  money,
+  tokenMix,
+} from './sideStats'
 
 const props = withDefaults(defineProps<{ session: SessionDetail; tasks?: ActivityItem[] }>(), {
   tasks: () => [],
@@ -42,15 +54,18 @@ const TODO_STATUS: Record<
 }
 const plan = computed(() => latestPlan(props.session.transcript))
 const todosDone = computed(() => props.session.todos.filter(t => t.status === 'completed').length)
+const todosPct = computed(() =>
+  props.session.todos.length ? (todosDone.value / props.session.todos.length) * 100 : 0,
+)
 
-// ── files ──
+// ── files and changes ──
 const files = computed(() => fileChanges(props.session.transcript))
-
-// ── changes ──
 const totals = computed(() => ({
   added: files.value.reduce((n, f) => n + f.added, 0),
   removed: files.value.reduce((n, f) => n + f.removed, 0),
 }))
+const split = computed(() => changeSplit(totals.value.added, totals.value.removed))
+const mostChanged = computed(() => Math.max(1, ...files.value.map(f => f.added + f.removed)))
 
 // ── disclosures: context details and finished tasks start closed ──
 const contextOpen = ref(false)
@@ -64,40 +79,23 @@ const ctxPct = computed(() =>
 )
 
 // ── usage ──
-const fmt = (n: number) =>
-  n >= 1_000_000
-    ? `${+(n / 1_000_000).toFixed(1)}M`
-    : n >= 1000
-      ? `${+(n / 1000).toFixed(1)}k`
-      : String(n)
-const usage = computed<PropertyItem[]>(() => {
-  const t = props.session.metrics.tokens
-  return [
-    { label: 'Input', value: fmt(t.input), mono: true },
-    { label: 'Output', value: fmt(t.output), mono: true },
-    { label: 'Cache read', value: fmt(t.cacheRead), mono: true },
-    { label: 'Cache write', value: fmt(t.cacheWrite), mono: true },
-    {
-      label: 'Cost',
-      value:
-        props.session.metrics.costUsd === null
-          ? '—'
-          : `$${props.session.metrics.costUsd.toFixed(2)}`,
-      mono: true,
-    },
-  ]
-})
 const ctxMax = computed(
   () => props.session.metrics.contextWindow ?? contextWindow(props.session.model),
 )
 const ctxUsed = computed(() => props.session.metrics.contextTokens)
-
-// ── metrics ──
-const duration = (ms: number | null) => {
-  if (ms === null) return '—'
-  const m = Math.round(ms / 60_000)
-  return m < 1 ? '<1m' : m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`
-}
+const mix = computed(() => tokenMix(props.session.metrics.tokens))
+const mixLabel = computed(
+  () =>
+    `Token mix: ${mix.value.map(m => `${TOKEN_LABEL[m.kind]} ${Math.round(m.pct)}%`).join(', ')}`,
+)
+const cacheHit = computed(() => cacheHitRate(props.session.metrics.tokens))
+const costPerTurn = computed(() => {
+  const { costUsd, turns } = props.session.metrics
+  return costUsd !== null && turns > 0 ? `$${(costUsd / turns).toFixed(2)} / turn` : null
+})
+const activePct = computed(() =>
+  activeShare(props.session.metrics.activeMs, props.session.metrics.wallMs),
+)
 const metrics = computed<PropertyItem[]>(() => {
   const m = props.session.metrics
   const list: PropertyItem[] = [
@@ -106,14 +104,30 @@ const metrics = computed<PropertyItem[]>(() => {
     { label: 'Active', value: duration(m.activeMs), mono: true },
     { label: 'Wall', value: duration(m.wallMs), mono: true },
   ]
-  if (m.diff)
-    list.push({
-      label: 'Diff',
-      value: `+${m.diff.added} −${m.diff.removed} · ${m.diff.files} files`,
-      mono: true,
-    })
   if (m.commits !== null) list.push({ label: 'Commits', value: String(m.commits), mono: true })
   return list
+})
+
+// ── quick links ──
+const desktop = hasDesktop()
+const workspacePath = computed(() =>
+  props.session.workspace.kind === 'worktree' ? props.session.workspace.path : props.session.cwd,
+)
+async function copy(what: string, text: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    toast({ title: `Copied ${what}`, intent: 'success' })
+  } catch {
+    toast({ title: `Couldn't copy ${what}`, intent: 'danger' })
+  }
+}
+async function openIn(target: OpenTarget, what: string) {
+  if (!(await openPath(workspacePath.value, target)))
+    toast({ title: `Couldn't open ${what}`, intent: 'danger' })
+}
+const prState = computed(() => {
+  const pr = props.session.pull
+  return pr ? (pr.merged ? 'merged' : pr.state) : ''
 })
 
 // ── tags ──
@@ -140,39 +154,142 @@ function addTag(e: KeyboardEvent) {
 
 <template>
   <div class="session-side">
-    <div class="session-side__meta" aria-label="Session workspace">
-      <div
-        v-for="name in session.projects ?? [session.project]"
-        :key="name"
-        class="session-side__row"
-      >
-        <IuIcon name="folder" :size="14" />
-        <RouterLink
-          class="session-side__link"
-          :to="`/p/${name}`"
-          :title="name === session.project ? 'Working repository' : 'Additional repository'"
-          >{{ name }}</RouterLink
+    <div class="session-side__top">
+      <div class="session-side__meta" aria-label="Session workspace">
+        <div
+          v-for="name in session.projects ?? [session.project]"
+          :key="name"
+          class="session-side__row"
         >
+          <IuIcon name="folder" :size="14" />
+          <RouterLink
+            class="session-side__link"
+            :to="`/p/${name}`"
+            :title="name === session.project ? 'Working repository' : 'Additional repository'"
+            >{{ name }}</RouterLink
+          >
+          <IuBadge
+            v-if="name === session.project && session.workspace.kind === 'worktree'"
+            variant="tag"
+            size="xs"
+            >worktree</IuBadge
+          >
+        </div>
+        <div v-if="session.branch" class="session-side__row" aria-label="Branch">
+          <IuIcon name="gitBranch" :size="14" />
+          <span class="session-side__mono session-side__grow">{{ session.branch }}</span>
+        </div>
+        <div v-if="session.pull" class="session-side__row" aria-label="Pull request">
+          <IuIcon name="gitPullRequest" :size="14" />
+          <a
+            class="session-side__link"
+            :href="session.pull.url"
+            target="_blank"
+            rel="noopener noreferrer"
+            >PR #{{ session.pull.number }}</a
+          >
+          <IuBadge size="xs">{{ prState }}</IuBadge>
+        </div>
+        <div v-if="session.origin === 'external'" class="session-side__row">
+          <IuIcon name="terminal" :size="14" />
+          <span class="session-side__grow">From terminal</span>
+        </div>
+        <div v-if="session.parentId" class="session-side__row">
+          <IuIcon name="link" :size="14" />
+          <RouterLink class="session-side__link" :to="`/s/${session.parentId}`"
+            >Forked from parent</RouterLink
+          >
+        </div>
+      </div>
+
+      <div class="session-side__links" role="group" aria-label="Quick links">
+        <IuButton
+          variant="ghost"
+          size="sm"
+          icon-only
+          aria-label="Copy path"
+          :title="`Copy path: ${workspacePath}`"
+          @click="copy('path', workspacePath)"
+        >
+          <template #icon><IuIcon name="copy" :size="14" /></template>
+        </IuButton>
+        <IuButton
+          v-if="session.branch"
+          variant="ghost"
+          size="sm"
+          icon-only
+          aria-label="Copy branch name"
+          :title="`Copy branch: ${session.branch}`"
+          @click="copy('branch', session.branch)"
+        >
+          <template #icon><IuIcon name="gitBranch" :size="14" /></template>
+        </IuButton>
+        <IuButton
+          v-if="session.pull"
+          as="a"
+          variant="ghost"
+          size="sm"
+          icon-only
+          aria-label="Open pull request"
+          title="Open pull request"
+          :href="session.pull.url"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <template #icon><IuIcon name="external" :size="14" /></template>
+        </IuButton>
+        <template v-if="desktop">
+          <IuButton
+            variant="ghost"
+            size="sm"
+            icon-only
+            aria-label="Open in editor"
+            title="Open in editor"
+            @click="openIn('editor', 'editor')"
+          >
+            <template #icon><IuIcon name="pencil" :size="14" /></template>
+          </IuButton>
+          <IuButton
+            variant="ghost"
+            size="sm"
+            icon-only
+            aria-label="Open in terminal"
+            title="Open in terminal"
+            @click="openIn('terminal', 'terminal')"
+          >
+            <template #icon><IuIcon name="terminal" :size="14" /></template>
+          </IuButton>
+          <IuButton
+            variant="ghost"
+            size="sm"
+            icon-only
+            aria-label="Show in files"
+            title="Show in files"
+            @click="openIn('files', 'files')"
+          >
+            <template #icon><IuIcon name="folder" :size="14" /></template>
+          </IuButton>
+        </template>
+      </div>
+
+      <div class="session-side__tags" aria-label="Tags">
         <IuBadge
-          v-if="name === session.project && session.workspace.kind === 'worktree'"
+          v-for="t in session.tags"
+          :key="t"
           variant="tag"
-          size="xs"
-          >worktree</IuBadge
+          removable
+          @remove="setTags(session.tags.filter(x => x !== t))"
+          >{{ t }}</IuBadge
         >
-      </div>
-      <div v-if="session.branch" class="session-side__row" aria-label="Branch">
-        <IuIcon name="gitBranch" :size="14" />
-        <span class="session-side__mono session-side__grow">{{ session.branch }}</span>
-      </div>
-      <div v-if="session.origin === 'external'" class="session-side__row">
-        <IuIcon name="terminal" :size="14" />
-        <span class="session-side__grow">From terminal</span>
-      </div>
-      <div v-if="session.parentId" class="session-side__row">
-        <IuIcon name="link" :size="14" />
-        <RouterLink class="session-side__link" :to="`/s/${session.parentId}`"
-          >Forked from parent</RouterLink
-        >
+        <IuField
+          v-model="newTag"
+          class="session-side__tag-field"
+          label="Add a tag"
+          hide-label
+          placeholder="Add a tag ↵"
+          size="sm"
+          @keydown="addTag"
+        />
       </div>
     </div>
 
@@ -188,6 +305,7 @@ function addTag(e: KeyboardEvent) {
           <span>Context</span>
           <IuIcon :name="contextOpen ? 'chevronDown' : 'chevronRight'" :size="14" />
           <span class="session-side__grow" />
+          <span class="session-side__pct">{{ money(session.metrics.costUsd) }}</span>
           <span v-if="ctxPct !== null" class="session-side__pct">{{ ctxPct }}%</span>
         </button>
         <IuMeter
@@ -206,10 +324,54 @@ function addTag(e: KeyboardEvent) {
       </h2>
       <div v-show="contextOpen" id="side-context-body" class="session-side__detail">
         <p v-if="ctxUsed !== null" class="session-side__sub">
-          {{ fmt(ctxUsed) }} / {{ fmt(ctxMax) }} tokens
+          {{ fmt(ctxUsed) }} / {{ fmt(ctxMax) }} tokens in the window
         </p>
-        <IuPropertyList :items="usage" density="compact" label-width="96px" />
+        <div class="session-side__bar" role="img" :aria-label="mixLabel">
+          <span
+            v-for="m in mix"
+            :key="m.kind"
+            class="session-side__seg"
+            :class="`session-side__seg--${m.kind}`"
+            :style="{ width: `${m.pct}%` }"
+          />
+        </div>
+        <dl class="session-side__kv">
+          <div v-for="m in mix" :key="m.kind" class="session-side__kv-row">
+            <dt>
+              <span
+                class="session-side__swatch"
+                :class="`session-side__seg--${m.kind}`"
+                aria-hidden="true"
+              />{{ TOKEN_LABEL[m.kind] }}
+            </dt>
+            <dd class="session-side__mono">{{ fmt(m.value) }}</dd>
+          </div>
+          <div class="session-side__kv-row">
+            <dt>Cache hit</dt>
+            <dd class="session-side__mono">
+              {{ cacheHit === null ? '—' : `${Math.round(cacheHit * 100)}%` }}
+            </dd>
+          </div>
+          <div class="session-side__kv-row">
+            <dt>Cost</dt>
+            <dd class="session-side__mono">
+              {{ money(session.metrics.costUsd) }}
+              <span v-if="costPerTurn" class="session-side__sub">· {{ costPerTurn }}</span>
+            </dd>
+          </div>
+        </dl>
         <IuPropertyList :items="metrics" density="compact" label-width="96px" />
+        <div
+          v-if="activePct !== null"
+          class="session-side__bar session-side__bar--thin"
+          role="img"
+          :aria-label="`Active ${Math.round(activePct * 100)}% of wall time`"
+        >
+          <span
+            class="session-side__seg session-side__seg--active"
+            :style="{ width: `${activePct * 100}%` }"
+          />
+        </div>
       </div>
     </section>
 
@@ -217,7 +379,10 @@ function addTag(e: KeyboardEvent) {
       <summary id="side-outputs" class="session-side__summary">
         <span>Outputs</span>
         <IuIcon name="chevronRight" :size="14" class="session-side__caret" />
-        <span class="session-side__summary-value">{{ session.artifacts.length }} outputs</span>
+        <span class="session-side__summary-value"
+          >{{ session.artifacts.length }}
+          {{ session.artifacts.length === 1 ? 'output' : 'outputs' }}</span
+        >
       </summary>
       <ul v-if="session.artifacts.length" class="session-side__list">
         <li v-for="a in session.artifacts" :key="a.id" class="session-side__file">
@@ -251,7 +416,7 @@ function addTag(e: KeyboardEvent) {
         >PR #{{ session.pull.number }} -
         {{ session.pull.merged ? 'merged' : session.pull.state }}</a
       >
-      <p
+      <div
         v-if="files.length"
         class="session-side__totals"
         aria-label="Estimated lines changed in total"
@@ -261,12 +426,32 @@ function addTag(e: KeyboardEvent) {
         <span class="session-side__sub"
           >in {{ files.length }} {{ files.length === 1 ? 'file' : 'files' }}</span
         >
-      </p>
+        <span
+          v-if="split"
+          class="session-side__bar session-side__bar--inline"
+          role="img"
+          :aria-label="`${Math.round(split.added)}% added, ${Math.round(split.removed)}% removed`"
+        >
+          <span
+            class="session-side__seg session-side__seg--added"
+            :style="{ width: `${split.added}%` }"
+          />
+          <span
+            class="session-side__seg session-side__seg--removed"
+            :style="{ width: `${split.removed}%` }"
+          />
+        </span>
+      </div>
       <ul v-if="files.length" class="session-side__list">
         <li v-for="f in files" :key="f.path" class="session-side__file">
           <button type="button" class="session-side__open" @click="emit('openFile', f.path)">
             <IuFilePath class="session-side__path" :path="f.path" :root="session.cwd" />
           </button>
+          <span
+            class="session-side__heat"
+            aria-hidden="true"
+            :style="{ width: `${Math.max(8, ((f.added + f.removed) / mostChanged) * 28)}px` }"
+          />
           <span class="session-side__counts" aria-label="Estimated lines changed"
             ><span v-if="f.added" class="session-side__added">+{{ f.added }}</span
             ><span v-if="f.removed" class="session-side__removed">−{{ f.removed }}</span></span
@@ -331,6 +516,17 @@ function addTag(e: KeyboardEvent) {
               : 'No plan'
         }}</span>
       </summary>
+      <div
+        v-if="session.todos.length"
+        class="session-side__bar session-side__bar--thin"
+        role="img"
+        :aria-label="`${todosDone} of ${session.todos.length} steps done`"
+      >
+        <span
+          class="session-side__seg session-side__seg--done"
+          :style="{ width: `${todosPct}%` }"
+        />
+      </div>
       <ul v-if="session.todos.length" class="session-side__list">
         <li v-for="(t, i) in session.todos" :key="i" class="session-side__todo">
           <IuStatusDot
@@ -344,43 +540,6 @@ function addTag(e: KeyboardEvent) {
       </ul>
       <IuMarkdown v-else-if="plan" :source="plan" size="sm" />
       <p v-else class="session-side__none">No plan yet.</p>
-    </details>
-
-    <details class="session-side__section">
-      <summary class="session-side__summary">
-        <span>Thread</span>
-        <IuIcon name="chevronRight" :size="14" class="session-side__caret" />
-        <span class="session-side__summary-value">{{ session.branch ?? 'Session thread' }}</span>
-      </summary>
-      <SessionThreadPanel :session="session" />
-    </details>
-
-    <details class="session-side__section" aria-labelledby="side-tags">
-      <summary id="side-tags" class="session-side__summary">
-        <span>Tags</span>
-        <IuIcon name="chevronRight" :size="14" class="session-side__caret" />
-        <span class="session-side__summary-value">{{
-          session.tags.length ? session.tags.join(', ') : 'No tags'
-        }}</span>
-      </summary>
-      <div v-if="session.tags.length" class="session-side__tags">
-        <IuBadge
-          v-for="t in session.tags"
-          :key="t"
-          variant="tag"
-          removable
-          @remove="setTags(session.tags.filter(x => x !== t))"
-          >{{ t }}</IuBadge
-        >
-      </div>
-      <IuField
-        v-model="newTag"
-        label="Add a tag"
-        hide-label
-        placeholder="Add a tag ↵"
-        size="sm"
-        @keydown="addTag"
-      />
     </details>
   </div>
 </template>
@@ -434,6 +593,11 @@ details[open] > .session-side__summary .session-side__caret {
 .session-side > :last-child {
   padding-bottom: 0;
 }
+.session-side__top {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
 .session-side__meta {
   display: flex;
   flex-direction: column;
@@ -455,6 +619,12 @@ details[open] > .session-side__summary .session-side__caret {
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+.session-side__links {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: -6px;
 }
 .session-side__section {
   display: flex;
@@ -519,6 +689,76 @@ details[open] > .session-side__summary .session-side__caret {
   margin: 0;
   font-size: var(--iu-font-size-12);
   color: var(--iu-text-muted);
+}
+/* Quiet bars: a hairline-thin proportion strip that backs up the numbers beside it, never replaces them. */
+.session-side__bar {
+  display: flex;
+  height: 4px;
+  overflow: hidden;
+  border-radius: var(--iu-radius-sm);
+  background: var(--iu-border-quiet);
+}
+.session-side__bar--thin {
+  height: 3px;
+}
+.session-side__bar--inline {
+  flex: 1;
+  min-width: 24px;
+  align-self: center;
+}
+.session-side__seg {
+  flex: none;
+  height: 100%;
+}
+.session-side__seg--input {
+  background: var(--iu-text-muted);
+}
+.session-side__seg--output {
+  background: var(--iu-accent);
+}
+.session-side__seg--cacheRead {
+  background: var(--iu-positive);
+}
+.session-side__seg--cacheWrite {
+  background: var(--iu-border-strong);
+}
+.session-side__seg--active,
+.session-side__seg--done {
+  background: var(--iu-positive);
+}
+.session-side__seg--added {
+  background: var(--iu-positive);
+}
+.session-side__seg--removed {
+  background: var(--iu-danger);
+}
+.session-side__kv {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--iu-font-size-13);
+}
+.session-side__kv-row {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  align-items: baseline;
+}
+.session-side__kv dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--iu-text-muted);
+}
+.session-side__kv dd {
+  margin: 0;
+  color: var(--iu-text);
+}
+.session-side__swatch {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
 }
 .session-side__totals {
   display: flex;
@@ -604,6 +844,13 @@ details[open] > .session-side__summary .session-side__caret {
   font: inherit;
   overflow-wrap: anywhere;
 }
+/* a per-file sliver sized against the busiest file */
+.session-side__heat {
+  flex: none;
+  height: 3px;
+  border-radius: var(--iu-radius-sm);
+  background: var(--iu-border-strong);
+}
 .session-side__counts {
   flex: none;
   display: inline-flex;
@@ -636,6 +883,11 @@ details[open] > .session-side__summary .session-side__caret {
 .session-side__tags {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
+}
+.session-side__tag-field {
+  flex: 0 1 120px;
+  min-width: 0;
 }
 </style>
