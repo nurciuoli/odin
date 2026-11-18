@@ -1283,7 +1283,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       }
 
       let newId: string;
-      if (prompt) newId = randomUUID();
+      if (prompt && !req.atMessageId) newId = randomUUID();
       else {
         try {
           newId = req.atMessageId ? await harness.forkAt!(id, req.atMessageId, parent.cwd) : await harness.fork(id, parent.cwd);
@@ -1331,8 +1331,10 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       }
 
       if (prompt) {
-        const opts: StartOptions = { cwd, resume: id, fork: true, sessionId: newId, prompt, title, hostTools: hostTools(newId), mcpServers };
-        if (req.atMessageId) opts.forkAtMessageId = req.atMessageId;
+        // Cut at a message: the harness already made the stored fork, so resume it; otherwise fork while starting.
+        const opts: StartOptions = req.atMessageId
+          ? { cwd, resume: newId, prompt, title, hostTools: hostTools(newId), mcpServers }
+          : { cwd, resume: id, fork: true, sessionId: newId, prompt, title, hostTools: hostTools(newId), mcpServers };
         await services.checkpoints.capture(newId, "turn.prepare", null);
         if (model) opts.model = model;
         opts.effort = effort;

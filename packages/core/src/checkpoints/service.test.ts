@@ -82,6 +82,11 @@ test("rewinding the conversation forks before the message, archives the original
     await turn(s, r.session.id, "three", 2);
     assert.deepEqual(s.services.checkpoints.list(r.session.id).map((c) => c.turn), [1, 2], "the next turn continues the numbering");
 
+    // A fork with a prompt resumes the stored fork instead of forking while it starts.
+    const withPrompt = await s.sessions.fork(st.id, { atMessageId: cp2.messageId!, prompt: { text: "again" } });
+    await waitFor(() => s.sessions.get(withPrompt.id)?.state === "idle", 3000, "idle");
+    assert.deepEqual((await s.sessions.detail(withPrompt.id))!.transcript.map((e) => e.kind), ["user", "assistant", "user", "assistant"]);
+
     await assert.rejects(s.sessions.fork(st.id, { atMessageId: "not-a-message" }), (e) => e instanceof Error && /not a user message/.test(e.message));
   } finally { await s.sessions.close(); }
 });
