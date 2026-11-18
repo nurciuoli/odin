@@ -8,7 +8,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type {
   AppSettings, Artifact, ArtifactDetail, ArtifactSubmitRequest, AssetDetail, AssetFiles, AssetKind, CreateProjectRequest,
-  ForkSessionRequest, ExportResult, ImportPreview, ImportRequest, Installation, InstallRequest, InstallResult, 
+  ForkSessionRequest, HandoffPreview, HandoffRequest, ExportResult, ImportPreview, ImportRequest, Installation, InstallRequest, InstallResult, 
   LibraryAsset, MetricsQuery, MetricsRow, ModelPrice, PermissionAnswer,
   PermissionMode, ProjectActivity, ProjectAgent, ProjectBranch, ProjectDetail, ProjectSettings, PullRef, Session,
   MessageQueue, SessionCounts, SessionDetail, SessionFilter, SessionMetrics, SessionState, StartSessionRequest, SyncStatus,
@@ -145,6 +145,10 @@ export interface SessionsService extends Closeable {
   interrupt(id: string): Promise<void>;
   update(id: string, req: UpdateSessionRequest): Promise<Session>;
   fork(id: string, req: ForkSessionRequest): Promise<Session>;
+  /** The briefing a handoff to `harness` would start with, and whether the target can run. Never starts anything. */
+  handoffPreview(id: string, harness: string): Promise<HandoffPreview>;
+  /** A new session on another harness, same checkout, started with a briefing. 409 while the source runs or waits. */
+  handoff(id: string, req: HandoffRequest): Promise<Session>;
   /** Closes the live handle (state → ended). The harness session stays resumable. */
   end(id: string): Promise<Session>;
   /** Deletes the record and the harness's stored session. Closes it first if live. */

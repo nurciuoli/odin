@@ -301,3 +301,39 @@ describe('computeMetrics', () => {
     expect(harbor.days.every(d => d.sessions === 0 && d.commits !== null)).toBe(true)
   })
 })
+
+describe('handoff', () => {
+  it('previews a briefing, starts the other harness and ends the source', async () => {
+    const api = createMockApi()
+    const id = FIXTURE_SESSION_IDS.idle
+    const source = await api.getSession(id)
+    const preview = await api.handoffPreview(id, 'codex')
+    expect(preview.target).toMatchObject({ harness: 'codex', available: true })
+    expect(preview.brief).toContain('## Task')
+    expect(preview.source.title).toBe(source.title)
+    await expect(api.handoffPreview(id, source.harness)).rejects.toThrow(/different harness/)
+    await expect(api.handoffPreview(id, 'nope')).rejects.toThrow(/unknown harness/)
+
+    const next = await api.handoffSession(id, { harness: 'codex', brief: 'carry on' })
+    expect(next).toMatchObject({
+      harness: 'codex',
+      parentId: id,
+      cwd: source.cwd,
+      branch: source.branch,
+    })
+    expect(next.handoff).toMatchObject({ from: id, harness: source.harness })
+    expect((await api.getSession(id)).state).toBe('ended')
+    const first = (await api.getSession(next.id)).transcript.find(e => e.kind === 'user')
+    expect(first).toMatchObject({ text: 'carry on' })
+  })
+
+  it('refuses a running source and keeps the source with endSource false', async () => {
+    const api = createMockApi()
+    await expect(
+      api.handoffSession(FIXTURE_SESSION_IDS.running, { harness: 'codex' }),
+    ).rejects.toThrow(/stop the session/)
+    const id = FIXTURE_SESSION_IDS.idle
+    await api.handoffSession(id, { harness: 'codex', endSource: false })
+    expect((await api.getSession(id)).state).toBe('idle')
+  })
+})

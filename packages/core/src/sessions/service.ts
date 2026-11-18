@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import { resolve, sep } from "node:path";
 import type { SQLInputValue } from "node:sqlite";
 import type {
-  ForkSessionRequest, PermissionAnswer, PermissionMode, Session, SessionCounts, SessionDetail, SessionFilter, SessionMetrics,
+  ForkSessionRequest, HandoffPreview, HandoffRequest, PermissionAnswer, PermissionMode, Session, SessionCounts, SessionDetail, SessionHandoff, SessionFilter, SessionMetrics,
   SessionState, StartSessionRequest, Todo, UpdateSessionRequest, UserMessage, Workspace,
 } from "@odin/shared/api";
 import type { HarnessEvent, PermissionRequest, SlashCommand, TranscriptEntry } from "@odin/shared/harness";
@@ -24,6 +24,8 @@ import { validateMessage } from "./message.ts";
 import { runtimeOptions, nativeAction } from "./native.ts";
 import { runShell, SHELL_MAX_COMMAND } from "./shell.ts";
 import { hostToolApprovals } from "./host-tools.ts";
+import { buildBrief } from "./handoff.ts";
+import { git, statusPaths } from "../projects/git.ts";
 
 export const IDLE_CLOSE_MS = 10 * 60_000;
 const SESSION_STATES: SessionState[] = ["idle", "running", "waiting", "ended", "failed"];
@@ -59,6 +61,7 @@ interface SessionRow {
   agent_version: string | null;
   template_id: string | null;
   parent_id: string | null;
+  handoff: string | null;
   aside: number;
   pull: string | null;
   created_at: string;
@@ -131,6 +134,7 @@ function toSession(r: SessionRow): Session {
     agentVersion: r.agent_version,
     templateId: r.template_id,
     parentId: r.parent_id,
+    handoff: parseJson<SessionHandoff | null>(r.handoff, null),
     aside: r.aside === 1,
     pull: parseJson(r.pull, null),
     createdAt: r.created_at,
@@ -365,6 +369,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
     parentId: string | null;
     /** A side thread (default false). */
     aside?: boolean;
+    handoff?: SessionHandoff;
     createdAt: string;
     updatedAt: string;
     launchConfig?: string | null;
@@ -373,12 +378,12 @@ export function createSessionsService(deps: Deps, services: Services, options: S
   function insert(r: NewRecord & { effort?: import("@odin/shared/api").Effort | null }): Session {
     db.prepare(
       `INSERT INTO sessions (id, harness, project, title, first_prompt, tags, origin, state, cwd, workspace, branch, model, permission_mode,
-        agent, agent_version, template_id, parent_id, aside, created_at, updated_at, metrics, projects, launch_config)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        agent, agent_version, template_id, parent_id, aside, created_at, updated_at, metrics, projects, launch_config, handoff)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       r.id, r.harness, r.project, r.title, r.firstPrompt, JSON.stringify(r.tags), r.origin, r.state, r.cwd, JSON.stringify(r.workspace), r.branch,
       r.model, r.permissionMode, r.agent, r.agentVersion, r.templateId, r.parentId, r.aside ? 1 : 0, r.createdAt, r.updatedAt, JSON.stringify(emptyMetrics()),
-      JSON.stringify(r.projects ?? [r.project]), r.launchConfig ?? null,
+      JSON.stringify(r.projects ?? [r.project]), r.launchConfig ?? null, r.handoff ? JSON.stringify(r.handoff) : null,
     );
     if (r.effort) db.prepare("UPDATE sessions SET effort = ? WHERE id = ?").run(r.effort, r.id);
     const s = mustGet(r.id);
@@ -876,9 +881,26 @@ export function createSessionsService(deps: Deps, services: Services, options: S
     : null;
   rescanTimer?.unref?.();
 
+  // ── handoff helpers ──────────────────────────────────────────────────────
+
+  function handoffTarget(s: Session, harnessId: unknown): Harness {
+    if (typeof harnessId !== "string" || !Object.hasOwn(deps.harnesses, harnessId)) bad(`unknown harness ${String(harnessId)}`);
+    if (harnessId === s.harness) bad("choose a different harness than the session's own");
+    return deps.harnesses[harnessId]!;
+  }
+
+  /** Changed paths and the diff summary of a working directory; empty outside git or when git fails. */
+  async function gitFacts(cwd: string): Promise<{ files: string[]; diffStat: string }> {
+    const [files, diffStat] = await Promise.all([
+      statusPaths(cwd).catch(() => [] as string[]),
+      git(cwd, ["diff", "--stat", "HEAD"]).catch(() => ""),
+    ]);
+    return { files, diffStat };
+  }
+
   // ── the service ──────────────────────────────────────────────────────────
 
-  return {
+  const service: SessionsService = {
     list(filter: SessionFilter = {}) {
       const where: string[] = [];
       const args: SQLInputValue[] = [];
@@ -1318,6 +1340,76 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       return mustGet(newId);
     },
 
+    async handoffPreview(id, harnessId): Promise<HandoffPreview> {
+      const s = mustGet(id);
+      const target = handoffTarget(s, harnessId);
+      const detail = await service.detail(id);
+      const [facts, check, models] = await Promise.all([
+        gitFacts(s.cwd),
+        target.check().catch((err) => ({ available: false, note: errorMessage(err) })),
+        target.models().catch(() => []),
+      ]);
+      const source = harnessFor(s);
+      const brief = buildBrief({
+        sessionId: id, title: s.title, harness: s.harness, harnessName: source.name, targetName: target.name, model: s.model,
+        firstPrompt: row(id)?.first_prompt ?? null, transcript: detail?.transcript ?? [], todos: detail?.todos ?? [],
+        branch: s.branch, files: facts.files, diffStat: facts.diffStat,
+      });
+      return {
+        brief: brief.text, truncated: brief.truncated,
+        source: { harness: s.harness, model: s.model, title: s.title },
+        target: { harness: target.id, name: target.name, available: check.available, note: check.note, models },
+        files: facts.files, branch: s.branch,
+      };
+    },
+
+    async handoff(id, req: HandoffRequest) {
+      if (nativeBusy.has(id)) throw new HttpError(409, "a native session operation is in progress");
+      const s = mustGet(id);
+      if (!req || typeof req !== "object") bad("invalid request");
+      const target = handoffTarget(s, req.harness);
+      if (req.brief !== undefined && (typeof req.brief !== "string" || !req.brief.trim())) bad("brief must be a non-empty string");
+      if (req.title !== undefined && (typeof req.title !== "string" || !req.title.trim())) bad("title must be a non-empty string");
+      if (req.model !== undefined && (typeof req.model !== "string" || !req.model.trim())) bad("model must be a non-empty string");
+      if (req.endSource !== undefined && typeof req.endSource !== "boolean") bad("endSource must be a boolean");
+      if (req.permissionMode !== undefined && !PERMISSION_MODES.includes(req.permissionMode)) bad("unknown permission mode");
+      const modes = target.capabilities?.permissionModes;
+      if (req.permissionMode !== undefined && modes && !modes.includes(req.permissionMode)) bad(`${target.id} does not support permission mode ${req.permissionMode}`);
+      if (s.projects.length > 1 && target.capabilities?.additionalDirectories === false) bad(`${target.id} does not support additional project directories`);
+      if (s.state === "running" || s.state === "waiting") throw new HttpError(409, "stop the session before handing it off: both would share one checkout");
+      const check = await target.check().catch((err) => ({ available: false, note: errorMessage(err) }));
+      if (!check.available) throw new HttpError(409, `${target.name} is not available${check.note ? `: ${check.note}` : ""}`);
+      const brief = req.brief?.trim() ?? (await service.handoffPreview(id, target.id)).brief;
+      const prompt = validateMessage({ text: brief });
+      const permissionMode = req.permissionMode ?? (s.permissionMode && (!modes || modes.includes(s.permissionMode)) ? s.permissionMode : null);
+      const model = req.model?.trim() ?? null;
+      const title = (req.title?.trim() || s.title).slice(0, 200);
+      const mcpServers = await savedMcp(id);
+      const mcpIds = parseJson<{ mcpIds?: string[] }>(row(id)!.launch_config, {}).mcpIds ?? [];
+
+      const newId = randomUUID();
+      const at = now();
+      insert({
+        id: newId, harness: target.id, project: s.project, projects: s.projects, title, firstPrompt: row(id)!.first_prompt, tags: s.tags,
+        origin: "odin", state: "running", cwd: s.cwd, workspace: s.workspace, branch: s.branch, model, effort: null, permissionMode,
+        agent: null, agentVersion: null, templateId: null, parentId: id, handoff: { from: id, harness: s.harness, at },
+        createdAt: at, updatedAt: at, launchConfig: JSON.stringify({ mcpIds }),
+      });
+      const opts: StartOptions = { cwd: s.cwd, sessionId: newId, title, prompt, hostTools: hostTools(newId), effort: null };
+      if (model) opts.model = model;
+      if (permissionMode) opts.permissionMode = permissionMode;
+      if (mcpServers && Object.keys(mcpServers).length) opts.mcpServers = mcpServers;
+      startHandle(newId, target, opts);
+      if (req.endSource !== false && mustGet(newId).state !== "failed") {
+        try {
+          await service.end(id);
+        } catch (err) {
+          console.error(`ending ${id} after a handoff failed:`, errorMessage(err));
+        }
+      }
+      return mustGet(newId);
+    },
+
     async end(id) {
       if (nativeBusy.has(id)) throw new HttpError(409, "a native session operation is in progress");
       const s = mustGet(id);
@@ -1385,6 +1477,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       await Promise.all(all.map((l) => Promise.race([closeHandle(l, false), new Promise<void>((r) => setTimeout(r, 5000).unref?.())])));
     },
   };
+  return service;
 }
 
 /** For the routes' query validation. */

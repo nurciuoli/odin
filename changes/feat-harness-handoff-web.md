@@ -1,0 +1,1 @@
+- `/handoff` in the message box continues the session on another harness in the same folder and branch. `/handoff codex` (optionally with a model) does it at once; plain `/handoff` shows a one-line-per-harness card where arrow keys cycle each harness's models. The new session links back to the old one.
