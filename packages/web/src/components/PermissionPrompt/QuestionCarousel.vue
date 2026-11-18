@@ -15,6 +15,9 @@ const props = withDefaults(
 )
 const emit = defineEmits<{ 'update:answers': [answers: Record<string, string>]; submit: [] }>()
 
+// TEMP (design exploration): ?qv=centered|split|stacked|chips
+const variant =
+  (typeof location !== 'undefined' && new URLSearchParams(location.search).get('qv')) || 'centered'
 const uid = useId()
 const root = useTemplateRef<HTMLElement>('root')
 
@@ -126,43 +129,6 @@ const stepLabel = (i: number) => {
     aria-label="Questions from the agent"
     @keydown="onKeydown"
   >
-    <div v-if="hasReview" class="iu-question-carousel__steps">
-      <span class="iu-question-carousel__count" aria-live="polite">{{
-        onReview ? 'Review' : `${step + 1} of ${count}`
-      }}</span>
-      <ol class="iu-question-carousel__dots">
-        <li v-for="(q, i) in questions" :key="keyOf(q)">
-          <button
-            type="button"
-            class="iu-question-carousel__dot"
-            :class="{
-              'is-current': step === i,
-              'is-answered': answers[keyOf(q)] !== undefined,
-            }"
-            :aria-label="stepLabel(i)"
-            :aria-current="step === i ? 'step' : undefined"
-            :disabled="busy"
-            @click="go(i)"
-          >
-            <IuIcon v-if="answers[keyOf(q)] !== undefined && step !== i" name="check" :size="14" />
-          </button>
-        </li>
-        <li>
-          <button
-            type="button"
-            class="iu-question-carousel__dot iu-question-carousel__dot--review"
-            :class="{ 'is-current': onReview }"
-            aria-label="Review and submit"
-            :aria-current="onReview ? 'step' : undefined"
-            :disabled="busy"
-            @click="go(count)"
-          >
-            ✓
-          </button>
-        </li>
-      </ol>
-    </div>
-
     <div
       :key="step"
       class="iu-question-carousel__slide"
@@ -232,33 +198,83 @@ const stepLabel = (i: number) => {
       </fieldset>
     </div>
 
-    <div class="iu-question-carousel__nav">
+    <div v-if="hasReview" class="iu-question-carousel__steps">
+      <span class="iu-question-carousel__count" aria-live="polite">{{
+        onReview ? 'Review' : `${step + 1} of ${count}`
+      }}</span>
+      <ol class="iu-question-carousel__dots">
+        <li v-for="(q, i) in questions" :key="keyOf(q)">
+          <button
+            type="button"
+            class="iu-question-carousel__dot"
+            :class="{
+              'is-current': step === i,
+              'is-answered': answers[keyOf(q)] !== undefined,
+            }"
+            :aria-label="stepLabel(i)"
+            :aria-current="step === i ? 'step' : undefined"
+            :disabled="busy"
+            @click="go(i)"
+          >
+            <IuIcon v-if="answers[keyOf(q)] !== undefined && step !== i" name="check" :size="14" />
+          </button>
+        </li>
+        <li>
+          <button
+            type="button"
+            class="iu-question-carousel__dot iu-question-carousel__dot--review"
+            :class="{ 'is-current': onReview }"
+            aria-label="Review and submit"
+            :aria-current="onReview ? 'step' : undefined"
+            :disabled="busy"
+            @click="go(count)"
+          >
+            ✓
+          </button>
+        </li>
+      </ol>
+    </div>
+
+    <div class="iu-question-carousel__nav" :class="`is-${variant}`">
       <IuButton
         v-if="hasReview"
-        variant="secondary"
+        :variant="variant === 'centered' ? 'secondary' : 'ghost'"
         size="sm"
+        class="iu-question-carousel__back"
         :disabled="busy || step === 0"
         @click="go(step - 1)"
       >
         <template #icon><IuIcon name="chevronLeft" :size="14" /></template>
         Back
+        <template v-if="variant === 'chips'" #trailing><kbd class="iu-btn__kbd">←</kbd></template>
       </IuButton>
       <IuButton
         v-if="isFinal"
         variant="primary"
         size="sm"
-        class="iu-permission-prompt__allow"
+        class="iu-permission-prompt__allow iu-question-carousel__next"
         :disabled="busy || !complete"
         @click="advance()"
       >
         Submit answers
       </IuButton>
-      <IuButton v-else variant="primary" size="sm" :disabled="busy" @click="advance()">
+      <IuButton
+        v-else
+        variant="primary"
+        size="sm"
+        class="iu-question-carousel__next"
+        :disabled="busy"
+        @click="advance()"
+      >
         {{ step === count - 1 ? 'Review answers' : 'Next' }}
-        <template #trailing><IuIcon name="chevronRight" :size="14" /></template>
+        <template #trailing>
+          <kbd v-if="variant === 'chips'" class="iu-btn__kbd">→</kbd>
+          <IuIcon v-else name="chevronRight" :size="14" />
+        </template>
       </IuButton>
       <span class="iu-question-carousel__keys">
         <template v-if="onReview">← → move · Enter submits</template>
+        <template v-else-if="variant === 'chips'">1–9 choose · Enter confirms</template>
         <template v-else>← → move · 1–9 choose · Enter confirms</template>
       </span>
     </div>
@@ -452,5 +468,31 @@ const stepLabel = (i: number) => {
   font-family: var(--iu-font-mono);
   font-size: var(--iu-font-size-11);
   color: var(--iu-text-muted);
+}
+/* design exploration variants */
+.iu-question-carousel__nav.is-split {
+  flex-wrap: nowrap;
+  justify-content: space-between;
+}
+.iu-question-carousel__nav.is-split .iu-question-carousel__keys {
+  flex: 1;
+  flex-basis: auto;
+  order: 1;
+}
+.iu-question-carousel__nav.is-split .iu-question-carousel__next {
+  order: 2;
+}
+.iu-question-carousel__nav.is-stacked .iu-question-carousel__next {
+  order: -1;
+  flex: 1 1 100%;
+  justify-content: center;
+}
+.iu-question-carousel__nav.is-stacked .iu-question-carousel__keys {
+  flex: 1;
+  flex-basis: auto;
+  text-align: right;
+}
+.iu-question-carousel__nav.is-stacked {
+  justify-content: flex-start;
 }
 </style>

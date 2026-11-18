@@ -265,7 +265,7 @@ const denyLabel = computed(() => (props.request.kind === 'plan' ? 'Keep planning
       </IuMenu>
 
       <IuButton
-        variant="secondary"
+        :variant="request.kind === 'question' ? 'ghost' : 'secondary'"
         size="sm"
         class="iu-permission-prompt__deny"
         :disabled="busy"
@@ -374,6 +374,8 @@ const denyLabel = computed(() => (props.request.kind === 'plan' ? 'Keep planning
 /* a question's controls sit in the middle of the card, under the carousel's own */
 .iu-permission-prompt.is-question .iu-permission-prompt__actions {
   justify-content: center;
+  padding-top: 8px;
+  border-top: 1px solid var(--iu-border);
 }
 .iu-permission-prompt.is-question .iu-permission-prompt__msg {
   margin-left: 0;
