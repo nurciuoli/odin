@@ -1,6 +1,6 @@
 # Plan: session checkpoints and rewind
 
-Status: **approved by Nick (Nov 18 2026); phase 1 (contracts) in progress.** Owner: open. Related: the harness handoff plan
+Status: **approved by Nick (Nov 18 2026); phases 1 (contracts, #66) and 2 (core store) in review.** Owner: open. Related: the harness handoff plan
 (both features read and write session state; see "Handoff" below).
 
 ## Why
@@ -49,7 +49,7 @@ miss shell-made changes), and cannot restore files for a session that moves betw
 Core snapshots the working tree itself at every turn boundary, in a **shadow git repository that Odin owns**, never in
 the user's repo. Files are restored from there, whatever harness made the change.
 
-- Store: `~/.odin/checkpoints/<project>/<hash of cwd>.git`, a bare repo. Commands run as
+- Store: `~/.odin/checkpoints/<project>.git`, one bare repo per project (so worktree forks share their parent's trees). Commands run as
   `git --git-dir=<store> --work-tree=<cwd> …` with `execFile` argv (AGENTS.md: no shell strings). The user's `.git`,
   index, refs, stash and hooks are never touched, which keeps the contract line "Odin never commits, resets, pushes".
 - Capture: `add -A` then `write-tree` and `commit-tree` with a fixed identity and `gc.auto=0`. The user's `.gitignore`
