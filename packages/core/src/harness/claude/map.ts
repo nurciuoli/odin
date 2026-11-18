@@ -8,6 +8,7 @@
 // running (observed live: a fork restored the parent as of two turns earlier). So the driver reports each turn's own
 // usage (`cumulative: false`): the difference from the previous result in the same process, or, for the first result
 // of a resumed/forked process, the sum of that turn's assistant message usage.
+import { parseLocalCommand, type LocalCommandParts } from "./localcommand.ts";
 import { injectedMessage, type Injected } from "./injected.ts";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { PermissionMode, Todo, TokenUsage } from "@odin/shared/api";
@@ -437,6 +438,11 @@ export function injectedId(uuid: string, index: number, count: number): string {
   return count === 1 ? uuid : `${uuid}:injected:${index}`;
 }
 
+/** System lines for what local commands printed, ids `<message uuid>:local:<index>`. */
+export function localOutputEntries(locals: readonly LocalCommandParts[], uuid: string, at: string | null, parentToolUseId: string | null): TranscriptEntry[] {
+  return locals.flatMap((l) => l.outputs).map((o, i) => ({ kind: "system" as const, id: `${uuid}:local:${i}`, level: o.level, text: o.text, at, parentToolUseId }));
+}
+
 export function injectedEntry(inj: Injected, id: string, at: string | null, parentToolUseId: string | null): TranscriptEntry {
   return { kind: "injected", id, source: inj.source, from: inj.from, text: inj.text, at, parentToolUseId };
 }
@@ -455,9 +461,12 @@ function userMessage(m: Loose, sent: ReadonlySet<string>, state: MapState): Harn
   const texts: string[] = [];
   const notices: TaskNotice[] = [];
   const injected: Injected[] = [];
+  const locals: LocalCommandParts[] = [];
   const addText = (text: string) => {
     const found = parseTaskNotifications(text);
+    const local = found ? null : parseLocalCommand(text);
     if (found) notices.push(...found);
+    else if (local) locals.push(local);
     else if (text.trim() && !stripSystemReminders(text)) return;
     else {
       const inj = injectedMessage(m, text);
@@ -482,6 +491,8 @@ function userMessage(m: Loose, sent: ReadonlySet<string>, state: MapState): Harn
   injected.forEach((inj, i) => {
     out.push({ type: "entry", entry: injectedEntry(inj, injectedId(uuid, i, injected.length), str(m.timestamp), parent) });
   });
+  // The driver already showed what the user typed; what a local command printed is new.
+  out.push(...localOutputEntries(locals, uuid, str(m.timestamp), parent).map((entry) => ({ type: "entry" as const, entry })));
   // A subagent's prompt arrives as a user text message nested under its Task call.
   if (parent && texts.length && typeof m.uuid === "string") {
     out.unshift({ type: "entry", entry: { kind: "user", id: m.uuid, text: texts.join("\n"), at: str(m.timestamp), parentToolUseId: parent } });
