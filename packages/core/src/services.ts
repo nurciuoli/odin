@@ -8,7 +8,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type {
   AppSettings, Artifact, ArtifactDetail, ArtifactSubmitRequest, AssetDetail, AssetFiles, AssetKind, CreateProjectRequest,
-  ForkSessionRequest, Installation, InstallRequest, InstallResult, 
+  ForkSessionRequest, ExportResult, ImportPreview, ImportRequest, Installation, InstallRequest, InstallResult, 
   LibraryAsset, MetricsQuery, MetricsRow, ModelPrice, PermissionAnswer,
   PermissionMode, ProjectActivity, ProjectAgent, ProjectBranch, ProjectDetail, ProjectSettings, PullRef, Session,
   MessageQueue, SessionCounts, SessionDetail, SessionFilter, SessionMetrics, SessionState, StartSessionRequest, SyncStatus,
@@ -216,6 +216,12 @@ export interface LibraryService extends Closeable {
   remove(kind: AssetKind, id: string): void;
   /** Re-reads the library directory (it's plain files; users may edit them outside Odin). */
   rescan(): void;
+  /** Reads a Claude Code plugin from a git address or a local folder and says what importing it would add. Writes nothing. */
+  importPreview(req: ImportRequest): Promise<ImportPreview>;
+  /** Writes the plugin a preview described into the library (own members, nothing split out). Previews last 10 minutes. */
+  importConfirm(previewId: string): LibraryAsset;
+  /** Writes a plugin, with its included assets resolved, as a Claude Code plugin folder at `path` (absent or empty). */
+  exportPlugin(id: string, path: string): ExportResult;
   /** Installed assets in a project with their drift state (recomputed from disk). */
   installations(project: string): Installation[];
   install(project: string, req: InstallRequest): Promise<InstallResult>;

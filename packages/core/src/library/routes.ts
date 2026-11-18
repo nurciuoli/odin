@@ -28,6 +28,23 @@ export const registerLibraryRoutes: RegisterRoutes = (router, _deps, services) =
     services.library.rescan();
   });
 
+  router.post("/api/library/import", async ({ req }) => {
+    const body = await readJson(req);
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw new HttpError(400, "expected { source, id? }");
+    return services.library.importPreview({ source: body.source, id: body.id });
+  });
+
+  router.post("/api/library/import/:previewId", ({ res, params }) => {
+    send(res, 201, services.library.importConfirm(params.previewId!));
+  });
+
+  router.post("/api/library/plugin/:id/export", async ({ req, params }) => {
+    const id = idOf(params.id);
+    const body = await readJson(req);
+    if (!body || typeof body !== "object" || Array.isArray(body) || typeof body.path !== "string") throw new HttpError(400, "expected { path }");
+    return services.library.exportPlugin(id, body.path);
+  });
+
   router.get("/api/library/:kind/:id", ({ params }) => {
     const kind = kindOf(params.kind), id = idOf(params.id);
     const detail = services.library.detail(kind, id);
