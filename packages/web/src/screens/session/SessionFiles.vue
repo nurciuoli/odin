@@ -23,6 +23,7 @@ import { IuMenu, type MenuItem } from '@/components/Menu'
 import { IuErrorState, IuSkeleton } from '@/components/States'
 import { IuField } from '@/components/Fields'
 import { IuDialog } from '@/components/Modal'
+import IuMarkdown from '@/components/Markdown/Markdown.vue'
 const IuMarkdownEditor = defineAsyncComponent(
   () => import('@/components/MarkdownEditor/MarkdownEditor.vue'),
 )
@@ -62,7 +63,11 @@ function selectRows(path: string, selection: CsvSelection) {
   )
 }
 
-type Draft = SessionTextFile & { draft: string; mode: 'live' | 'source'; remote?: SessionTextFile }
+type Draft = SessionTextFile & {
+  draft: string
+  mode: 'preview' | 'live' | 'source'
+  remote?: SessionTextFile
+}
 /** A notebook document: its kernel once opened, and the file as read from disk until then (or if opening fails). */
 interface NotebookState {
   phase: 'opening' | 'ready' | 'failed'
@@ -128,7 +133,7 @@ async function openText(path: string) {
     drafts.value[path] = {
       ...file,
       draft: file.content,
-      mode: /\.md$/i.test(path) ? 'live' : 'source',
+      mode: /\.md$/i.test(path) ? 'preview' : 'source',
     }
     docs.value = openDoc(docs.value, target, request === openRequest)
   } catch (e) {
@@ -341,17 +346,24 @@ function close(doc: OpenDoc) {
   if (doc.ref.kind === 'file') delete drafts.value[doc.ref.path]
   else delete notebooks.value[doc.ref.path]
 }
+const MODE_LABELS = {
+  preview: 'Rendered view',
+  live: 'Live editor',
+  source: 'Edit source',
+} as const
 function fileMenu(d: Draft): MenuItem[] {
   return [
     { id: 'check', label: 'Check disk' },
     ...(fileKind(d.path) === 'markdown'
-      ? [{ id: 'mode', label: d.mode === 'live' ? 'Edit source' : 'Live preview' }]
+      ? (['preview', 'live', 'source'] as const)
+          .filter(m => m !== d.mode)
+          .map(m => ({ id: `mode:${m}`, label: MODE_LABELS[m] }))
       : []),
   ]
 }
 function onFileMenu(d: Draft, id: string) {
   if (id === 'check') void refresh()
-  else if (id === 'mode') d.mode = d.mode === 'live' ? 'source' : 'live'
+  else if (id.startsWith('mode:')) d.mode = id.slice(5) as Draft['mode']
 }
 /** Rich output needs the kernel's sandboxed frame; the read-only view keeps to plain text. */
 const plainOutputs = (outputs: NotebookOutput[]): NotebookOutput[] =>
@@ -609,6 +621,7 @@ defineExpose({ open })
               :filename="d.path"
               @selection="selectRows(d.path, $event)"
             />
+            <IuMarkdown v-else-if="d.mode === 'preview'" :source="d.draft" document size="md" />
             <IuMarkdownEditor v-else v-model="d.draft" :mode="d.mode" :label="`Edit ${d.path}`" />
           </template>
         </template>

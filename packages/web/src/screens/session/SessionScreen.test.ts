@@ -249,6 +249,8 @@ describe('SessionScreen', () => {
       .find(b => b.text() === 'README.md')!
       .trigger('click')
     await flushPromises()
+    wrapper!.findComponent({ name: 'DocumentHeader' }).vm.$emit('select', 'mode:live')
+    await flushPromises()
     const editor = wrapper!.findComponent(IuMarkdownEditor)
     editor.vm.$emit('update:modelValue', '# Unsaved parent file')
     await flushPromises()
