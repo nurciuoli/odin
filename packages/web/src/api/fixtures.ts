@@ -1128,6 +1128,62 @@ export function createFixtures(now: number = Date.now()): Fixtures {
       at: ago(7 * DAY),
     },
     {
+      kind: 'mcp',
+      id: 'docs',
+      name: 'docs',
+      description: 'Search the product docs.',
+      files: {
+        'docs.json':
+          '{\n  "name": "docs",\n  "description": "Search the product docs.",\n  "type": "http",\n  "url": "https://mcp.example.com/docs",\n  "oauth": {\n    "scope": "read"\n  }\n}',
+      },
+      meta: { type: 'http', url: 'https://mcp.example.com/docs', oauth: { scope: 'read' } },
+      at: ago(5 * DAY),
+    },
+    {
+      kind: 'mcp',
+      id: 'linear',
+      name: 'linear',
+      description: 'Issues and projects.',
+      files: {
+        'linear.json':
+          '{\n  "name": "linear",\n  "description": "Issues and projects.",\n  "type": "http",\n  "url": "https://mcp.example.com/linear",\n  "oauth": {}\n}',
+      },
+      meta: { type: 'http', url: 'https://mcp.example.com/linear', oauth: {} },
+      at: ago(4 * DAY),
+    },
+    {
+      kind: 'mcp',
+      id: 'github',
+      name: 'github',
+      description: 'GitHub API with a personal token.',
+      files: {
+        'github.json':
+          '{\n  "name": "github",\n  "description": "GitHub API with a personal token.",\n  "type": "http",\n  "url": "https://mcp.example.com/github",\n  "headers": {\n    "Authorization": "Bearer ${secret:GITHUB_TOKEN}"\n  }\n}',
+      },
+      meta: {
+        type: 'http',
+        url: 'https://mcp.example.com/github',
+        headers: { Authorization: 'Bearer ${secret:GITHUB_TOKEN}' },
+      },
+      at: ago(3 * DAY),
+    },
+    {
+      kind: 'mcp',
+      id: 'internal',
+      name: 'internal',
+      description: 'Internal service behind an API key.',
+      files: {
+        'internal.json':
+          '{\n  "name": "internal",\n  "description": "Internal service behind an API key.",\n  "type": "http",\n  "url": "https://mcp.internal.example.com/mcp",\n  "headers": {\n    "X-Api-Key": "${secret:INTERNAL_KEY}"\n  }\n}',
+      },
+      meta: {
+        type: 'http',
+        url: 'https://mcp.internal.example.com/mcp',
+        headers: { 'X-Api-Key': '${secret:INTERNAL_KEY}' },
+      },
+      at: ago(2 * DAY),
+    },
+    {
       kind: 'settings',
       id: 'safe-node',
       name: 'Safe Node defaults',

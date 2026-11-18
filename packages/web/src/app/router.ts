@@ -105,6 +105,12 @@ export const routes: RouteRecordRaw[] = [
     component: () => import('@/screens/library/AssetScreen.vue'),
   },
   {
+    path: '/mcp',
+    name: 'mcp',
+    meta: { crumb: 'MCP servers' },
+    component: () => import('@/screens/mcp/McpScreen.vue'),
+  },
+  {
     path: '/compare',
     name: 'compare',
     meta: { crumb: 'Compare' },

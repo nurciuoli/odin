@@ -16,6 +16,7 @@ import type {
   InstallRequest,
   InstallResult,
   LibraryAsset,
+  McpOAuthStatus,
   MetricsQuery,
   MetricsRow,
   MessageQueue,
@@ -25,6 +26,9 @@ import type {
   ProjectBranch,
   ProjectDetail,
   ProjectFolders,
+  SecretInfo,
+  SecretsResponse,
+  StartMcpOAuthResponse,
   ProjectSummary,
   Session,
   SessionDetail,
@@ -174,6 +178,16 @@ export interface Api {
   install(project: string, req: InstallRequest): Promise<InstallResult>
   /** The asset's files as they are in the project now (drift diff), or 404. */
   getProjectAssetFiles(project: string, kind: AssetKind, id: string): Promise<AssetFiles>
+
+  // secrets and MCP sign-in
+  listSecrets(): Promise<SecretsResponse>
+  /** Creates or replaces. The value is never returned. */
+  putSecret(name: string, value: string): Promise<SecretInfo>
+  deleteSecret(name: string): Promise<void>
+  getMcpOAuth(id: string): Promise<McpOAuthStatus>
+  /** `origin` is this page's own origin; the sign-in returns to it. */
+  startMcpOAuth(id: string, origin: string): Promise<StartMcpOAuthResponse>
+  disconnectMcpOAuth(id: string): Promise<void>
 
   // sync
   syncProject(name: string): Promise<void>

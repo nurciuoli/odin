@@ -34,6 +34,7 @@ import {
   promptVariables,
 } from '@odin/shared/library'
 import { PROJECT_NAME_PATTERN } from '@odin/shared/labels'
+import { SECRET_NAME_PATTERN, secretRefs } from '@odin/shared/library'
 import { normaliseModel } from '@odin/shared/pricing'
 import { applyHarnessEvent, toolResult } from '@odin/shared/transcript'
 import { emptyMetrics, LOW_CONFIDENCE_N, sessionBranch, slugify } from '@odin/shared/session'
@@ -347,6 +348,30 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
   const projectOf = (name: string) =>
     db.projects.find(p => p.name === name) ?? notFound(`project ${name}`)
   const sessionOf = (id: string) => db.sessions.find(s => s.id === id) ?? notFound(`session ${id}`)
+  // vault and MCP sign-in, kept in memory
+  const HOUR_MS = 3_600_000
+  const fromNow = (ms: number) => new Date(Date.now() + ms).toISOString()
+  const secrets = new Map<string, { createdAt: string; updatedAt: string }>([
+    ['GITHUB_TOKEN', { createdAt: fromNow(-72 * HOUR_MS), updatedAt: fromNow(-24 * HOUR_MS) }],
+  ])
+  const signedIn = new Set<string>(['docs'])
+  const secretUsers = () => {
+    const users = new Map<string, string[]>()
+    for (const a of db.library.filter(x => x.kind === 'mcp' && !x.error)) {
+      for (const name of new Set(secretRefs(JSON.stringify(a.meta)))) {
+        users.set(name, [...(users.get(name) ?? []), a.id])
+      }
+    }
+    return users
+  }
+  const oauthServer = (id: string) => {
+    const a = db.library.find(x => x.kind === 'mcp' && x.id === id)
+    if (!a) return notFound(`mcp ${id}`)
+    if (!(a.meta as { oauth?: unknown }).oauth)
+      throw new ApiRequestError(400, `MCP server ${id} has no oauth setting`)
+    return a
+  }
+
   const assetOf = (kind: AssetKind, id: string) =>
     db.library.find(a => a.kind === kind && a.id === id) ?? notFound(`${kind} ${id}`)
 
@@ -1453,6 +1478,53 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
         emit({ type: 'library.updated', kind, id })
       }),
     rescanLibrary: () => respond(() => undefined),
+    listSecrets: () =>
+      respond(() => {
+        const users = secretUsers()
+        return {
+          secrets: [...secrets]
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([name, t]) => ({ name, ...t, usedBy: users.get(name) ?? [] })),
+          missing: [...users]
+            .filter(([name]) => !secrets.has(name))
+            .map(([name, usedBy]) => ({ name, usedBy })),
+        }
+      }),
+    putSecret: (name, value) =>
+      respond(() => {
+        if (!SECRET_NAME_PATTERN.test(name)) throw new ApiRequestError(400, 'bad secret name')
+        if (!value) throw new ApiRequestError(400, 'value must be a non-empty string')
+        const now = new Date().toISOString()
+        secrets.set(name, { createdAt: secrets.get(name)?.createdAt ?? now, updatedAt: now })
+        return { name, ...secrets.get(name)!, usedBy: secretUsers().get(name) ?? [] }
+      }),
+    deleteSecret: name =>
+      respond(() => {
+        if (!secrets.delete(name)) notFound(`secret ${name}`)
+      }),
+    getMcpOAuth: id =>
+      respond(() => {
+        oauthServer(id)
+        const on = signedIn.has(id)
+        return {
+          id,
+          state: on ? 'connected' : 'needs-sign-in',
+          issuer: on ? 'https://auth.example.com' : null,
+          scope: on ? 'read' : null,
+          expiresAt: on ? fromNow(HOUR_MS) : null,
+        }
+      }),
+    startMcpOAuth: (id, origin) =>
+      respond(() => {
+        oauthServer(id)
+        setTimeout(() => signedIn.add(id), 1500) // the "browser" finishes a moment later
+        return { authorizationUrl: `${origin}/mock-sign-in?server=${encodeURIComponent(id)}` }
+      }),
+    disconnectMcpOAuth: id =>
+      respond(() => {
+        oauthServer(id)
+        signedIn.delete(id)
+      }),
     listInstallations: project =>
       respond(
         () => (
