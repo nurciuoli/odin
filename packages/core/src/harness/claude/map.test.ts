@@ -168,7 +168,16 @@ test("user messages the driver sent are not echoed; replays and synthetic ones a
 });
 
 test("unknown message types and stream events without a message are ignored", () => {
-  assert.deepEqual(run([{ type: "active_goal", value: null }, { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "x" } }, parent_tool_use_id: null }]), []);
+  assert.deepEqual(run([{ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "x" } }, parent_tool_use_id: null }]), []);
+});
+
+test("active_goal becomes a goal event, and null clears it", () => {
+  const value = { condition: "tests pass", iterations: 2, set_at: 1, tokens_at_start: 0, last_reason: "2 failing" };
+  assert.deepEqual(run([{ type: "active_goal", value }, { type: "active_goal", value: null }, { type: "active_goal", value: null }]), [
+    { type: "goal", goal: { condition: "tests pass", iterations: 2, lastReason: "2 failing" } },
+    { type: "goal", goal: null },
+  ]);
+  assert.deepEqual(run([{ type: "active_goal", value: { iterations: 1 } }]), []);
 });
 
 test("usage: a resumed or forked process reports each turn's own usage, whatever totals the CLI restored", () => {

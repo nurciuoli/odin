@@ -22,6 +22,7 @@ import type {
 import {
   taskKey,
   type PermissionRequest,
+  type SessionGoal,
   type TranscriptEntry,
   type TaskActivity,
 } from '@odin/shared/harness'
@@ -37,6 +38,7 @@ export interface Fixtures {
   transcripts: Record<string, TranscriptEntry[]>
   pending: Record<string, PermissionRequest[]>
   todos: Record<string, Todo[]>
+  goals: Record<string, SessionGoal | null>
   library: LibraryAsset[]
   /** Current files per asset, keyed `<kind>/<id>`. */
   libraryFiles: Record<string, AssetFiles>
@@ -1704,6 +1706,7 @@ export function createFixtures(now: number = Date.now()): Fixtures {
     transcripts,
     pending,
     todos,
+    goals: {},
     library,
     libraryFiles,
     libraryVersions,
