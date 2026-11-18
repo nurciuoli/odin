@@ -125,11 +125,8 @@ export interface SessionsService extends Closeable {
   detail(id: string): Promise<SessionDetail | null>;
   /** Looks up a task in this parent's transcript before fetching read-only child history. */
   taskMessages(id: string, taskKey: string): Promise<TaskHistory>;
-  /**
-   * Plans the launch (services.launch), makes the worktree, starts the harness, returns once the record exists.
-   * `options.id` picks the new session's id (coordination registers a role under it before the harness starts).
-   */
-  start(req: StartSessionRequest, options?: { id?: string }): Promise<Session>;
+  /** Plans the launch (services.launch), makes the worktree, starts the harness, returns once the record exists. */
+  start(req: StartSessionRequest): Promise<Session>;
   /** Sends a message; resumes the harness session first when no live handle exists (external sessions too). */
   send(id: string, message: UserMessage): Promise<Session>;
   queue(id: string): MessageQueue;
@@ -283,30 +280,9 @@ export interface SettingsService {
   savePricing(pricing: Record<string, ModelPrice>): void;
 }
 
-// ── coordination (src/coordination; docs/plans/project-coordinator.md) ────
-
-export interface CoordinationService extends Closeable {
-  /** Starts a coordinator session in the project. 404 unknown project; the rest as sessions.start. */
-  startCoordinator(project: string, req: import("@odin/shared/api").StartCoordinatorRequest): Promise<Session>;
-  /** Coordinators of a project and their threads, newest first. 404 unknown project. */
-  threads(project: string): import("@odin/shared/api").ProjectThreads;
-  brief(project: string): import("@odin/shared/api").ProjectBrief;
-  /** 400 over PROJECT_BRIEF_MAX characters. */
-  updateBrief(project: string, instructions: string): import("@odin/shared/api").ProjectBrief;
-  readMemory(project: string, path: string): { path: string; content: string };
-  /** Create or replace a memory file (relative `.md` path, ≤ 64 KB, ≤ 200 files). */
-  writeMemory(project: string, path: string, content: string): import("@odin/shared/api").ProjectBrief;
-  deleteMemory(project: string, path: string): void;
-  /** Coordinator tools for a coordinator, memory tools for a thread, none otherwise. Sessions calls it at start/resume. */
-  hostTools(sessionId: string): HostTool[];
-  /** Role text, project brief and MEMORY.md for a coordinator or thread; null otherwise. Read at every start/resume. */
-  instructions(sessionId: string): string | null;
-}
-
 // ── wiring ─────────────────────────────────────────────────────────────────
 
 export interface Services {
-  coordination: CoordinationService;
   notebooks: NotebooksService;
   files: FilesService;
   projects: ProjectsService;
@@ -321,7 +297,7 @@ export interface Services {
 }
 
 export type ServiceName = keyof Services;
-export const SERVICE_NAMES: ServiceName[] = ["coordination", "notebooks", "files", "projects", "sessions", "launch", "artifacts", "library", "sync", "ingest", "metrics", "settings"];
+export const SERVICE_NAMES: ServiceName[] = ["notebooks", "files", "projects", "sessions", "launch", "artifacts", "library", "sync", "ingest", "metrics", "settings"];
 
 export interface NotebooksService extends Closeable {
   widgetState(kernelId: string): import("@odin/shared/notebooks").NotebookComm[];
