@@ -1,0 +1,1 @@
+- The project Files tab previews the selected file in a side panel: Markdown renders, CSV opens as a table, everything else shows as code. Previous and Next buttons (or the arrow keys) step through the files on the map, and Escape closes the panel.

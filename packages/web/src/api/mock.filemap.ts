@@ -53,6 +53,21 @@ export const MOCK_FILE_MAP: ProjectFileMap = {
 /** Placeholder file contents for the mock API: a header and a few lines, sized loosely by the file's line count. */
 export function mockFileText(path: string): string {
   const file = MOCK_FILE_MAP.files.find(f => f.path === path)
+  if (path.endsWith('.md'))
+    return [
+      `# ${path.split('/').at(-1)}`,
+      '',
+      'Sample notes from the mock API, with **bold**, `inline code` and a list:',
+      '',
+      '- Run `yarn dev:web` for the UI',
+      '- Open a file on the map to preview it',
+      '- Step through files with the arrow keys',
+      '',
+      '## Next steps',
+      '',
+      'Pick another file to keep browsing.',
+      '',
+    ].join('\n')
   const n = Math.min(file?.lines ?? 8, 40)
   const body = Array.from({ length: n }, (_, i) => `line ${i + 1}`)
   return [`// ${path}`, '// (sample contents from the mock API)', '', ...body, ''].join('\n')

@@ -639,6 +639,7 @@ function onDeleted() {
                 :state="session.state"
                 :slash-commands="view.detail.slashCommands"
                 :context="context"
+                :usage="{ costUsd: session.metrics.costUsd, tokens: session.metrics.tokens }"
                 :replaced="session.pending.length > 0"
                 :replacement-key="session.pending[0]?.id ?? null"
                 :queued="session.messageQueue.messages.filter(m => m.state === 'queued').length"

@@ -9,7 +9,15 @@ const SOURCE_GROUPS: Record<SlashCommand['source'], string> = {
   library: 'Library',
 }
 
-export type OdinCommandName = 'clear' | 'model' | 'rename' | 'btw' | 'send' | 'effort'
+export type OdinCommandName =
+  | 'clear'
+  | 'model'
+  | 'rename'
+  | 'btw'
+  | 'send'
+  | 'effort'
+  | 'status'
+  | 'cost'
 
 /** Odin's commands. `/model` only where the screen has a model menu. */
 export function odinCommands(opts: { model: boolean; effort?: string[] }): SlashCommand[] {
@@ -38,6 +46,18 @@ export function odinCommands(opts: { model: boolean; effort?: string[] }): Slash
       description: 'Send now and interrupt the current turn',
       argumentHint: '<message>',
       aliases: ['now'],
+      source: 'odin',
+    },
+    {
+      name: 'status',
+      description: 'Show the harness, model, effort and permission mode',
+      argumentHint: '',
+      source: 'odin',
+    },
+    {
+      name: 'cost',
+      description: 'Show this session’s token usage and cost',
+      argumentHint: '',
       source: 'odin',
     },
   ]
