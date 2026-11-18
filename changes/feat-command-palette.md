@@ -1,0 +1,1 @@
+- The ⌘K palette searches sessions, projects, files and commands together with fuzzy matching, shows recent items, and can start a new session from whatever you typed. Type `>` for commands, `#` for projects or `/` for files. It also offers "New session on" each installed harness and, on a session, "Switch model".

@@ -22,6 +22,7 @@ import type {
 import {
   taskKey,
   type PermissionRequest,
+  type SessionGoal,
   type TranscriptEntry,
   type TaskActivity,
 } from '@odin/shared/harness'
@@ -37,6 +38,7 @@ export interface Fixtures {
   transcripts: Record<string, TranscriptEntry[]>
   pending: Record<string, PermissionRequest[]>
   todos: Record<string, Todo[]>
+  goals: Record<string, SessionGoal | null>
   library: LibraryAsset[]
   /** Current files per asset, keyed `<kind>/<id>`. */
   libraryFiles: Record<string, AssetFiles>
@@ -1509,7 +1511,7 @@ export function createFixtures(now: number = Date.now()): Fixtures {
       kind: 'agent',
       label: 'Review session accessibility',
       state: 'running',
-      toolUseId: null,
+      toolUseId: 'fixture-review-tool',
       parentToolUseId: null,
       childSessionId: 'fixture-child-review',
       startedAt: ago(2 * MIN),
@@ -1547,6 +1549,36 @@ export function createFixtures(now: number = Date.now()): Fixtures {
       output: { ok: false, text: 'Missing fixture dependency\n', truncated: false },
     },
   ]
+  // work the review agent started itself, so the task graph has a branch off a branch
+  activityFixtures.push(
+    {
+      taskId: 'fixture-focus-search',
+      runId: '1',
+      kind: 'agent',
+      label: 'Find focus handling',
+      state: 'completed',
+      toolUseId: null,
+      parentToolUseId: 'fixture-review-tool',
+      childSessionId: null,
+      startedAt: ago(90 * 1000),
+      completedAt: ago(40 * 1000),
+      observedAt: ago(40 * 1000),
+      summary: '12 matches in 4 files.',
+    },
+    {
+      taskId: 'fixture-axe',
+      runId: '1',
+      kind: 'command',
+      label: 'npx axe-core scan',
+      state: 'running',
+      toolUseId: null,
+      parentToolUseId: 'fixture-review-tool',
+      childSessionId: null,
+      startedAt: ago(30 * 1000),
+      completedAt: null,
+      observedAt: ago(0),
+    },
+  )
   for (const task of activityFixtures)
     transcripts[s.running]!.push({
       kind: 'task',
@@ -1724,6 +1756,13 @@ export function createFixtures(now: number = Date.now()): Fixtures {
     transcripts,
     pending,
     todos,
+    goals: {
+      [s.idle]: {
+        condition: 'History search stays under 100 ms with 50k sessions',
+        iterations: 2,
+        lastReason: 'Still 340 ms at 50k rows',
+      },
+    },
     library,
     libraryFiles,
     libraryVersions,

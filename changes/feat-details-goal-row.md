@@ -1,0 +1,1 @@
+- The session Details panel shows the session's goal, with how many times it was checked and why the last check wasn't met yet.

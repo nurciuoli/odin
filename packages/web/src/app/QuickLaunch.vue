@@ -10,6 +10,7 @@ import NewSessionForm from '@/screens/shared/NewSessionForm.vue'
 import { useSessions } from './sessions'
 
 const open = defineModel<boolean>('open', { required: true })
+defineProps<{ harness?: string }>()
 const route = useRoute()
 const api = useApi()
 const sessions = useSessions()
@@ -53,6 +54,7 @@ watch(
     <NewSessionForm
       v-if="ready"
       :project="project"
+      :harness="harness"
       autofocus
       background-default
       @started="open = false"

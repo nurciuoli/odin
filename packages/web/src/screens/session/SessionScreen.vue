@@ -787,6 +787,8 @@ function onDeleted() {
             <SessionSide
               :session="session"
               :tasks="activityItems"
+              :task-activity="activity"
+              :now="now"
               @updated="setRecord"
               @open-file="openFile"
               @open-artifact="openArtifact"

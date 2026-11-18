@@ -523,6 +523,9 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
       case 'todos':
         db.todos[sessionId] = event.todos
         break
+      case 'goal':
+        db.goals[sessionId] = event.goal
+        break
       case 'usage': {
         const m = s.metrics
         const prev = m.tokensByModel[event.model] ?? {
@@ -1210,6 +1213,7 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
           streaming: [...(streamingBySession.get(id) ?? [])],
           pending: db.pending[id] ?? [],
           todos: db.todos[id] ?? [],
+          goal: db.goals[id] ?? null,
           artifacts: db.artifacts.filter(a => a.sessionId === id),
           live: s.state === 'running' || s.state === 'waiting',
           slashCommands: MOCK_SLASH_COMMANDS,
