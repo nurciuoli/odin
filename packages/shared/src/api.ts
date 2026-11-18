@@ -43,6 +43,18 @@ export interface ProjectFileMap {
   /** True when the folder had more files than Odin maps. */
   truncated: boolean;
 }
+/** One entry in a project's file trash (kept 7 days under <home>/trash/<project>/). */
+export interface FileTrashEntry {
+  id: string;
+  /** Where it was, relative to the project folder. */
+  path: string;
+  kind: "file" | "directory";
+  size: number | null;
+  trashedAt: string;
+}
+export interface FileMoveResult {
+  moved: { from: string; to: string }[];
+}
 export interface SessionTextFile {
   path: string;
   content: string;

@@ -372,6 +372,19 @@ export interface FilesService {
   projectMap(project: string): import("@odin/shared/api").ProjectFileMap;
   /** Read-only: a text file in a registered project's folder, with the session viewer's confinement and limits. */
   readProject(project: string, path: string): import("@odin/shared/api").SessionTextFile;
+  /** Renames a file or folder in place (`name` is one path segment). 409 when the name is taken or a notebook uses it. */
+  renameProject(project: string, path: string, name: string): { path: string };
+  /** Moves files or folders into a folder of the project ("" is the root). 409 on a name clash, 400 into itself. */
+  moveProject(project: string, paths: string[], to: string): import("@odin/shared/api").FileMoveResult;
+  /** Copies a file next to itself as "<name> copy<ext>". */
+  duplicateProject(project: string, path: string): { path: string };
+  /** Moves files or folders to the project's trash (<home>/trash/<project>/, kept 7 days). Never unlinks. */
+  trashProject(project: string, paths: string[]): import("@odin/shared/api").FileTrashEntry[];
+  listTrash(project: string): import("@odin/shared/api").FileTrashEntry[];
+  /** Puts a trashed item back where it was. 409 when something is there now. */
+  restoreTrash(project: string, id: string): { path: string };
+  /** Deletes one trashed item for good, or the whole trash when `id` is omitted. */
+  purgeTrash(project: string, id?: string): void;
 }
 
 /** Each module's routes: `register(router, deps, services)`. */
