@@ -76,6 +76,7 @@ const busy = ref(false)
 const tray = ref<'variables' | null>(null)
 /** A run was refused for want of Python. */
 const noEnvironment = ref(false)
+const settingUp = ref(false)
 /** What detection found, for the kernel menu. Nothing is shown for it until the menu is opened. */
 const detected = ref<NotebookEnvironment | null>(null)
 const variables = ref<NotebookVariable[]>([])
@@ -173,8 +174,9 @@ const cellElement = (id: string) =>
 // The cell at the top of the view is the current one.
 function trackActive() {
   const box = cellsEl.value
-  if (!box) return
-  const top = box.getBoundingClientRect().top + 48
+  const scroller = root.value
+  if (!box || !scroller) return
+  const top = scroller.getBoundingClientRect().top + 100
   let current = ''
   for (const el of box.querySelectorAll<HTMLElement>('[data-cell]')) {
     if (el.getBoundingClientRect().top <= top) current = el.dataset.cell ?? current
@@ -270,7 +272,11 @@ const kernelMenu = computed<MenuItem[]>(() => {
       description: found.interpreter,
       disabled: busy.value,
     })
-  items.push({ id: 'env:setup', label: 'Set up Python environment…' })
+  items.push({
+    id: 'env:setup',
+    label: settingUp.value ? 'Setting up Python…' : 'Set up Python',
+    disabled: busy.value,
+  })
   items.push(
     { type: 'separator' },
     { id: 'interrupt', label: 'Interrupt kernel', icon: 'pause', disabled: busy.value },
@@ -296,14 +302,18 @@ async function load() {
   }
 }
 /** Looks for Python when the notebook opens; if the notebook has none and one is found, it takes it. No banner. */
-async function detect(at: KernelLocation = location(), adopt = true) {
+async function detect(adopt = true) {
   const k = kernel.value
   if (!k) return
   try {
-    const found = await api.notebookEnvironment(props.session.project, at)
+    // A notebook that already runs somewhere keeps to it; otherwise the server picks where Python can run.
+    const found = await api.notebookEnvironment(
+      props.session.project,
+      k.interpreter ? location() : undefined,
+    )
     detected.value = found
     if (adopt && !k.interpreter && found.interpreter && !found.needsSetup)
-      await configure({ interpreter: found.interpreter, location: at }, false)
+      await configure({ interpreter: found.interpreter, location: found.location }, false)
   } catch {
     // Detection is a convenience: without it the chip says "Select kernel" and the menu still works.
   }
@@ -429,6 +439,25 @@ async function configure(
   await reload()
   if (announce) message.value = 'Python environment set'
 }
+/** One click: build the environment (the server picks where Python can run), then use it. */
+async function setupEnvironment() {
+  const k = draft.value?.base.kernel
+  if (!k) return
+  settingUp.value = true
+  try {
+    await action(async () => {
+      const found = await api.setupNotebookEnvironment(
+        props.session.project,
+        k.interpreter ? location() : undefined,
+      )
+      detected.value = found
+      if (found.interpreter)
+        await configure({ interpreter: found.interpreter, location: found.location })
+    })
+  } finally {
+    settingUp.value = false
+  }
+}
 async function inspect() {
   tray.value = 'variables'
   await action(async () => {
@@ -506,7 +535,8 @@ function onMenu(id: string) {
   if (id === 'code' || id === 'markdown') addCell(id)
 }
 async function onKernelMenu(id: string) {
-  if (id === 'kernel' || id === 'env:setup') emit('open-environment')
+  if (id === 'kernel') emit('open-environment')
+  else if (id === 'env:setup') await setupEnvironment()
   else if (id === 'variables') await inspect()
   else if (id === 'interrupt') await interrupt()
   else if (id === 'restart') await restart()
@@ -517,12 +547,13 @@ async function onKernelMenu(id: string) {
     })
   else if (id === 'env:use' && detected.value?.interpreter)
     await action(() =>
-      configure({ interpreter: detected.value!.interpreter!, location: location() }),
+      configure({ interpreter: detected.value!.interpreter!, location: detected.value!.location }),
     )
 }
 
 const status = computed(() => {
   if (phase.value === 'loading') return 'Opening'
+  if (settingUp.value) return 'Setting up Python, this can take a minute'
   if (busy.value) return 'Working'
   if (draft.value?.remote) return 'Changed elsewhere'
   if (dirty.value) return 'Unsaved changes'
@@ -600,61 +631,55 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section ref="root" class="nb-doc" :aria-label="fileName">
-    <DocumentHeader
-      :name="fileName"
-      icon="terminal"
-      :status="status"
-      :menu="menu"
-      @select="onMenu"
-      @close="emit('close')"
-    >
-      <template #actions>
-        <IuMenu v-if="phase === 'ready' && kernel" :items="kernelMenu" @select="onKernelMenu">
-          <template #trigger="{ toggle, open }">
-            <IuButton
-              class="nb-chip"
-              :class="{ 'nb-chip--none': needsEnvironment }"
-              size="sm"
-              variant="secondary"
-              aria-haspopup="menu"
-              :aria-expanded="open"
-              :aria-label="chipTitle"
-              :title="chipTitle"
-              @click="toggle"
-            >
-              <template #icon>
-                <IuStatusDot :status="chipDot" :size="8" decorative />
-              </template>
-              <span class="nb-chip__label">{{ chipLabel }}</span>
-              <template #trailing><IuIcon name="chevronDown" :size="14" /></template>
-            </IuButton>
-          </template>
-        </IuMenu>
-        <IuButton
-          v-if="phase === 'ready' && (dirty || draft?.remote)"
-          size="sm"
-          variant="primary"
-          :disabled="busy || !!draft?.remote"
-          @click="save"
-          >Save</IuButton
-        >
-      </template>
-    </DocumentHeader>
-
-    <div v-if="phase === 'loading'" class="nb-doc__state" aria-busy="true">
-      <IuSkeleton shape="text" :rows="6" />
-    </div>
-    <div v-else-if="phase === 'error'" class="nb-doc__state">
-      <IuErrorState
-        title="Couldn’t open this notebook"
-        :body="loadError"
-        :trace-id="`GET notebooks/${kernelId}`"
-        @retry="load"
-      />
-    </div>
-    <template v-else-if="draft && kernel">
-      <div ref="toolbar" class="nb-doc__toolbar" role="toolbar" aria-label="Notebook actions">
+  <section ref="root" class="nb-doc" :aria-label="fileName" @scroll.passive="trackActive">
+    <div class="nb-doc__chrome">
+      <DocumentHeader
+        :name="fileName"
+        icon="terminal"
+        :status="status"
+        :menu="menu"
+        @select="onMenu"
+        @close="emit('close')"
+      >
+        <template #actions>
+          <IuMenu v-if="phase === 'ready' && kernel" :items="kernelMenu" @select="onKernelMenu">
+            <template #trigger="{ toggle, open }">
+              <IuButton
+                class="nb-chip"
+                :class="{ 'nb-chip--none': needsEnvironment }"
+                size="sm"
+                variant="secondary"
+                aria-haspopup="menu"
+                :aria-expanded="open"
+                :aria-label="chipTitle"
+                :title="chipTitle"
+                @click="toggle"
+              >
+                <template #icon>
+                  <IuStatusDot :status="chipDot" :size="8" decorative />
+                </template>
+                <span class="nb-chip__label">{{ chipLabel }}</span>
+                <template #trailing><IuIcon name="chevronDown" :size="14" /></template>
+              </IuButton>
+            </template>
+          </IuMenu>
+          <IuButton
+            v-if="phase === 'ready' && (dirty || draft?.remote)"
+            size="sm"
+            variant="primary"
+            :disabled="busy || !!draft?.remote"
+            @click="save"
+            >Save</IuButton
+          >
+        </template>
+      </DocumentHeader>
+      <div
+        v-if="phase === 'ready' && draft && kernel"
+        ref="toolbar"
+        class="nb-doc__toolbar"
+        role="toolbar"
+        aria-label="Notebook actions"
+      >
         <IuButton
           v-for="tool in visibleTools"
           :key="tool.id"
@@ -682,6 +707,20 @@ onBeforeUnmount(() => {
           </template>
         </IuMenu>
       </div>
+    </div>
+
+    <div v-if="phase === 'loading'" class="nb-doc__state" aria-busy="true">
+      <IuSkeleton shape="text" :rows="6" />
+    </div>
+    <div v-else-if="phase === 'error'" class="nb-doc__state">
+      <IuErrorState
+        title="Couldn’t open this notebook"
+        :body="loadError"
+        :trace-id="`GET notebooks/${kernelId}`"
+        @retry="load"
+      />
+    </div>
+    <template v-else-if="draft && kernel">
       <!-- the same buttons, unseen, so their widths can be read -->
       <div ref="measure" class="nb-doc__measure" aria-hidden="true" inert>
         <IuButton v-for="tool in tools" :key="tool.id" data-tool size="sm" variant="ghost">
@@ -802,7 +841,7 @@ onBeforeUnmount(() => {
             <span class="nb-doc__outline-text">{{ entry.text }}</span>
           </button>
         </nav>
-        <div ref="cells" class="nb-doc__cells" @scroll.passive="trackActive">
+        <div ref="cells" class="nb-doc__cells">
           <NotebookCell
             v-for="(cell, index) in draft.cells"
             :key="cell.id"
@@ -819,7 +858,7 @@ onBeforeUnmount(() => {
             :error="cellErrors[cell.id]"
             :note="
               needsEnvironment && cell.id === firstCodeId
-                ? 'No Python found. Choose a kernel above to run cells.'
+                ? 'No Python yet. Use the kernel menu above to set it up.'
                 : ''
             "
             @run="run(cell.id)"
@@ -843,12 +882,24 @@ onBeforeUnmount(() => {
 </template>
 
 <style>
+/* The document is the one scroller (native scrolling); the header and toolbar stay put by sticking, not by living
+   outside a nested scroll box. */
 .nb-doc {
   display: flex;
   flex: 1;
   flex-direction: column;
   min-height: 0;
   min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: auto;
+}
+.nb-doc__chrome {
+  flex: none;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--iu-surface);
 }
 .nb-doc__state {
   padding: 16px;
@@ -932,9 +983,8 @@ onBeforeUnmount(() => {
   color: var(--iu-text-muted);
 }
 .nb-doc__main {
-  flex: 1;
+  flex: none;
   display: flex;
-  min-height: 0;
   min-width: 0;
 }
 .nb-doc__main--outline {
@@ -944,10 +994,12 @@ onBeforeUnmount(() => {
   padding-left: 12px;
 }
 .nb-doc__outline {
+  position: sticky;
+  top: 100px;
   align-self: start;
   display: flex;
   flex-direction: column;
-  max-height: calc(100% - 24px);
+  max-height: calc(100vh - 140px);
   margin-top: 12px;
   padding: 4px 0;
   overflow: auto;
@@ -996,12 +1048,10 @@ onBeforeUnmount(() => {
 }
 .nb-doc__cells {
   flex: 1;
-  min-height: 0;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  overflow: auto;
   padding: 16px 20px 28px;
 }
 .nb-doc__hint {

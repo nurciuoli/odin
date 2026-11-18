@@ -681,7 +681,10 @@ Widget callbacks execute Python and keep kernels busy until the protocol reports
 
 Environment detect/setup use POST `/api/projects/:name/notebook-environment/{detect,setup}`. Setup is explicit,
 creates the Odin-managed Jupyter environment, adds only ipykernel to an existing project environment, or creates
-a uv-managed .venv with the analysis baseline. Variable/dataframe inspection is explicit Python execution via
+a .venv with the analysis baseline (built with uv when installed, else `python -m venv` and pip, so only Python is
+required). `location` in the body is optional: when omitted the server picks where Python runs (this machine, or on
+Windows the first WSL distro with Python when the machine has none) and returns it as `location`. A second setup
+request while one runs joins it. Variable/dataframe inspection is explicit Python execution via
 POST `/api/notebooks/:id/{variables,dataframe}`. GET `/api/notebooks/:id/widgets` returns bounded live widget
 models; POST `/api/notebooks/:id/comm` sends a validated callback.
 

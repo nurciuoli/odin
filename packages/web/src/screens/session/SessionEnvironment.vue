@@ -1,20 +1,16 @@
 <script setup lang="ts">
-// The panel's Environment tab: the project's Python and Jupyter setup. What was detected (and a way to look again or
-// set one up), where Python runs, and the project's notebook kernels with their state. A notebook's kernel chip points
-// here for anything beyond picking up a detected interpreter.
+// The panel's Environment tab: is Python ready for notebooks, and one button to make it so. Where Python runs (this
+// machine, or WSL on Windows) is found by the server, not asked of the person. Below it, the project's notebook
+// kernels and their state.
 import { computed, onMounted, ref } from 'vue'
 import type { SessionDetail } from '@odin/shared/api'
-import type { KernelLocation, NotebookEnvironment, NotebookKernel } from '@odin/shared/notebooks'
+import type { NotebookEnvironment, NotebookKernel } from '@odin/shared/notebooks'
 import { useApi } from '@/api'
-import { getDesktop } from '@/app/desktop'
 import { IuButton } from '@/components/Button'
-import { IuField } from '@/components/Fields'
 import { IuPropertyList, type PropertyItem } from '@/components/PropertyList'
-import { IuSegmented } from '@/components/Segmented'
 import { IuEmpty, IuErrorState, IuSkeleton } from '@/components/States'
 import { IuStatusDot } from '@/components/StatusDot'
 import type { Status } from '@/styles/status'
-import { wslAvailable } from './notebookLayout'
 
 const props = defineProps<{ session: SessionDetail }>()
 const api = useApi()
@@ -23,29 +19,26 @@ const phase = ref<'loading' | 'ready' | 'error'>('loading')
 const loadError = ref('')
 const environment = ref<NotebookEnvironment | null>(null)
 const kernels = ref<NotebookKernel[]>([])
-const where = ref<'native' | 'wsl'>('native')
-const distro = ref('')
 const busy = ref(false)
+const settingUp = ref(false)
 const error = ref('')
-const wslOption = wslAvailable(getDesktop()?.platform)
 
-const location = (): KernelLocation =>
-  where.value === 'wsl' ? { kind: 'wsl', distro: distro.value.trim() } : { kind: 'native' }
-const wslMissing = computed(() => where.value === 'wsl' && !distro.value.trim())
-const kindLabel: Record<NotebookEnvironment['kind'], string> = {
-  venv: 'venv',
-  uv: 'uv',
-  poetry: 'Poetry',
-  conda: 'Conda',
-  missing: 'None found',
-}
+const ready = computed(() => !!environment.value?.interpreter && !environment.value.needsSetup)
+const where = (found: NotebookEnvironment) =>
+  found.location.kind === 'wsl' ? `WSL (${found.location.distro})` : 'This computer'
+const summary = computed(() => {
+  const found = environment.value
+  if (!found) return ''
+  if (ready.value) return 'Python is ready for notebooks.'
+  if (found.interpreter) return 'Python was found. One more step makes it ready for notebooks.'
+  return 'No Python environment yet. Set one up and notebooks can run.'
+})
 const details = computed<PropertyItem[]>(() => {
   const found = environment.value
-  if (!found) return []
+  if (!found?.interpreter) return []
   return [
-    { label: 'Kind', value: kindLabel[found.kind] },
-    { label: 'Interpreter', value: found.interpreter ?? 'None', mono: true },
-    { label: 'Setup', value: found.needsSetup ? 'Required' : 'Ready' },
+    { label: 'Interpreter', value: found.interpreter, mono: true },
+    { label: 'Runs on', value: where(found) },
   ]
 })
 const kernelStatus = (k: NotebookKernel): Status =>
@@ -62,7 +55,7 @@ async function load() {
   phase.value = 'loading'
   try {
     const [found, list] = await Promise.all([
-      api.notebookEnvironment(props.session.project, location()),
+      api.notebookEnvironment(props.session.project),
       api.listNotebooks(props.session.project),
     ])
     environment.value = found
@@ -75,10 +68,6 @@ async function load() {
 }
 async function run(fn: () => Promise<void>) {
   if (busy.value) return
-  if (wslMissing.value) {
-    error.value = 'Enter the WSL distro to use.'
-    return
-  }
   busy.value = true
   error.value = ''
   try {
@@ -91,11 +80,16 @@ async function run(fn: () => Promise<void>) {
 }
 const detect = () =>
   run(async () => {
-    environment.value = await api.notebookEnvironment(props.session.project, location())
+    environment.value = await api.notebookEnvironment(props.session.project)
   })
 const setup = () =>
   run(async () => {
-    environment.value = await api.setupNotebookEnvironment(props.session.project, location())
+    settingUp.value = true
+    try {
+      environment.value = await api.setupNotebookEnvironment(props.session.project)
+    } finally {
+      settingUp.value = false
+    }
   })
 const stop = (kernel: NotebookKernel) =>
   run(async () => {
@@ -121,31 +115,24 @@ onMounted(load)
     <template v-else>
       <div class="session-env__block">
         <h3 class="session-env__title">Python environment</h3>
+        <p class="session-env__summary" :data-ready="ready" role="status">
+          <IuStatusDot :status="ready ? 'ok' : 'idle'" :size="8" decorative />
+          {{ settingUp ? 'Setting up Python. This can take a minute or two.' : summary }}
+        </p>
         <IuPropertyList :items="details" density="compact" label-width="96px" />
-        <div v-if="wslOption" class="session-env__where">
-          <IuSegmented
-            v-model="where"
-            label="Where Python runs"
-            :options="[
-              { value: 'native', label: 'Native' },
-              { value: 'wsl', label: 'WSL' },
-            ]"
-          />
-          <IuField
-            v-if="where === 'wsl'"
-            label="WSL distro"
-            size="sm"
-            :model-value="distro"
-            @update:model-value="distro = String($event)"
-          />
-        </div>
         <p v-if="error" class="session-env__error" role="alert">{{ error }}</p>
         <div class="session-env__actions">
-          <IuButton size="sm" variant="secondary" :disabled="busy" @click="detect"
-            >Detect again</IuButton
+          <IuButton
+            v-if="!ready"
+            size="sm"
+            variant="primary"
+            :disabled="busy"
+            :loading="settingUp"
+            @click="setup"
+            >{{ environment?.interpreter ? 'Finish setup' : 'Set up Python' }}</IuButton
           >
-          <IuButton size="sm" variant="ghost" :disabled="busy" @click="setup"
-            >Set up Python environment</IuButton
+          <IuButton size="sm" variant="ghost" :disabled="busy" @click="detect"
+            >Check again</IuButton
           >
         </div>
       </div>
@@ -199,7 +186,13 @@ onMounted(load)
   letter-spacing: var(--iu-tracking-caps);
   text-transform: uppercase;
 }
-.session-env__where,
+.session-env__summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--iu-font-size-12-5);
+}
 .session-env__actions {
   display: flex;
   flex-wrap: wrap;

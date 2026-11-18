@@ -81,7 +81,8 @@ const state = computed(() =>
     </div>
     <div class="nb-cell__body">
       <div class="nb-cell__meta">
-        <span>{{ cell.kind === 'code' ? 'Python' : 'Markdown' }}</span>
+        <!-- Code is the default and a rendered Markdown cell reads as prose, so only an open Markdown cell says what it is. -->
+        <span v-if="cell.kind === 'markdown' && editing" class="nb-cell__kind">Markdown</span>
         <span v-if="state" class="nb-cell__state">{{ state }}</span>
         <span class="nb-cell__tools">
           <IuButton

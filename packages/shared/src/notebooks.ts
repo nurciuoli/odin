@@ -39,6 +39,8 @@ export interface NotebookEnvironment {
   interpreter: string | null;
   managedHostPython: string;
   needsSetup: boolean;
+  /** Where this environment runs. Detection and setup choose it when the request names none. */
+  location: KernelLocation;
 }
 export type ExecutionState = "queued" | "running" | "completed" | "failed" | "interrupted";
 export interface NotebookExecution {
