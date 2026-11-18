@@ -13,6 +13,8 @@ import type {
   FileSearchResult,
   ImportPreview,
   ImportRequest,
+  FileMoveResult,
+  FileTrashEntry,
   ProjectFileMap,
   ForkSessionRequest,
   Installation,
@@ -133,6 +135,17 @@ export interface Api {
   getProjectFileMap(project: string): Promise<ProjectFileMap>
   /** A text file in the project folder (read-only; 413/415 for large or binary files). */
   readProjectFile(project: string, path: string): Promise<SessionTextFile>
+  /** Rename a file or folder in place (`name` is one segment). 409 when the name is taken. */
+  renameProjectFile(project: string, path: string, name: string): Promise<{ path: string }>
+  /** Move files or folders into a folder ("" is the project root). 409 on a name clash, nothing is overwritten. */
+  moveProjectFiles(project: string, paths: string[], to: string): Promise<FileMoveResult>
+  duplicateProjectFile(project: string, path: string): Promise<{ path: string }>
+  /** Move to the project's trash (kept 7 days); nothing is unlinked. */
+  trashProjectFiles(project: string, paths: string[]): Promise<FileTrashEntry[]>
+  listProjectTrash(project: string): Promise<FileTrashEntry[]>
+  restoreProjectTrash(project: string, id: string): Promise<{ path: string }>
+  /** Delete one trashed item for good, or the whole trash when `id` is omitted. */
+  purgeProjectTrash(project: string, id?: string): Promise<void>
   readSessionFile(id: string, path: string): Promise<SessionTextFile>
   /** Create-only: a new file in an existing folder of the session. 409 when the path exists. */
   createSessionFile(id: string, path: string, content?: string): Promise<SessionTextFile>

@@ -121,3 +121,34 @@ export function buildTree(name: string, files: ProjectMapFile[]): FileNode {
   }
   return root
 }
+
+/** Every folder of the tree as a path ('' is the project root), in tree order: the Move dialog's choices. */
+export function folderPaths(root: FileNode): string[] {
+  const out: string[] = []
+  const walk = (n: FileNode) => {
+    if (n.kind !== 'folder') return
+    out.push(n.id)
+    n.children?.forEach(walk)
+  }
+  walk(root)
+  return out
+}
+
+/** Folders `paths` can be moved into: not themselves, not inside a moved folder, not where they already are. */
+export function moveTargets(folders: string[], paths: string[]): string[] {
+  const parent = (p: string) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '')
+  return folders.filter(
+    f => !paths.every(p => parent(p) === f) && !paths.some(p => f === p || f.startsWith(`${p}/`)),
+  )
+}
+
+/** Why `name` can't be a file name, or '' when it can (the server checks again). */
+export function nameProblem(name: string): string {
+  const n = name.trim()
+  if (!n) return 'Enter a name'
+  if (n === '.' || n === '..' || n.toLowerCase() === '.git') return `"${n}" can't be used as a name`
+  if (/[\\/\0:*?"<>|]/.test(n)) return 'A name can’t contain / \\ : * ? " < > |'
+  if (/[. ]$/.test(n)) return 'A name can’t end with a dot or a space'
+  if (n.length > 200) return 'That name is too long'
+  return ''
+}
