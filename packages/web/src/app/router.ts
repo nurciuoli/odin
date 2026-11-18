@@ -104,6 +104,7 @@ export const routes: RouteRecordRaw[] = [
     props: true,
     component: () => import('@/screens/library/AssetScreen.vue'),
   },
+  { path: '/ux/:view', name: 'ux', component: () => import('@/screens/ux/UxSweep.vue') },
   {
     path: '/mcp',
     name: 'mcp',
