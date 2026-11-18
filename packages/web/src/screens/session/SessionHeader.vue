@@ -22,7 +22,7 @@ import { IuDialog } from '@/components/Modal'
 import { IuFlock } from '@/components/Spinner'
 import { useToast } from '@/components/Toast'
 import { statusIntent } from '@/styles/status'
-import { plural, SESSION_DISPLAY } from '@/screens/shared/format'
+import { needYouCount, SESSION_DISPLAY } from '@/screens/shared/format'
 import { useQuickAnswer } from '@/screens/shared/useQuickAnswer'
 import SaveToLibraryModal from '@/screens/library/SaveToLibraryModal.vue'
 import ForkModal from './ForkModal.vue'
@@ -192,9 +192,7 @@ function waitsFor(s: Session): string {
   return 'Needs your permission'
 }
 const waitingSummary = computed(() =>
-  othersWaiting.value.length
-    ? `${plural(othersWaiting.value.length, 'other session')} waiting for you`
-    : '',
+  othersWaiting.value.length ? needYouCount(othersWaiting.value.length, 'other session') : '',
 )
 // Flat on purpose: a submenu has no room beside its parent in a narrow window and opens over it, where the click
 // meant for the row would land on Deny. Each session is an Open row, with Allow/Deny under it for a tool prompt.

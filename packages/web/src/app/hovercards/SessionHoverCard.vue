@@ -6,7 +6,13 @@ import { IuBadge } from '@/components/Badge'
 import { IuIcon } from '@/components/Icon'
 import IuStatusDot from '@/components/StatusDot/StatusDot.vue'
 import { useApi } from '@/api'
-import { SESSION_DISPLAY, formatCost, harnessLabel, relativeTime } from '@/screens/shared/format'
+import {
+  SESSION_DISPLAY,
+  formatCost,
+  needsYouText,
+  harnessLabel,
+  relativeTime,
+} from '@/screens/shared/format'
 import './hovercards.css'
 
 const props = defineProps<{ session: Session }>()
@@ -24,11 +30,7 @@ const display = computed(() => SESSION_DISPLAY[props.session.state])
 const metrics = computed(() => props.session.metrics)
 const project = computed(() => props.session.project)
 const needs = computed(() =>
-  props.session.waitingFor === 'permission'
-    ? 'Waiting for a permission'
-    : props.session.waitingFor === 'question'
-      ? 'Waiting for your answer'
-      : '',
+  props.session.state === 'waiting' ? needsYouText(props.session.waitingFor) : '',
 )
 // Last thing the agent said; falls back to the last thing you asked.
 const snippet = computed(() => {

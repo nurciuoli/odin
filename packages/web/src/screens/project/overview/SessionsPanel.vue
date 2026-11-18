@@ -85,13 +85,6 @@ const rows = computed<Row[]>(() =>
     session: s,
   })),
 )
-const WORD: Record<Session['state'], string> = {
-  running: 'Working',
-  waiting: 'Waiting for you',
-  idle: 'Idle',
-  ended: 'Finished',
-  failed: 'Failed',
-}
 </script>
 
 <template>
@@ -126,17 +119,13 @@ const WORD: Record<Session['state'], string> = {
           >
           <span class="ov-sessions__state">
             <template v-if="row.session.state === 'running' || row.session.state === 'waiting'">
-              <IuFlock
-                :state="row.session.state === 'waiting' ? 'waiting' : 'working'"
-                tone="neutral"
-                size="sm"
-              />
-              <span>{{ WORD[row.session.state] }}</span>
+              <IuFlock :state="SESSION_DISPLAY[row.session.state].flock" tone="neutral" size="sm" />
+              <span>{{ SESSION_DISPLAY[row.session.state].label }}</span>
             </template>
             <template v-else>
               <IuStatusDot :status="SESSION_DISPLAY[row.session.state].status" decorative />
               <span
-                >{{ WORD[row.session.state] }}
+                >{{ SESSION_DISPLAY[row.session.state].label }}
                 <time :datetime="row.session.updatedAt">{{
                   relativeTime(row.session.updatedAt)
                 }}</time></span

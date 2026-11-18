@@ -34,7 +34,7 @@ export const statusLabel: Record<Status, string> = {
   idle: 'idle',
   queued: 'queued',
   running: 'running',
-  awaiting: 'awaiting',
+  awaiting: 'needs you',
   ok: 'done',
   warning: 'warning',
   failed: 'failed',

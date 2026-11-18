@@ -22,8 +22,8 @@ it('shows how many other sessions wait, and answers a tool prompt from the list'
   const { wrapper, api, sessions, projects } = await mountHeader(FIXTURE_SESSION_IDS.running)
   const chip = wrapper.find('.session-header__waiting')
   expect(chip.text()).toContain('1 waiting')
-  expect(chip.attributes('aria-label')).toBe('1 other session waiting for you. Show them')
-  expect(wrapper.find('[role="status"]').text()).toBe('1 other session waiting for you')
+  expect(chip.attributes('aria-label')).toBe('1 other session needs you. Show them')
+  expect(wrapper.find('[role="status"]').text()).toBe('1 other session needs you')
 
   await chip.trigger('click')
   await flushPromises()

@@ -59,12 +59,15 @@ const projectTitle = (name: string) =>
   projects.projects.value.find(p => p.name === name)?.title ?? name
 const projectsOf = (s: Session) => (s.projects ?? [s.project]).map(projectTitle)
 
-const GROUPS: Partial<Record<Session['state'], string>> = { waiting: 'Waiting', running: 'Running' }
+const GROUPS: Partial<Record<Session['state'], string>> = {
+  waiting: SESSION_DISPLAY.waiting.label,
+  running: SESSION_DISPLAY.running.label,
+}
 function sessionItem(s: Session): CommandItem {
   return {
     id: `session:${s.id}`,
     label: s.title,
-    icon: s.state === 'waiting' ? 'bell' : s.state === 'running' ? 'play' : 'message',
+    icon: SESSION_DISPLAY[s.state].icon,
     hint: `${SESSION_DISPLAY[s.state].label} · ${relativeTime(s.updatedAt)}`,
     group: GROUPS[s.state] ?? 'Recent',
   }

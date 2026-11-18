@@ -1,0 +1,1 @@
+- Sessions use the same words everywhere: Running, Needs you, Done, Failed and Idle. The sidebar, Home, the sessions lists, hover cards, the command palette and screen-reader labels no longer mix "Waiting", "Paused", "Finished" and "Ended" for the same state.

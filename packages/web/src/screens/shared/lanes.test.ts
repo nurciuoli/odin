@@ -62,10 +62,10 @@ describe('perchWord', () => {
   it('says the state in words', () => {
     expect(perchWord(input({ times: [ago(0.5)] }))).toBe('Running')
     expect(perchWord(input({ times: [ago(4.5)] }))).toBe('Running · quiet 4m')
-    expect(perchWord(input({ pausedSince: ago(6) }))).toBe('Paused 6m')
-    expect(perchWord(input({ pausedSince: ago(0.5) }))).toBe('Paused')
+    expect(perchWord(input({ pausedSince: ago(6) }))).toBe('Needs you 6m')
+    expect(perchWord(input({ pausedSince: ago(0.5) }))).toBe('Needs you')
     expect(perchWord(input({ startedAt: iso(ago(200)), pausedSince: ago(65) }))).toBe(
-      'Paused 1h 5m',
+      'Needs you 1h 5m',
     )
   })
 })
@@ -224,7 +224,7 @@ describe('buildPerch', () => {
     )
     expect(perch.state).toBe('paused')
     expect(perch.flock).toBe('waiting')
-    expect(perch.word).toBe('Paused 4m')
+    expect(perch.word).toBe('Needs you 4m')
     expect(perch.to).toEqual({ name: 'session', params: { id: 's1' } })
     expect(perch.description).toContain('paused for the last 4 minutes')
     expect(perch.agents).toBe(0)

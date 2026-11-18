@@ -16,7 +16,7 @@ import { IuButton } from '@/components/Button'
 import { IuEmpty, IuErrorState, IuSkeleton } from '@/components/States'
 import { IuFlock } from '@/components/Spinner'
 import { buildPerch, type LaneSource, type Perch } from '@/screens/shared/lanes'
-import { plural, relativeTime } from './format'
+import { SESSION_DISPLAY, plural, relativeTime } from './format'
 import { useQuickAnswer } from './useQuickAnswer'
 import { useResource, useServerEvents } from './useResource'
 import NewSessionForm from './NewSessionForm.vue'
@@ -138,9 +138,9 @@ const waiting = computed(() => active.value.filter(s => s.state === 'waiting').l
 const shownCount = computed(() => active.value.length + unread.value.length)
 const progressSummary = computed(() =>
   waiting.value
-    ? `${plural(shownCount.value, 'session')}, ${waiting.value} paused for you`
+    ? `${plural(shownCount.value, 'session')}, ${waiting.value} ${SESSION_DISPLAY.waiting.label.toLowerCase()}`
     : unread.value.length
-      ? `${plural(shownCount.value, 'session')}, ${unread.value.length} finished`
+      ? `${plural(shownCount.value, 'session')}, ${unread.value.length} ${SESSION_DISPLAY.ended.label.toLowerCase()}`
       : plural(shownCount.value, 'session'),
 )
 
@@ -181,7 +181,7 @@ const allUnread = computed(() =>
 const unread = computed(() =>
   showAllUnread.value ? allUnread.value : allUnread.value.slice(0, MAX_UNREAD),
 )
-const finishedText = (s: Session) => (s.state === 'failed' ? 'Failed' : 'Finished')
+const finishedText = (s: Session) => SESSION_DISPLAY[s.state].label
 
 // ── earlier ──
 const recent = computed(() => stopped.value.filter(s => !allUnread.value.includes(s)).slice(0, 5))
@@ -548,7 +548,7 @@ const title = (s: Session) =>
   font-variant-numeric: tabular-nums;
 }
 .launchpad__perch[data-state='paused'] .launchpad__perch-word {
-  color: var(--iu-warning);
+  color: var(--iu-text);
 }
 .launchpad__perch-actions {
   display: inline-flex;
