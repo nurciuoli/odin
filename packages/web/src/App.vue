@@ -39,11 +39,18 @@ watch(
 // The palette (⌘K), quick launch (⌘⇧O) and the shortcuts cheat sheet (?), each mounted once for the whole app.
 const paletteOpen = ref(false)
 const quickLaunchOpen = ref(false)
+const quickLaunchHarness = ref<string | undefined>(undefined)
 const helpOpen = ref(false)
 const { goNextWaiting } = useAppShortcuts(
   { palette: paletteOpen, quickLaunch: quickLaunchOpen, help: helpOpen },
   sessions,
 )
+
+// The palette can preset the harness ("New session on Codex"); the shortcut and plain "New session" leave it alone.
+function launchWith(opts?: { harness?: string }) {
+  quickLaunchHarness.value = opts?.harness
+  quickLaunchOpen.value = true
+}
 
 onMounted(() => {
   store.start()
@@ -61,12 +68,8 @@ onBeforeUnmount(() => {
     <template v-if="!ownColumns" #header><AppHeader /></template>
     <RouterView />
   </IuShell>
-  <AppPalette
-    v-model:open="paletteOpen"
-    @quick-launch="quickLaunchOpen = true"
-    @next-waiting="goNextWaiting"
-  />
-  <QuickLaunch v-model:open="quickLaunchOpen" />
+  <AppPalette v-model:open="paletteOpen" @quick-launch="launchWith" @next-waiting="goNextWaiting" />
+  <QuickLaunch v-model:open="quickLaunchOpen" :harness="quickLaunchHarness" />
   <ShortcutsHelp v-model:open="helpOpen" />
   <IuToaster />
 </template>

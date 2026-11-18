@@ -22,6 +22,10 @@ export interface CommandItem {
   id: string
   label: string
   icon?: IconName
+  /** quiet text after the label: a file's folder, a session's project */
+  detail?: string
+  /** character positions in `label` to highlight (a fuzzy match); without it the typed text is highlighted as a substring */
+  matches?: number[]
   /** right-aligned meta text — an id, a relative time, a shortcut */
   hint?: string
   /** heading this item renders under when the query is empty (e.g. 'Recent' / 'Actions') */
@@ -36,7 +40,8 @@ export interface CommandSource {
   prefix?: string
   /** shown as the active-prefix chip while this source is the only one in scope */
   label: string
-  resolve: (term: string) => CommandItem[]
+  /** `scoped` is true when a prefix narrowed the search to this source, so it can list more than it would in the mixed view. */
+  resolve: (term: string, ctx: { scoped: boolean }) => CommandItem[]
 }
 
 const open = defineModel<boolean>('open', { default: false })
@@ -89,11 +94,18 @@ const activeSource = computed(() =>
 const results = computed(() => {
   if (!term.value && !prefix.value) return props.recent ?? []
   const pool = prefix.value ? props.sources.filter(s => s.prefix === prefix.value) : props.sources
-  return pool.flatMap(s => s.resolve(term.value)).slice(0, 40)
+  const ctx = { scoped: !!prefix.value }
+  return pool.flatMap(s => s.resolve(term.value, ctx)).slice(0, 40)
 })
 
 watch(results, () => {
   cursor.value = 0
+})
+// keep the highlighted row on screen while arrowing through a long list
+const listEl = ref<HTMLElement | null>(null)
+watch(cursor, async i => {
+  await nextTick()
+  listEl.value?.querySelectorAll('[role="option"]')[i]?.scrollIntoView?.({ block: 'nearest' })
 })
 
 function choose(item: CommandItem | undefined, evt?: KeyboardEvent | MouseEvent) {
@@ -174,15 +186,22 @@ function onBackdropClick(e: MouseEvent) {
 
 // matched-substring highlighting for the label (simple, case-insensitive —
 // the actual ranking/fuzzy-match lives in each source's resolve())
-function matchParts(label: string, needle: string): { pre: string; match: string; post: string } {
-  if (!needle) return { pre: label, match: '', post: '' }
-  const i = label.toLowerCase().indexOf(needle.toLowerCase())
-  if (i === -1) return { pre: label, match: '', post: '' }
-  return {
-    pre: label.slice(0, i),
-    match: label.slice(i, i + needle.length),
-    post: label.slice(i + needle.length),
+function labelParts(item: CommandItem, needle: string): { text: string; hit: boolean }[] {
+  const label = item.label
+  let marked: Set<number>
+  if (item.matches) marked = new Set(item.matches)
+  else {
+    const i = needle ? label.toLowerCase().indexOf(needle.toLowerCase()) : -1
+    marked = new Set(i === -1 ? [] : Array.from({ length: needle.length }, (_, k) => i + k))
   }
+  const parts: { text: string; hit: boolean }[] = []
+  for (let i = 0; i < label.length; i++) {
+    const hit = marked.has(i)
+    const last = parts[parts.length - 1]
+    if (last && last.hit === hit) last.text += label[i]
+    else parts.push({ text: label[i]!, hit })
+  }
+  return parts
 }
 </script>
 
@@ -197,7 +216,7 @@ function matchParts(label: string, needle: string): { pre: string; match: string
           v-model="query"
           class="iu-cmdk__input"
           type="text"
-          placeholder="Search or run a command…"
+          placeholder="Search sessions, files and commands…"
           autocomplete="off"
           spellcheck="false"
           @keydown="onKeydown"
@@ -208,7 +227,7 @@ function matchParts(label: string, needle: string): { pre: string; match: string
         <span v-else class="iu-cmdk__kbd">esc</span>
       </div>
 
-      <div class="iu-cmdk__list" role="listbox">
+      <div ref="listEl" class="iu-cmdk__list" role="listbox">
         <template v-if="results.length">
           <template v-for="(item, i) in results" :key="item.id">
             <div v-if="item.group && item.group !== results[i - 1]?.group" class="iu-cmdk__group">
@@ -225,12 +244,11 @@ function matchParts(label: string, needle: string): { pre: string; match: string
             >
               <IuIcon v-if="item.icon" :name="item.icon" :size="16" class="iu-cmdk__row-icon" />
               <span class="iu-cmdk__row-label">
-                <template v-if="term"
-                  >{{ matchParts(item.label, term).pre
-                  }}<mark>{{ matchParts(item.label, term).match }}</mark
-                  >{{ matchParts(item.label, term).post }}</template
+                <template v-for="(part, k) in labelParts(item, term)" :key="k"
+                  ><mark v-if="part.hit">{{ part.text }}</mark
+                  ><template v-else>{{ part.text }}</template></template
                 >
-                <template v-else>{{ item.label }}</template>
+                <span v-if="item.detail" class="iu-cmdk__row-detail">{{ item.detail }}</span>
               </span>
               <span v-if="item.disabledReason" class="iu-cmdk__row-hint">{{
                 item.disabledReason
@@ -252,9 +270,11 @@ function matchParts(label: string, needle: string): { pre: string; match: string
       </div>
 
       <div class="iu-cmdk__footer">
-        <span class="iu-cmdk__hint"><kbd>↑↓</kbd>navigate</span>
-        <span class="iu-cmdk__hint"><kbd>↵</kbd>open</span>
-        <span class="iu-cmdk__hint"><kbd>⌘↵</kbd>new tab</span>
+        <slot name="footer">
+          <span class="iu-cmdk__hint"><kbd>↑↓</kbd>navigate</span>
+          <span class="iu-cmdk__hint"><kbd>↵</kbd>open</span>
+          <span class="iu-cmdk__hint"><kbd>⌘↵</kbd>new tab</span>
+        </slot>
       </div>
     </div>
   </dialog>
@@ -286,11 +306,11 @@ function matchParts(label: string, needle: string): { pre: string; match: string
 
 .iu-cmdk__panel {
   width: 100%;
-  max-width: 560px;
+  max-width: 640px;
   margin: 0 16px;
   display: flex;
   flex-direction: column;
-  max-height: 70vh;
+  max-height: 78vh;
   background: var(--iu-surface);
   border: 1px solid var(--iu-border-strong);
   border-radius: var(--iu-radius-lg);
@@ -316,7 +336,7 @@ function matchParts(label: string, needle: string): { pre: string; match: string
   flex: none;
   font-family: var(--iu-font-mono);
   font-size: var(--iu-font-size-11-5);
-  color: var(--iu-accent);
+  color: var(--iu-text);
   background: var(--iu-accent-wash);
   border: 1px solid var(--iu-accent-border);
   border-radius: var(--iu-radius-sm);
@@ -407,6 +427,11 @@ function matchParts(label: string, needle: string): { pre: string; match: string
   border-radius: 2px;
   padding: 0 1px;
 }
+.iu-cmdk__row-detail {
+  margin-left: 8px;
+  font-size: var(--iu-font-size-12);
+  color: var(--iu-text-muted);
+}
 .iu-cmdk__row-hint {
   flex: none;
   font-size: var(--iu-font-size-11-5);
@@ -437,7 +462,7 @@ function matchParts(label: string, needle: string): { pre: string; match: string
 .iu-cmdk__footer {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
   padding: 9px 16px;
   border-top: 1px solid var(--iu-hairline);
   background: var(--iu-surface-sunken);
@@ -447,6 +472,7 @@ function matchParts(label: string, needle: string): { pre: string; match: string
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
   font-family: var(--iu-font-mono);
   font-size: var(--iu-font-size-11);
   color: var(--iu-text-muted);

@@ -11,7 +11,7 @@ import type {
   Checkpoint, ForkSessionRequest, PermissionAnswer, PermissionMode, Session, SessionCounts, SessionDetail, SessionFilter, SessionMetrics,
   SessionState, StartSessionRequest, Todo, UpdateSessionRequest, UserMessage, Workspace,
 } from "@odin/shared/api";
-import type { HarnessEvent, PermissionRequest, SlashCommand, TranscriptEntry } from "@odin/shared/harness";
+import type { HarnessEvent, PermissionRequest, SessionGoal, SlashCommand, TranscriptEntry } from "@odin/shared/harness";
 import { emptyMetrics, sessionBranch } from "@odin/shared/session";
 import { findModel } from "@odin/shared/api";
 import { applyHarnessEvent, reconcileTaskHistory } from "@odin/shared/transcript";
@@ -76,6 +76,7 @@ interface Live {
   handle: SessionHandle;
   pending: Map<string, PermissionRequest>;
   todos: Todo[] | null;
+  goal: SessionGoal | null;
   /** From the handle's `init` or `commands` (null until one arrives). */
   slashCommands: SlashCommand[] | null;
   /** Entries since the handle opened, including partial text for clients reconnecting mid-turn. */
@@ -545,6 +546,9 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       case "todos":
         l.todos = e.todos;
         break;
+      case "goal":
+        l.goal = e.goal;
+        break;
       case "delta":
         l.acted = true;
         l.streaming.add(e.entryId);
@@ -672,7 +676,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
 
   function attach(id: string, harness: Harness, handle: SessionHandle, turnActive: boolean): Live {
     const l: Live = {
-      id, harness, handle, pending: new Map(), todos: null, slashCommands: null, tail: [], settled: 0, streaming: new Set(), idleTimer: null, closing: false, ending: false,
+      id, harness, handle, pending: new Map(), todos: null, goal: null, slashCommands: null, tail: [], settled: 0, streaming: new Set(), idleTimer: null, closing: false, ending: false,
       done: Promise.resolve(),
       turnActive,
       acted: false,
@@ -999,6 +1003,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         transcript,
         pending: active ? [...active.pending.values()] : [],
         todos: l?.todos ?? todosFromTranscript(transcript),
+        goal: active?.goal ?? null,
         artifacts,
         live: !!active,
         streaming: active ? [...active.streaming] : [],

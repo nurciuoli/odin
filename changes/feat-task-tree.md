@@ -1,0 +1,1 @@
+- The Background tasks section in the session Details panel is now a branch graph: a one-line strip of the run while it is closed, and a lane per subagent and command when opened, with state, note and time in one column.

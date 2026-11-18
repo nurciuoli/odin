@@ -133,6 +133,8 @@ export function applySessionEvent(view: SessionView, event: HarnessEvent): Sessi
       return { ...view, detail: { ...d, slashCommands: event.slashCommands } }
     case 'todos':
       return { ...view, detail: { ...d, todos: event.todos } }
+    case 'goal':
+      return { ...view, detail: { ...d, goal: event.goal } }
     case 'model':
       return { ...view, detail: { ...d, model: event.model } }
     case 'permission.mode':

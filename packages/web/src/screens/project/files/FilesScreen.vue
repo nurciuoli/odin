@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // Files: the project's tree as a treemap. Cell area is file size; Diff mode tints files by lines added and removed.
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useApi } from '@/api'
 import { ApiRequestError } from '@/api/types'
 import { IuBadge } from '@/components/Badge'
@@ -65,6 +66,18 @@ const selected = computed(() => {
   const n = selectedId.value === null ? null : idx.value.get(selectedId.value)?.node
   return n && n.kind !== 'folder' ? n : null
 })
+
+// `?file=<path>` (the command palette's Files results) opens that file once the map has loaded.
+const route = useRoute()
+watch(
+  [idx, () => route.query.file],
+  ([index, file]) => {
+    if (typeof file !== 'string' || selectedId.value === file) return
+    const node = index.get(file)?.node
+    if (node && node.kind !== 'folder') selectedId.value = file
+  },
+  { immediate: true },
+)
 
 // The selected file's text, fetched when it's selected; a late answer for an earlier file is dropped.
 const preview = ref<{ phase: 'loading' | 'ready' | 'error'; text: string; error: string }>({
