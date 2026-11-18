@@ -22,6 +22,7 @@ import type { Deps, ExternalSessionInput, Services, SessionPatch, SessionsServic
 import { messageOutbox } from "./message-queue.ts";
 import { validateMessage } from "./message.ts";
 import { runtimeOptions, nativeAction } from "./native.ts";
+import { runShell, SHELL_MAX_COMMAND } from "./shell.ts";
 import { hostToolApprovals } from "./host-tools.ts";
 
 export const IDLE_CLOSE_MS = 10 * 60_000;
@@ -237,6 +238,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
   outbox.recover();
   const pumping = new Set<string>();
   const nativeBusy = new Set<string>();
+  const shellBusy = new Set<string>();
   const approvals = hostToolApprovals({
     session: id => get(id),
     request(id, request) {
@@ -987,6 +989,16 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       const harness = harnessFor(s);
       if (!harness.nativeState) bad("runtime does not provide native session state");
       return harness.nativeState(id, s.cwd);
+    },
+
+    async shell(id, input) {
+      const s = mustGet(id);
+      const command = (input as { command?: unknown } | null)?.command;
+      if (typeof command !== "string" || !command.trim()) bad("command must be a non-empty string");
+      if ((command as string).length > SHELL_MAX_COMMAND) bad("command is too long");
+      if (shellBusy.has(id)) throw new HttpError(409, "a command is already running in this session");
+      shellBusy.add(id);
+      try { return await runShell(s.cwd, command as string); } finally { shellBusy.delete(id); }
     },
 
     async nativeAction(id, input) {
