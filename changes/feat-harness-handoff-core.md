@@ -1,1 +1,0 @@
-- The server can hand a session off to another harness: it writes a briefing from the old session and starts a new one on the same branch and files. There is no screen for it yet.
