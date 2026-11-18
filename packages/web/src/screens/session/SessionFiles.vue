@@ -561,7 +561,9 @@ defineExpose({ open })
           :title="expanded ? 'Exit full screen (Esc)' : 'Full screen'"
           @click="expanded = !expanded"
         >
-          <template #icon><IuIcon :name="expanded ? 'close' : 'external'" :size="14" /></template>
+          <template #icon
+            ><IuIcon :name="expanded ? 'minimize' : 'maximize'" :size="14"
+          /></template>
         </IuButton>
       </div>
 

@@ -155,7 +155,7 @@ describe('SessionScreen', () => {
     await wrapper!.find('[role="separator"]').trigger('pointercancel', { pointerId: 7 })
     expect(wrapper!.find('.session-workbench__drag-shield').exists()).toBe(false)
 
-    const close = wrapper!.find('[aria-label="Close preview"]')
+    const close = wrapper!.find('[aria-label="Hide preview"]')
     await close.trigger('click')
     await flushPromises()
     expect(wrapper!.find('[aria-label="Show preview"]').exists()).toBe(true)
