@@ -277,6 +277,8 @@ const span$ = (n: number) => ({ '--ov-span': String(n) })
         :style="span$(row6.a)"
         :branches="branches.data.value"
         :default-branch="detail.settings.defaultBranch"
+        :repo="detail.settings.repo"
+        :sessions="sessions.data.value"
         :loading="branches.phase.value === 'loading'"
         :error="branches.error.value"
         @retry="branches.load()"
