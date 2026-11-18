@@ -23,6 +23,7 @@ describe('odin slash commands', () => {
       'rename',
       'btw',
       'send',
+      'handoff',
       'status',
       'cost',
     ])
@@ -31,6 +32,7 @@ describe('odin slash commands', () => {
       'rename',
       'btw',
       'send',
+      'handoff',
       'status',
       'cost',
     ])
@@ -43,6 +45,7 @@ describe('odin slash commands', () => {
       'odin:rename',
       'odin:btw',
       'odin:send',
+      'odin:handoff',
       'odin:status',
       'odin:cost',
       'builtin:compact',

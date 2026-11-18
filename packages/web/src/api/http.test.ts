@@ -95,6 +95,17 @@ describe('http api', () => {
     ])
   })
 
+  it('previews and starts a handoff', async () => {
+    const f = fakeFetch({ body: {} })
+    const api = createHttpApi({ fetch: f as unknown as typeof fetch })
+    await api.handoffPreview('s 1', 'codex')
+    await api.handoffSession('s1', { harness: 'codex', brief: 'go', endSource: false })
+    expect(f.mock.calls.map(c => [c[0], c[1]?.method, c[1]?.body])).toEqual([
+      ['/api/sessions/s%201/handoff?harness=codex', 'GET', undefined],
+      ['/api/sessions/s1/handoff', 'POST', '{"harness":"codex","brief":"go","endSource":false}'],
+    ])
+  })
+
   it('encodes session ids and permission request ids in paths', async () => {
     const f = fakeFetch({ status: 204 })
     const api = createHttpApi({ fetch: f as unknown as typeof fetch })

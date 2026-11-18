@@ -55,6 +55,7 @@ import {
   resolveModel,
   toComposerCommands,
 } from './slashCommands'
+import { openHandoff, parseHandoffArgs, runHandoff } from './handoff'
 import { useDrafts, type DraftAttachment } from '@/app/drafts'
 import { registerCommand } from '@/app/commands'
 import { keyLabel, registerShortcut } from '@/app/shortcuts'
@@ -507,6 +508,21 @@ function runOwnCommand(message: string): boolean {
     // /btw with a question is handled before this; bare /btw asks for one.
     void nextTick(() => (text.value = message))
     toast({ title: 'Ask a question', description: 'Usage: /btw <question>', intent: 'warning' })
+  } else if (cmd.name === 'handoff') {
+    const { harness, model } = parseHandoffArgs(cmd.arg)
+    if (!harness) openHandoff(props.sessionId)
+    else
+      void runHandoff(api, props.sessionId, harness, model).then(
+        s => router.push(`/s/${s.id}`),
+        e => {
+          text.value = message // keep the draft so it can be fixed
+          toast({
+            title: 'Couldn’t hand off',
+            description: e instanceof Error ? e.message : String(e),
+            intent: 'warning',
+          })
+        },
+      )
   } else if (cmd.name === 'status') {
     const parts = [
       harnessLabel(props.harness),

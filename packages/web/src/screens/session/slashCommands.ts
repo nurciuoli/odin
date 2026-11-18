@@ -18,6 +18,7 @@ export type OdinCommandName =
   | 'effort'
   | 'status'
   | 'cost'
+  | 'handoff'
 
 /** Odin's commands. `/model` only where the screen has a model menu. */
 export function odinCommands(opts: { model: boolean; effort?: string[] }): SlashCommand[] {
@@ -46,6 +47,12 @@ export function odinCommands(opts: { model: boolean; effort?: string[] }): Slash
       description: 'Send now and interrupt the current turn',
       argumentHint: '<message>',
       aliases: ['now'],
+      source: 'odin',
+    },
+    {
+      name: 'handoff',
+      description: 'Continue this session on another harness',
+      argumentHint: '[harness] [model]',
       source: 'odin',
     },
     {
