@@ -38,6 +38,8 @@ Read by anyone working in this repo: contributors, and coding agents (including 
 - Core has no web framework and few deps. A new runtime dependency needs a reason in the PR.
 - Branch from `main` as `type/short-desc` (`feat/`, `fix/`, `docs/`, `chore/`, ...); PR titles follow Conventional
   Commits (`fix(core): ...`) because PRs are squash-merged and the title becomes the commit. See CONTRIBUTING.md.
+  Agents given a generated branch (`claude/...`, worktree names) open the PR from a `type/short-desc` branch instead.
+  Open PRs ready for review, not as drafts. The `odin-pr` skill (`.claude/skills/odin-pr/`) walks through it.
 - Contract changes (`packages/shared/`, `services.ts`, `harness/types.ts`, `docs/contracts.md`,
   `db/schema.sql`/migrations, `web/src/api/types.ts`) are listed in the PR's Contract section and get the `contract`
   label. A large contract change lands first as its own PR. Breaking ones use `!` in the title.
@@ -57,6 +59,8 @@ Read by anyone working in this repo: contributors, and coding agents (including 
 - Statuses use `@/styles/status` (`Status`, `statusIntent`, `statusLabel`). Never colour-only.
 - Real `<button>`s, `aria-*` on live regions and toggles, `:focus-visible` outlines, `prefers-reduced-motion`.
 - Never move focus to content that appears on its own (streamed replies, new tool calls, session activity).
+- Screenshot changed screens on mock data (`yarn workspace @odin/web shots <route>`) and attach them to the PR. Leave the
+  README images in `docs/assets/screenshots/` alone unless asked.
 - Prettier formats web (`yarn workspace @odin/web format`). `yarn verify:web` runs format check, type-check,
   ESLint, the guard, vitest and a strict build.
 - Artifacts render only in `<iframe sandbox="allow-scripts allow-forms" src="/a/…">`. Never `srcdoc`, never
