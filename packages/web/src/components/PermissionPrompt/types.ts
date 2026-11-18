@@ -5,6 +5,14 @@ import type { DiffHunk } from '@/components/CodeBlock/Diff.vue'
 /** Where an "always allow" rule is saved. `once` saves nothing. */
 export type PermissionScope = 'once' | 'session' | 'project' | 'local' | 'user'
 
+export interface PermissionPromptQuestion {
+  id?: string
+  question: string
+  header: string
+  multiSelect?: boolean
+  options: { label: string; description?: string }[]
+}
+
 export interface PermissionPromptRequest {
   id: string
   /** tool: run a tool; plan: approve a plan (markdown in `plan`); question: answer `questions`. */
@@ -21,13 +29,7 @@ export interface PermissionPromptRequest {
   /** For kind plan. */
   plan?: string
   /** For kind question (AskUserQuestion). */
-  questions?: {
-    id?: string
-    question: string
-    header: string
-    multiSelect?: boolean
-    options: { label: string; description?: string }[]
-  }[]
+  questions?: PermissionPromptQuestion[]
   /** False hides the "always allow" choices. */
   canAlwaysAllow: boolean
   /** Opens on Deny and offers no one-key approve. */
