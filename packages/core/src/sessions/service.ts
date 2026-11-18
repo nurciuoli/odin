@@ -296,7 +296,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
 
   async function savedMcp(id: string): Promise<StartOptions["mcpServers"]> {
     const config = parseJson<{ mcpIds?: string[] }>(row(id)?.launch_config ?? null, {});
-    return config.mcpIds?.length ? services.launch.resolveMcpServers(config.mcpIds) : undefined;
+    return config.mcpIds?.length ? services.launch.resolveMcpServers(config.mcpIds, { skipDisabled: true }) : undefined;
   }
 
   const COLUMNS: Record<string, string> = {
@@ -404,7 +404,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
     if (opts.prompt?.attachments?.length && harnessFor(s).capabilities?.attachments === false) bad(`${s.harness} does not support attachments`);
     const global = services.library.get("instruction", "global");
     if (global?.error) throw new HttpError(400, "Global AGENTS.md has errors: " + global.error);
-    const parts = [services.library.files("instruction", "global")?.["AGENTS.md"] ?? ""];
+    const parts = [global?.enabled === false ? "" : (services.library.files("instruction", "global")?.["AGENTS.md"] ?? "")];
     const additional = s.projects.filter(name => name !== s.project).map(name => {
       const project = services.projects.get(name);
       if (!project || project.missing) throw new HttpError(409, `project ${name} is unavailable`);

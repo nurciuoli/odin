@@ -781,6 +781,16 @@ export interface LibraryAsset {
   meta: Record<string, unknown>;
   /** Problems parsing the files. */
   error: string | null;
+  /**
+   * False when switched off (PATCH /api/library/:kind/:id). Kept in the database, not the library files. A disabled
+   * asset can't be installed, updated or launched with; existing project copies are untouched.
+   */
+  enabled: boolean;
+}
+
+/** PATCH /api/library/:kind/:id — switch an asset on or off without deleting it. */
+export interface SetAssetEnabledRequest {
+  enabled: boolean;
 }
 
 export interface AssetVersion {

@@ -605,6 +605,11 @@ the library; the native default agent can delegate to them.
   installation (creates the asset and the row); merge kinds need an installation (404). `forget` on a copy kind drops
   the row, files stay; on mcp/settings it also takes Odin's own fragment back out of the shared file, only when it
   is still exactly as Odin wrote it, never the user's own entries. Every change emits `install.updated`.
+- **Enabled** (`PATCH /api/library/:kind/:id` with `{ enabled: boolean }` → the asset; 404 unknown, 400 bad body):
+  `LibraryAsset.enabled` (default true) is kept in `library_disabled`, not in the library files, and is dropped when
+  the asset is deleted. Disabled means: `install`/`update` → 409 (forget and push still work; project copies are
+  untouched); launch with a disabled MCP id → 400, while resume and fork skip it; a disabled `instruction/global`
+  is left out of the prompt. Emits `library.updated`.
 - **Save** (`PUT /api/library/:kind/:id`): bad file keys or an asset that doesn't parse (invalid JSON, a spec that
   fails validation, broken frontmatter) → 400 and nothing is written. Assets edited on disk can still carry an
   `error`; launch refuses them (400) and install refuses them (409).

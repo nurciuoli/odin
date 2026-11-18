@@ -52,12 +52,12 @@ test("request fields win; worktree branch from the title and id; variables fill;
   assert.equal((await plan({ prompt: { text: "x" }, worktree: true, branch: "feat/x" })).branch, "feat/x");
 });
 
-function fakeLibrary(assets: Record<string, { meta?: Record<string, unknown>; files?: Record<string, string>; error?: string | null; version?: string }>): Services["library"] {
+function fakeLibrary(assets: Record<string, { meta?: Record<string, unknown>; files?: Record<string, string>; error?: string | null; version?: string; enabled?: boolean }>): Services["library"] {
   const find = (kind: string, id: string) => assets[`${kind}/${id}`];
   return {
     get: (kind: string, id: string) => {
       const a = find(kind, id);
-      return a ? { kind, id, name: id, description: "", version: a.version ?? "lv1", updatedAt: "", files: Object.keys(a.files ?? {}), meta: a.meta ?? {}, error: a.error ?? null } : null;
+      return a ? { kind, id, name: id, description: "", version: a.version ?? "lv1", updatedAt: "", files: Object.keys(a.files ?? {}), meta: a.meta ?? {}, error: a.error ?? null, enabled: a.enabled ?? true } : null;
     },
     files: (kind: string, id: string) => find(kind, id)?.files ?? null,
     list: (kind: string) => Object.entries(assets).filter(([k]) => k.startsWith(`${kind}/`)).map(([k, a]) => ({ kind, id: k.slice(kind.length + 1), meta: a.meta ?? {}, error: a.error ?? null })),
@@ -183,4 +183,16 @@ test("worktree: request ?? project default ?? app default", async () => {
   assert.equal(await run(false, true, undefined), false);
   assert.equal(await run(true, false, false), false);
   assert.equal(await run(false, true, true), true);
+});
+
+test("a disabled library MCP server → 400 at launch, left out when resuming", async () => {
+  const assets = { "mcp/web": { meta: { name: "web", type: "http", url: "https://x.test/mcp" }, enabled: false } };
+  const s = setup();
+  s.services.library = fakeLibrary(assets);
+  try {
+    await assert.rejects(s.services.launch.plan({ project: PROJECT, prompt: { text: "x" }, mcp: ["web"] } as StartSessionRequest, ID), (e: unknown) => e instanceof HttpError && e.status === 400 && /disabled/.test(e.message));
+    assert.deepEqual(await s.services.launch.resolveMcpServers(["web"], { skipDisabled: true }), {});
+  } finally {
+    await s.sessions.close();
+  }
 });

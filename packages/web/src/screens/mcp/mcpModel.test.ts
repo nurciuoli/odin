@@ -17,6 +17,7 @@ const asset = (
   files: [`${id}.json`],
   meta,
   error,
+  enabled: true,
 })
 const status = (state: McpOAuthStatus['state']): McpOAuthStatus => ({
   id: 'x',
