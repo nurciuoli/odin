@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { SessionDetail } from '@odin/shared/api'
+import { PREVIEW_MIN, maxPreviewWidth } from '@/app/layout'
 import { IuButton } from '@/components/Button'
+import { IuIcon } from '@/components/Icon'
 import { IuTabs } from '@/components/Tabs'
 import SessionEnvironment from './SessionEnvironment.vue'
 import type SessionFilesType from './SessionFiles.vue'
@@ -38,7 +40,7 @@ function openFile(path: string) {
   else pendingPath.value = relative
 }
 
-const MIN_WIDTH = 480
+const MIN_WIDTH = PREVIEW_MIN
 const MAX_WIDTH = 960
 const shell = ref<HTMLElement>()
 const availableWidth = ref(typeof window === 'undefined' ? 1600 : window.innerWidth)
@@ -58,9 +60,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', measureAvailableWidth)
   observer?.disconnect()
 })
-const maxWidth = computed(() =>
-  Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.floor(availableWidth.value - 360))),
-)
+const maxWidth = computed(() => maxPreviewWidth(availableWidth.value, MAX_WIDTH))
 const boundedWidth = computed(() => Math.min(props.width, maxWidth.value))
 watch(
   boundedWidth,
@@ -150,9 +150,16 @@ defineExpose({ openFile })
     <div v-if="drag" class="session-workbench__drag-shield" aria-hidden="true" />
     <aside class="session-workbench" :data-tab="tab" aria-label="Content preview">
       <div class="session-workbench__topbar">
-        <IuButton variant="ghost" size="sm" aria-label="Close preview" @click="emit('close')"
-          >Close preview</IuButton
+        <IuButton
+          variant="ghost"
+          size="sm"
+          icon-only
+          aria-label="Hide preview"
+          title="Hide preview"
+          @click="emit('close')"
         >
+          <template #icon><IuIcon name="panelRight" :size="14" /></template>
+        </IuButton>
       </div>
       <div class="session-workbench__content">
         <div v-show="tab === 'files'" class="session-workbench__file-panel">

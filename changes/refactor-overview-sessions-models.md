@@ -1,0 +1,1 @@
+- Overview: Sessions is a compact list with truncated titles (no sideways scroll), and Models is one cost list with a neutral share bar, sessions and tokens under each model, replacing the two overlapping views.

@@ -1,0 +1,1 @@
+- Session layout adapts to the window: Details and the app sidebar fold away on their own when the preview pane would leave the conversation under 480px, and return when there is room. Reopening Details by hand in a tight window shows it over the conversation.

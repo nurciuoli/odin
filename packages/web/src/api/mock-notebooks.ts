@@ -82,6 +82,7 @@ export function mockNotebooks(options: {
         interpreter: '.venv/bin/python',
         managedHostPython: 'odin/python',
         needsSetup: false,
+        location: { kind: 'native' as const },
       }
     },
     async setupNotebookEnvironment(project) {
@@ -91,6 +92,7 @@ export function mockNotebooks(options: {
         interpreter: '.venv/bin/python',
         managedHostPython: 'odin/python',
         needsSetup: false,
+        location: { kind: 'native' as const },
       }
     },
     async notebookVariables(id) {

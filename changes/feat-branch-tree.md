@@ -1,0 +1,1 @@
+- The project Overview's Branches panel is a git tree: the default branch as a trunk with open branches branching off and merged ones landing on it, linked to their GitHub branch, commit and pull request, their worktree and their Odin sessions. Switch between Graph and List, filter Active, Merged or All, narrow to worktrees, and zoom between Detailed and Compact.

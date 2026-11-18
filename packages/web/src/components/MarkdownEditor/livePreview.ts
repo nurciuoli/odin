@@ -1,6 +1,18 @@
 import { syntaxTree } from '@codemirror/language'
 import type { EditorState, Range } from '@codemirror/state'
-import { Decoration, type DecorationSet, ViewPlugin } from '@codemirror/view'
+import { Decoration, type DecorationSet, ViewPlugin, WidgetType } from '@codemirror/view'
+
+class Bullet extends WidgetType {
+  toDOM() {
+    const span = document.createElement('span')
+    span.className = 'iu-markdown-editor__bullet'
+    span.textContent = '•'
+    return span
+  }
+  eq() {
+    return true
+  }
+}
 
 /** Reveal every line touched by a selection, including a collapsed caret. */
 export function editingLine(state: EditorState, from: number, to: number): boolean {
@@ -42,6 +54,10 @@ export function previewDecorations(
       if (name === 'HeaderMark') {
         const after = state.sliceDoc(to, Math.min(to + 1, state.doc.length))
         hide(from, to + (after === ' ' ? 1 : 0))
+      } else if (name === 'ListMark') {
+        // a bullet reads as a list; ordered numbers already do, so they stay
+        if (/^[-*+]$/.test(state.sliceDoc(from, to)) && !editingLine(state, from, to))
+          ranges.push(Decoration.replace({ widget: new Bullet() }).range(from, to))
       } else if (name === 'StrongEmphasis') {
         mark(from, to, 'iu-markdown-editor__strong')
       } else if (name === 'Emphasis') {

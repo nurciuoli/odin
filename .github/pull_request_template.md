@@ -19,5 +19,5 @@ None.
 
 - [ ] `yarn typecheck` and `yarn test` pass
 - [ ] `yarn verify:web` passes (if `packages/web` changed)
-- [ ] CHANGELOG.md updated under Unreleased (if user-visible)
+- [ ] Changelog fragment added in `changes/` (if user-visible)
 - [ ] Docs updated if behaviour changed
