@@ -537,6 +537,10 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         break;
       case "permission.resolved":
         l.pending.delete(e.requestId);
+        // The last prompt closed: the session is working again, whether or not the driver's own `running` follows
+        // (a harness that doesn't send one, or one dropped as unchanged, must not leave "needs you" showing).
+        if (!l.pending.size && cur.state === "waiting") patchAndEmit(l.id, { state: "running", waitingFor: null });
+        else if (cur.state === "waiting" && l.pending.size) patchAndEmit(l.id, { waitingFor: [...l.pending.values()].some((r) => r.kind === "question") ? "question" : "permission" });
         break;
       case "todos":
         l.todos = e.todos;
