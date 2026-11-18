@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { filesError, parseAsset, pathError, promptBody } from "./parse.ts";
+import { filesError, parseAsset, pathError, pluginOwnFiles, promptBody } from "./parse.ts";
 import { addSettings, deepEqual, mcpEntry, parseJsonObject, presentSettings, removeMcpEntry, removeSettings, setMcpEntry } from "./merge.ts";
 
 const AGENT = "---\nname: Reviewer\ndescription: Reviews diffs.\ntools: Read, Grep\nmodel: sonnet\n---\n\nYou review.\n";
@@ -130,4 +130,58 @@ test("settings merge: rules deduped, hooks added, removal leaves the user's own 
   assert.deepEqual(removed.doc, doc);
   assert.ok(deepEqual({ a: 1, b: [1, { c: 2 }] }, { b: [1, { c: 2 }], a: 1 }));
   assert.ok(!deepEqual({ a: 1 }, { a: 1, b: 2 }));
+});
+
+const PLUGIN_JSON = (extra: Record<string, unknown> = {}) => JSON.stringify({ name: "Release helper", description: "Notes and publishing.", version: "1.2.0", includes: [{ kind: "skill", id: "changelog" }], ...extra });
+const SKILL = "---\nname: notes\ndescription: Write release notes\n---\nDo it.\n";
+
+test("plugin: manifest, own members and includes", () => {
+  const p = parseAsset("plugin", "release", {
+    "plugin.json": PLUGIN_JSON({ source: { type: "git", url: "https://example.test/r.git", rev: "main" } }),
+    "README.md": "# Release\n",
+    "skills/notes/SKILL.md": SKILL,
+    "skills/notes/extra/ref.md": "ref",
+    "mcp/publish.json": JSON.stringify({ type: "http", url: "https://x.test/mcp", oauth: {} }),
+    "agents/reviewer.md": "---\nname: reviewer\ndescription: Reviews\n---\nBody\n",
+  });
+  assert.equal(p.error, null);
+  assert.deepEqual([p.name, p.description], ["Release helper", "Notes and publishing."]);
+  assert.deepEqual(p.meta, {
+    version: "1.2.0",
+    includes: [{ kind: "skill", id: "changelog" }],
+    source: { type: "git", url: "https://example.test/r.git", rev: "main" },
+    own: [
+      { kind: "skill", id: "notes", name: "notes", description: "Write release notes", error: null },
+      { kind: "agent", id: "reviewer", name: "reviewer", description: "Reviews", error: null },
+      { kind: "mcp", id: "publish", name: "publish", description: "", error: null },
+    ],
+  });
+});
+
+test("plugin: pluginOwnFiles gives each member its library-form files", () => {
+  const { members, errors } = pluginOwnFiles({ "plugin.json": "{}", "skills/notes/SKILL.md": SKILL, "skills/notes/extra/ref.md": "ref", "mcp/publish.json": "{}" });
+  assert.deepEqual(errors, []);
+  assert.deepEqual(members, [
+    { kind: "skill", id: "notes", files: { "SKILL.md": SKILL, "extra/ref.md": "ref" } },
+    { kind: "mcp", id: "publish", files: { "publish.json": "{}" } },
+  ]);
+});
+
+test("plugin: bad manifests and layouts are reported", () => {
+  const base = { "skills/notes/SKILL.md": SKILL };
+  const err = (files: Record<string, string>) => parseAsset("plugin", "p", { "plugin.json": PLUGIN_JSON(), ...files }).error ?? "";
+  assert.match(parseAsset("plugin", "p", { "plugin.json": "{" }).error!, /not valid JSON/);
+  assert.match(parseAsset("plugin", "p", { "plugin.json": JSON.stringify({ includes: [{ kind: "plugin", id: "x" }] }) }).error!, /includes\[0\]\.kind/);
+  assert.match(parseAsset("plugin", "p", { "plugin.json": JSON.stringify({ includes: [{ kind: "skill", id: "A b" }] }) }).error!, /includes\[0\]\.id/);
+  assert.match(parseAsset("plugin", "p", { "plugin.json": JSON.stringify({ includes: [{ kind: "skill", id: "a" }, { kind: "skill", id: "a" }] }) }).error!, /included twice/);
+  assert.match(parseAsset("plugin", "p", { "plugin.json": JSON.stringify({ version: 3, extra: 1 }) }).error!, /unknown field extra[\s\S]*version must be/);
+  assert.match(parseAsset("plugin", "p", { "plugin.json": JSON.stringify({ source: { type: "git", url: "file:///etc" } }) }).error!, /source must be/);
+  assert.match(parseAsset("plugin", "p", { "plugin.json": JSON.stringify({ source: { type: "git", url: "https://x.test/r.git", rev: "--upload-pack=x" } }) }).error!, /source\.rev/);
+  assert.match(err({ "notes.txt": "x" }), /not part of a member/);
+  assert.match(err({ "skills/notes.md": "x" }), /a skill is a folder/);
+  assert.match(err({ "agents/a/b.md": "x" }), /a agent is one \.md file/);
+  assert.match(err({ "mcp/Bad_Id.json": "{}" }), /not a valid member id/);
+  assert.match(err({ ...base, "skills/notes/SKILL.md": "no frontmatter" }), /skill notes:/);
+  assert.match(err({ "skills/changelog/SKILL.md": SKILL }), /both included and part of the plugin/);
+  assert.match(err({ "settings/x.json": JSON.stringify({ permissions: 5 }) }), /settings x:/);
 });

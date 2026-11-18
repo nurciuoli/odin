@@ -1,7 +1,7 @@
 // Library assets: per-kind parsing of an asset's files into name, description and meta, never throwing. Problems are
 // reported in `error`. docs/contracts.md#library.
-import type { AssetFiles, AssetKind, McpOAuthConfig, McpServerSpec, PermissionMode, SettingsProfileSpec, TemplateSpec } from "@odin/shared/api";
-import { ASSET_ID_PATTERN, LIBRARY_LAYOUT, LIBRARY_AGENT_PREFIX, badSecretRef, promptVariables } from "@odin/shared/library";
+import type { AssetFiles, AssetKind, McpOAuthConfig, McpServerSpec, PermissionMode, PluginInclude, PluginMemberKind, PluginOwnMember, PluginSpec, SettingsProfileSpec, TemplateSpec } from "@odin/shared/api";
+import { ASSET_ID_PATTERN, LIBRARY_LAYOUT, LIBRARY_AGENT_PREFIX, PLUGIN_MAX_INCLUDES, PLUGIN_MEMBER_KINDS, badSecretRef, promptVariables } from "@odin/shared/library";
 import { parseAgentFile } from "../agents/parse.ts";
 import { type FrontmatterValue, parseFrontmatter } from "../frontmatter.ts";
 
@@ -112,7 +112,158 @@ export function parseAsset(kind: AssetKind, id: string, files: AssetFiles): Pars
     case "mcp":
     case "settings":
       return parseJsonAsset(kind, id, content);
+    case "plugin":
+      return parsePlugin(id, files);
   }
+}
+
+// ── plugins ─────────────────────────────────────────────────────────────────
+
+/** Root files of a plugin folder that are not members. */
+const PLUGIN_ROOT_FILES = ["plugin.json", "README.md"];
+
+export interface PluginOwnFiles {
+  kind: PluginMemberKind;
+  id: string;
+  /** In library form: relative to the member's own root, as `parseAsset` and installs expect. */
+  files: AssetFiles;
+}
+
+/**
+ * Splits a plugin's files into its own members by the library's layout and reports files that belong to none.
+ * Members come back sorted by kind (PLUGIN_MEMBER_KINDS order) then id.
+ */
+export function pluginOwnFiles(files: AssetFiles): { members: PluginOwnFiles[]; errors: string[] } {
+  const found = new Map<string, PluginOwnFiles>();
+  const errors: string[] = [];
+  for (const [path, content] of Object.entries(files)) {
+    if (PLUGIN_ROOT_FILES.includes(path)) continue;
+    const [dir, id, ...rest] = path.split("/");
+    const kind = PLUGIN_MEMBER_KINDS.find((k) => LIBRARY_LAYOUT[k].dir === dir);
+    if (!kind || !id) {
+      errors.push(`${path} is not part of a member: members live in skills/, agents/, mcp/, settings/ or instructions/`);
+      continue;
+    }
+    const layout = LIBRARY_LAYOUT[kind];
+    let memberId: string;
+    let memberPath: string;
+    if (layout.shape === "file") {
+      if (rest.length || !id.endsWith(layout.entry)) {
+        errors.push(`${path}: a ${kind} is one ${layout.entry} file directly in ${layout.dir}/`);
+        continue;
+      }
+      memberId = id.slice(0, -layout.entry.length);
+      memberPath = id;
+    } else {
+      if (!rest.length) {
+        errors.push(`${path}: a ${kind} is a folder in ${layout.dir}/`);
+        continue;
+      }
+      memberId = id;
+      memberPath = rest.join("/");
+    }
+    if (!ASSET_ID_PATTERN.test(memberId)) {
+      errors.push(`${path}: "${memberId}" is not a valid member id`);
+      continue;
+    }
+    const k = `${kind}/${memberId}`;
+    const m = found.get(k) ?? { kind, id: memberId, files: {} };
+    m.files[memberPath] = content;
+    found.set(k, m);
+  }
+  const order = (k: PluginMemberKind) => PLUGIN_MEMBER_KINDS.indexOf(k);
+  const members = [...found.values()].sort((a, b) => order(a.kind) - order(b.kind) || a.id.localeCompare(b.id));
+  return { members, errors };
+}
+
+function validatePluginSpec(spec: Obj, errors: string[]): PluginSpec {
+  unknownKeys(spec, ["version", "includes", "source"], errors);
+  const out: PluginSpec = { includes: [] };
+  if (spec.version !== undefined) {
+    if (typeof spec.version === "string" && spec.version.trim() && spec.version.length <= 64 && !/[\u0000-\u001f\u007f]/.test(spec.version)) out.version = spec.version.trim();
+    else errors.push("version must be a short string");
+  }
+  if (spec.includes !== undefined) {
+    if (!Array.isArray(spec.includes)) errors.push("includes must be a list");
+    else if (spec.includes.length > PLUGIN_MAX_INCLUDES) errors.push(`includes lists too many assets (at most ${PLUGIN_MAX_INCLUDES})`);
+    else {
+      const seen = new Set<string>();
+      for (const [i, raw] of spec.includes.entries()) {
+        if (!isObj(raw)) {
+          errors.push(`includes[${i}] must be an object`);
+          continue;
+        }
+        unknownKeys(raw, ["kind", "id", "version"], errors, `includes[${i}].`);
+        const kind = PLUGIN_MEMBER_KINDS.find((k) => k === raw.kind);
+        if (!kind) {
+          errors.push(`includes[${i}].kind must be one of ${PLUGIN_MEMBER_KINDS.join(", ")}`);
+          continue;
+        }
+        if (typeof raw.id !== "string" || !ASSET_ID_PATTERN.test(raw.id)) {
+          errors.push(`includes[${i}].id must be a library asset id`);
+          continue;
+        }
+        const inc: PluginInclude = { kind, id: raw.id };
+        if (raw.version !== undefined) {
+          if (typeof raw.version === "string" && /^[0-9a-f]{8,64}$/.test(raw.version)) inc.version = raw.version;
+          else errors.push(`includes[${i}].version must be a library version hash`);
+        }
+        const key = `${kind}/${raw.id}`;
+        if (seen.has(key)) errors.push(`${key} is included twice`);
+        seen.add(key);
+        out.includes.push(inc);
+      }
+    }
+  }
+  if (spec.source !== undefined) {
+    const src = spec.source;
+    if (!isObj(src) || src.type !== "git" || typeof src.url !== "string" || !/^(https:\/\/|git@|ssh:\/\/)/.test(src.url) || /[\u0000-\u001f\u007f\s]/.test(src.url)) {
+      errors.push("source must be { type: \"git\", url: an https, ssh or git@ address, rev? }");
+    } else {
+      unknownKeys(src, ["type", "url", "rev"], errors, "source.");
+      const source: NonNullable<PluginSpec["source"]> = { type: "git", url: src.url };
+      if (src.rev !== undefined) {
+        if (typeof src.rev === "string" && /^[A-Za-z0-9._\/-]{1,128}$/.test(src.rev) && !src.rev.startsWith("-")) source.rev = src.rev;
+        else errors.push("source.rev must be a branch, tag or commit name");
+      }
+      out.source = source;
+    }
+  }
+  return out;
+}
+
+/** A plugin folder: plugin.json (name, description, version, includes, source) plus its own members. */
+function parsePlugin(id: string, files: AssetFiles): ParsedAsset {
+  const manifest = files["plugin.json"]!;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(manifest);
+  } catch (err) {
+    return { name: id, description: "", meta: {}, error: `plugin.json is not valid JSON: ${(err as Error).message}` };
+  }
+  if (!isObj(raw)) return { name: id, description: "", meta: {}, error: "plugin.json must hold a JSON object" };
+  const errors: string[] = [];
+  const name = typeof raw.name === "string" && raw.name.trim() ? oneLine(raw.name) : id;
+  if (raw.name !== undefined && typeof raw.name !== "string") errors.push("name must be a string");
+  const description = typeof raw.description === "string" ? oneLine(raw.description) : "";
+  if (raw.description !== undefined && typeof raw.description !== "string") errors.push("description must be a string");
+  const { name: _n, description: _d, ...rest } = raw;
+  const spec = validatePluginSpec(rest, errors);
+
+  const { members, errors: layoutErrors } = pluginOwnFiles(files);
+  errors.push(...layoutErrors);
+  const own: PluginOwnMember[] = members.map((m) => {
+    // A member must be a valid asset of its kind on its own, and must be installable without help from the plugin.
+    const bad = filesError(m.kind, m.id, m.files);
+    const parsed = bad ? null : parseAsset(m.kind, m.id, m.files);
+    const error = bad ?? parsed?.error ?? null;
+    if (error) errors.push(`${m.kind} ${m.id}: ${error}`);
+    return { kind: m.kind, id: m.id, name: parsed?.name ?? m.id, description: parsed?.description ?? "", error };
+  });
+  for (const inc of spec.includes) {
+    if (own.some((m) => m.kind === inc.kind && m.id === inc.id)) errors.push(`${inc.kind}/${inc.id} is both included and part of the plugin`);
+  }
+  return { name, description, meta: { ...spec, own }, error: join(errors) };
 }
 
 /** The prompt body of a prompt asset: frontmatter stripped (when present). */
