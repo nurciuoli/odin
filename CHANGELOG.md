@@ -5,6 +5,8 @@ follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- The session Details panel is tidier: repository, branch, pull request, quick links (copy path or branch, open the PR, and in the desktop app open in editor, terminal or files) and tags sit together at the top; Context shows cost, cache hit rate and a token-mix bar; Changes and Plan get quiet proportion bars; the redundant Thread section is gone.
+
 - Project coordinator and threads: a project's new **Threads** tab starts a coordinator, a session that can start, list, read, message and stop parallel *threads* (ordinary sessions, in worktrees by default) through host tools, and hears back when they finish a turn or fail. The tab lists each coordinator's threads (those that need you first) and edits the project brief and project memory files that every coordinator and thread starts with (stored in Odin under `~/.odin/memory/<project>/`, never in the repo). API: `POST /api/projects/:name/coordinators`, `GET /api/projects/:name/threads`, `/api/projects/:name/brief`, `/api/projects/:name/memory`. See `docs/plans/project-coordinator.md`.
 - Claude sessions no longer offer the SDK's `Projects` tool, which only works inside a hosted claude.ai project.
 - Breaking: notebooks no longer record who wrote a cell or share kernels across sessions. `NotebookCell.author`, `NotebookNotice`, `sessionId` on executions and execute requests, `GET /api/sessions/:id/notebooks` and `POST /api/sessions/:id/notebooks/:kernelId/attach` are removed, sessions no longer receive notebook-change notices, and migration 0015 drops the session-link and notice tables. Existing `.ipynb` files with author metadata still open.
