@@ -1,0 +1,1 @@
+- Session menu: "Hand off to another harness…" starts the same task on a different harness in the same folder and branch. You review and edit the briefing first, and the new session links back to the old one.

@@ -532,6 +532,7 @@ function onDeleted() {
           :working="runningCount > 0"
           @updated="setRecord"
           @forked="onForked"
+          @handed-off="onForked"
           @deleted="onDeleted"
         >
           <template #actions>

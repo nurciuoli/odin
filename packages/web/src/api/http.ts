@@ -157,6 +157,8 @@ export function createHttpApi(options: HttpApiOptions = {}): Api {
     interruptSession: id => send('POST', `${session(id)}/interrupt`),
     endSession: id => send('POST', `${session(id)}/end`),
     forkSession: (id, req) => send('POST', `${session(id)}/fork`, req),
+    handoffPreview: (id, harness) => get(`${session(id)}/handoff${query({ harness })}`),
+    handoffSession: (id, req) => send('POST', `${session(id)}/handoff`, req),
     listModels: harness => get(`/api/models${query({ harness })}`),
     getNativeCatalog: (harness, project) =>
       get(`/api/harnesses/${seg(harness)}/native${query({ project })}`),

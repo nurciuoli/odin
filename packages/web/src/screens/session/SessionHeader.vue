@@ -26,6 +26,7 @@ import { plural, SESSION_DISPLAY } from '@/screens/shared/format'
 import { useQuickAnswer } from '@/screens/shared/useQuickAnswer'
 import SaveToLibraryModal from '@/screens/library/SaveToLibraryModal.vue'
 import ForkModal from './ForkModal.vue'
+import HandoffModal from './HandoffModal.vue'
 
 const props = defineProps<{
   session: SessionDetail
@@ -36,6 +37,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   updated: [session: Session]
   forked: [session: Session]
+  handedOff: [session: Session]
   deleted: []
 }>()
 
@@ -100,6 +102,7 @@ function onRenameKey(e: KeyboardEvent) {
 
 // ── actions ──
 const forkOpen = ref(false)
+const handoffOpen = ref(false)
 const saveOpen = ref(false)
 const deleteOpen = ref(false)
 const deleting = ref(false)
@@ -115,6 +118,7 @@ const menuItems = computed<MenuItem[]>(() => {
   items.push(
     { type: 'separator' },
     { id: 'fork', label: 'Fork…', icon: 'gitBranch' },
+    { id: 'handoff', label: 'Hand off to another harness…', icon: 'arrowRight' },
     { id: 'save', label: 'Save to library…', icon: 'addLayer' },
     { id: 'end', label: 'End session', icon: 'stop', disabled: isFinal.value },
     {
@@ -138,6 +142,7 @@ async function onAction(id: string) {
   else if (id === 'pin')
     await patch({ pinned: !props.session.pinned }, props.session.pinned ? 'unpin' : 'pin')
   else if (id === 'fork') forkOpen.value = true
+  else if (id === 'handoff') handoffOpen.value = true
   else if (id === 'save') saveOpen.value = true
   else if (id === 'delete') {
     deleteError.value = null
@@ -233,17 +238,25 @@ async function onWaiting(id: string) {
   }
 }
 
-// The palette's `>` list offers Fork while this header is mounted.
-let withdraw: (() => void) | null = null
+// The palette's `>` list offers Fork and Hand off while this header is mounted.
+const withdraw: (() => void)[] = []
 onMounted(() => {
-  withdraw = registerCommand({
-    id: 'session-fork',
-    label: 'Fork this session…',
-    icon: 'gitBranch',
-    run: () => (forkOpen.value = true),
-  })
+  withdraw.push(
+    registerCommand({
+      id: 'session-fork',
+      label: 'Fork this session…',
+      icon: 'gitBranch',
+      run: () => (forkOpen.value = true),
+    }),
+    registerCommand({
+      id: 'session-handoff',
+      label: 'Hand off to another harness…',
+      icon: 'arrowRight',
+      run: () => (handoffOpen.value = true),
+    }),
+  )
 })
-onBeforeUnmount(() => withdraw?.())
+onBeforeUnmount(() => withdraw.splice(0).forEach(off => off()))
 
 async function confirmDelete() {
   deleting.value = true
@@ -344,6 +357,15 @@ async function confirmDelete() {
       :title="session.title"
       :in-worktree="!!worktree"
       @forked="emit('forked', $event)"
+    />
+
+    <HandoffModal
+      v-model:open="handoffOpen"
+      :session-id="session.id"
+      :harness="session.harness"
+      :busy="session.state === 'running' || session.state === 'waiting'"
+      :final="isFinal"
+      @handed-off="emit('handedOff', $event)"
     />
 
     <SaveToLibraryModal

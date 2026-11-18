@@ -19,6 +19,7 @@ import type { ActivityItem } from '@/components/ActivityStrip/ActivityStrip.vue'
 import { IuStatusDot } from '@/components/StatusDot'
 import { useToast } from '@/components/Toast'
 import type { Status } from '@/styles/status'
+import { harnessLabel } from '@/screens/shared/format'
 import { contextWindow } from './sessionView'
 import { fileChanges, latestPlan, latestPlanFile } from './workbench'
 import { IuMarkdown } from '@/components/Markdown'
@@ -44,6 +45,21 @@ const emit = defineEmits<{
 }>()
 
 const api = useApi()
+
+// Sessions that took this one over on another harness. Side threads and forks are left out.
+const continuations = ref<Session[]>([])
+watchEffect(onCleanup => {
+  const id = props.session.id
+  let stale = false
+  onCleanup(() => (stale = true))
+  continuations.value = []
+  api
+    .listSessions({ parentId: id })
+    .then(list => {
+      if (!stale) continuations.value = list.filter(s => s.handoff?.from === id)
+    })
+    .catch(() => {})
+})
 const { toast } = useToast()
 
 // ── todos ──
@@ -307,8 +323,16 @@ function addTag(e: KeyboardEvent) {
         </div>
         <div v-if="session.parentId" class="session-side__row">
           <IuIcon name="link" :size="14" />
-          <RouterLink class="session-side__link" :to="`/s/${session.parentId}`"
-            >Forked from parent</RouterLink
+          <RouterLink class="session-side__link" :to="`/s/${session.parentId}`">{{
+            session.handoff
+              ? `Continued from ${harnessLabel(session.handoff.harness)} session`
+              : 'Forked from parent'
+          }}</RouterLink>
+        </div>
+        <div v-for="c in continuations" :key="c.id" class="session-side__row">
+          <IuIcon name="arrowRight" :size="14" />
+          <RouterLink class="session-side__link" :to="`/s/${c.id}`"
+            >Continued on {{ harnessLabel(c.harness) }}</RouterLink
           >
         </div>
       </div>
