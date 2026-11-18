@@ -5,6 +5,7 @@ import { fakeHarness } from "../harness/fake.ts";
 import { HttpError } from "../http/util.ts";
 import { PROJECT, setup } from "../sessions/test-setup.ts";
 import type { Services } from "../services.ts";
+import { createSecretsService } from "../secrets/service.ts";
 import { DEFAULT_APP_SETTINGS } from "../settings/service.ts";
 import { titleFromPrompt, validBranchName } from "./service.ts";
 
@@ -59,6 +60,7 @@ function fakeLibrary(assets: Record<string, { meta?: Record<string, unknown>; fi
       return a ? { kind, id, name: id, description: "", version: a.version ?? "lv1", updatedAt: "", files: Object.keys(a.files ?? {}), meta: a.meta ?? {}, error: a.error ?? null } : null;
     },
     files: (kind: string, id: string) => find(kind, id)?.files ?? null,
+    list: (kind: string) => Object.entries(assets).filter(([k]) => k.startsWith(`${kind}/`)).map(([k, a]) => ({ kind, id: k.slice(kind.length + 1), meta: a.meta ?? {}, error: a.error ?? null })),
   } as unknown as Services["library"];
 }
 
@@ -73,6 +75,30 @@ async function planLib(req: Partial<StartSessionRequest>, assets: Parameters<typ
     await s.sessions.close();
   }
 }
+
+test("MCP specs get ${secret:NAME} filled from the vault at launch; a missing secret → 400 without a value", async () => {
+  const assets = {
+    "mcp/web": { meta: { name: "web", type: "http", url: "https://x.test/mcp?k=${secret:KEY}", headers: { Authorization: "Bearer ${secret:TOKEN}", Plain: "v" } } },
+    "mcp/gh": { meta: { name: "gh", type: "stdio", command: "gh-mcp", args: ["--token=${secret:TOKEN}"], env: { T: "${secret:TOKEN}" } } },
+  };
+  const s = setup();
+  s.services.library = fakeLibrary(assets);
+  s.services.secrets = createSecretsService(s.deps, s.services);
+  try {
+    s.services.secrets.put("TOKEN", "t0k");
+    await assert.rejects(s.services.launch.plan({ project: PROJECT, prompt: { text: "x" }, mcp: ["web"] } as StartSessionRequest, ID), (e: unknown) => e instanceof HttpError && e.status === 400 && /MCP server web needs secret KEY/.test(e.message) && !e.message.includes("t0k"));
+    s.services.secrets.put("KEY", "k3y");
+    const p = await s.services.launch.plan({ project: PROJECT, prompt: { text: "x" }, mcp: ["web", "gh"] } as StartSessionRequest, ID);
+    assert.deepEqual(p.mcpServers, {
+      web: { type: "http", url: "https://x.test/mcp?k=k3y", headers: { Authorization: "Bearer t0k", Plain: "v" } },
+      gh: { type: "stdio", command: "gh-mcp", args: ["--token=t0k"], env: { T: "t0k" } },
+    });
+    // The library asset keeps the placeholder.
+    assert.equal((assets["mcp/gh"].meta as { args: string[] }).args[0], "--token=${secret:TOKEN}");
+  } finally {
+    await s.sessions.close();
+  }
+});
 
 test("MCP ids → servers without name/description; unknown → 400", async () => {
   const assets = {

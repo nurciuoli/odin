@@ -15,7 +15,7 @@ say so in the PR.
 - In development the Vite server (`:5190`) proxies `/api` and `/a/` to core.
 - **apps/desktop** (Electron) starts core as a child process and loads the web app from it. The web app never
   depends on Electron: everything also works in a plain browser. See [Desktop shell](#desktop-shell).
-- State: `~/.odin/` (`ODIN_HOME`) holds `state.db`, `env` (the ingest token, mode 600), `pricing.json`,
+- State: `~/.odin/` (`ODIN_HOME`) holds `state.db`, `env` (the ingest token, mode 600), `secrets.json` (the secrets vault, mode 600), `pricing.json`,
   `library/` (plain files) and `worktrees/`. Projects live wherever
   they were registered; Odin never moves them.
 - Conversations live in the harness's own store (Claude: `~/.claude/projects/…/*.jsonl`). Odin keeps metadata and
@@ -36,6 +36,8 @@ say so in the PR.
 - **GitHub token**: `GITHUB_TOKEN`, else `gh auth token` at boot. Never logged, returned, put in events, or passed to
   harness processes: core deletes `GITHUB_TOKEN`, `GH_TOKEN` and `ODIN_INGEST_TOKEN` from its own environment after
   reading them, because harness processes (and their Bash tools) inherit it. Errors from GitHub are scrubbed of it.
+- **Vault secrets** (`<home>/secrets.json`, mode 600): values go in through `PUT /api/secrets/:name` and never come
+  out of any response, log, event, `launch_config`, library file or repo file. See [Secrets](#secrets).
 - **Model credentials are not Odin's.** Whatever the environment gives Claude Code passes through untouched; core
   never reads, stores, logs or returns it. See [Model access](#model-access).
 - **Subprocesses** (`git`, `gh`) run with `execFile`/`spawn` and an argv array, never a shell.
@@ -597,6 +599,35 @@ the library; the native default agent can delegate to them.
   fails validation, broken frontmatter) → 400 and nothing is written. Assets edited on disk can still carry an
   `error`; launch refuses them (400) and install refuses them (409).
 
+## Secrets
+
+Named values that library MCP specs refer to, so tokens and keys stay out of library files and `.mcp.json`.
+
+- **Reference**: `${secret:NAME}` inside an MCP spec's `args`, `env` values, `url` or `headers` values (not keys,
+  `command` or `name`). `NAME` matches `SECRET_NAME_PATTERN` (`^[A-Za-z][A-Za-z0-9_-]{0,63}$`). A malformed
+  reference makes the library asset fail to parse (`error`; 400 on save). Core does not rescan filled output, so a
+  value that itself contains `${secret:…}` stays literal.
+- **Storage**: `<home>/secrets.json` → `{ version: 1, secrets: { NAME: { value, createdAt, updatedAt } } }`, written
+  with mode 600 to a temp file and renamed over the old one. (Windows has no mode bits; the file sits in the
+  user's profile.) The file is plain text: it protects against the repo, the library and logs, not against another
+  process of the same user. The store sits behind `SecretStore` (`secrets/store.ts`), so an OS-keychain backend
+  can replace it without an API change. An unreadable or malformed file → 500 with a message that never contains
+  file content.
+- **API**: `GET /api/secrets` → `SecretsResponse` (`secrets`: name, timestamps and `usedBy` library MCP ids, sorted
+  by name; `missing`: names MCP specs refer to that are not set). `PUT /api/secrets/:name` (`{ value }`) creates or
+  replaces → `SecretInfo`. `DELETE /api/secrets/:name` → 204, 404 when unknown. Values are 1 byte to 16 KiB with no
+  control characters or line breaks (they end up in headers and environment variables), else 400. Names that fail
+  the pattern → 400.
+- **Resolution**: only at launch. `resolveMcpServers` (start, resume and fork) fills references into the
+  `McpServerStart` handed to the driver, so a harness sees real values and Odin's stored state never does. A
+  reference to a secret that is not set → 400 `MCP server <id> needs secret <NAME>, which is not set` and the
+  session does not start; the library asset keeps the placeholder. Specs with no reference never touch the vault.
+- **Install**: `.mcp.json` receives the spec as saved, placeholders included. A harness that reads `.mcp.json` on its
+  own (a terminal Claude Code session in that project) does not know `${secret:…}` and will not fill it; only
+  sessions Odin launches get values.
+- Planned on top of this: Odin-brokered OAuth for remote MCP servers (tokens stored in the vault), and a servers
+  screen. Neither is part of this contract yet.
+
 ## Notebooks and Python analysis
 
 A notebook is an ordinary `.ipynb` file in the project, addressed by a project-relative path (forward slashes, ends
@@ -946,6 +977,9 @@ The main routes; each module's `routes.ts` has the full list. All JSON. Errors: 
 | GET `/api/projects/:name/activity?days=` | `ProjectActivity` (`days` default 84, 1–168) |
 | GET `/api/settings` | `SettingsResponse` |
 | GET `/api/readiness` | `ReadinessResponse` |
+| GET `/api/secrets` | `SecretsResponse` (no values) |
+| PUT `/api/secrets/:name` (`PutSecretRequest`) | `SecretInfo` |
+| DELETE `/api/secrets/:name` | 204 |
 | PATCH `/api/settings` (`UpdateSettingsRequest`) | `SettingsResponse` |
 
 ## SSE (`GET /api/events`)

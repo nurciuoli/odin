@@ -5,6 +5,31 @@ import type { AssetKind } from "./api.ts";
 export const ASSET_KINDS: AssetKind[] = ["instruction", "skill", "agent", "mcp", "settings"];
 export const ASSET_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
+/** A secret name in the vault (docs/contracts.md#secrets). */
+export const SECRET_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
+/** Largest secret value, in UTF-8 bytes. */
+export const SECRET_MAX_BYTES = 16 * 1024;
+
+/**
+ * Names referenced as `${secret:NAME}` in a string, in order, not deduplicated. Names are not validated here:
+ * `badSecretRef` reports the ones that break SECRET_NAME_PATTERN.
+ */
+export function secretRefs(text: string): string[] {
+  return [...text.matchAll(/\$\{secret:([^}]*)\}/g)].map((m) => m[1]!);
+}
+
+/** The first malformed reference in `text` (a name that fails SECRET_NAME_PATTERN, or an unclosed `${secret:`), else null. */
+export function badSecretRef(text: string): string | null {
+  for (const name of secretRefs(text)) if (!SECRET_NAME_PATTERN.test(name)) return name;
+  const open = text.replace(/\$\{secret:[^}]*\}/g, "");
+  return open.includes("${secret:") ? "${secret:" : null;
+}
+
+/** Replaces each `${secret:NAME}` using `lookup`; the caller decides what a missing name means. */
+export function fillSecrets(text: string, lookup: (name: string) => string): string {
+  return text.replace(/\$\{secret:([^}]*)\}/g, (_m, name: string) => lookup(name));
+}
+
 /**
  * Layout under the library root. `file` kinds are one file `<dir>/<id><ext>`; `folder` kinds are `<dir>/<id>/` with
  * an entry file (a skill's SKILL.md) plus any others.

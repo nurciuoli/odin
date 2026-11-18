@@ -649,6 +649,30 @@ export type PermissionAnswer =
     }
   | { behavior: "deny"; message?: string; /** Also stop the turn. */ interrupt?: boolean };
 
+// ── Secrets ─────────────────────────────────────────────────────────────────
+
+/** A vault secret as the API shows it. The value is never returned. */
+export interface SecretInfo {
+  /** SECRET_NAME_PATTERN. Library MCP specs refer to it as `${secret:NAME}`. */
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  /** Library MCP server ids whose spec refers to this secret. */
+  usedBy: string[];
+}
+
+/** PUT /api/secrets/:name. Creates or replaces. */
+export interface PutSecretRequest {
+  value: string;
+}
+
+/** GET /api/secrets. Secrets sorted by name, plus names MCP specs refer to that are not set, so a UI can flag them. */
+export interface SecretsResponse {
+  secrets: SecretInfo[];
+  /** Referenced by a library MCP spec but not in the vault. */
+  missing: { name: string; usedBy: string[] }[];
+}
+
 // ── Library ─────────────────────────────────────────────────────────────────
 
 /** command/prompt/template remain readable by the migration parser only; not active library kinds. */
@@ -673,6 +697,10 @@ export interface TemplateSpec {
   tags: string[];
 }
 
+/**
+ * Strings in `args`, `env`, `url` and `headers` may contain `${secret:NAME}`; core fills them from the vault at
+ * launch and never writes the value to the library, `launch_config` or the repo.
+ */
 export type McpServerSpec =
   | { type: "stdio"; command: string; args?: string[]; env?: Record<string, string> }
   | { type: "http" | "sse"; url: string; headers?: Record<string, string> };

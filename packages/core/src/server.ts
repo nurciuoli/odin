@@ -29,6 +29,7 @@ import { createLibraryService } from "./library/service.ts";
 import { createSyncService } from "./sync/service.ts";
 import { createIngestService } from "./ingest/service.ts";
 import { createMetricsService } from "./metrics/service.ts";
+import { createSecretsService } from "./secrets/service.ts";
 import { createSettingsService } from "./settings/service.ts";
 import { getToolPathSource, setToolPathSource } from "./tools/resolve.ts";
 import { createFilesService } from "./files/service.ts";
@@ -96,6 +97,7 @@ export function createApp(options: AppOptions): App {
   services.sync = createSyncService(deps, services);
   services.library = createLibraryService(deps, services);
   services.artifacts = createArtifactsService(deps, services);
+  services.secrets = createSecretsService(deps, services);
   services.launch = createLaunchService(deps, services);
   services.ingest = createIngestService(deps, services);
   services.metrics = createMetricsService(deps, services);

@@ -1,7 +1,7 @@
 // Library assets: per-kind parsing of an asset's files into name, description and meta, never throwing. Problems are
 // reported in `error`. docs/contracts.md#library.
 import type { AssetFiles, AssetKind, McpServerSpec, PermissionMode, SettingsProfileSpec, TemplateSpec } from "@odin/shared/api";
-import { ASSET_ID_PATTERN, LIBRARY_LAYOUT, LIBRARY_AGENT_PREFIX, promptVariables } from "@odin/shared/library";
+import { ASSET_ID_PATTERN, LIBRARY_LAYOUT, LIBRARY_AGENT_PREFIX, badSecretRef, promptVariables } from "@odin/shared/library";
 import { parseAgentFile } from "../agents/parse.ts";
 import { type FrontmatterValue, parseFrontmatter } from "../frontmatter.ts";
 
@@ -220,6 +220,18 @@ export function validateTemplate(spec: Obj, errors: string[]): TemplateSpec {
 }
 
 export function validateMcp(spec: Obj, errors: string[]): McpServerSpec | null {
+  const out = validateMcpShape(spec, errors);
+  if (out) {
+    const strings = [
+      ...(out.type === "stdio" ? [...(out.args ?? []), ...Object.values(out.env ?? {})] : [out.url, ...Object.values(out.headers ?? {})]),
+    ];
+    const bad = strings.map(badSecretRef).find((b) => b !== null);
+    if (bad !== undefined) errors.push(`bad secret reference ${JSON.stringify(bad.slice(0, 40))}: use \${secret:NAME} with letters, digits, _ and -`);
+  }
+  return out;
+}
+
+function validateMcpShape(spec: Obj, errors: string[]): McpServerSpec | null {
   const type = spec.type ?? (spec.command !== undefined ? "stdio" : undefined);
   if (type === "stdio") {
     unknownKeys(spec, ["type", "command", "args", "env"], errors);
