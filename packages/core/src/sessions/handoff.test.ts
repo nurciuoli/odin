@@ -52,7 +52,7 @@ test("the briefing falls back to the stored first prompt, says when the tree is 
 });
 
 function twoHarnesses() {
-  const codex = fakeHarness({ id: "codex", name: "Codex" });
+  const codex = fakeHarness({ id: "codex" });
   const s = setup();
   s.deps.harnesses.codex = codex;
   return { s, codex };
@@ -103,7 +103,7 @@ test("handoff uses the edited briefing, keeps the source with endSource false an
 
 test("a running source and an unavailable target are 409; the HTTP routes work", async () => {
   const s = setup({ harness: { script: () => [{ wait: new Promise<void>(() => {}) }] } });
-  const codex = fakeHarness({ id: "codex", name: "Codex" });
+  const codex = fakeHarness({ id: "codex" });
   s.deps.harnesses.codex = codex;
   const app = await serve(s);
   try {
