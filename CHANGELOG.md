@@ -5,7 +5,6 @@ follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-- Markdown files in the session's Files panel open in a rendered view (real lists, wrapped paragraphs, inline code, h1-h6) that uses the same renderer as session messages; the header menu switches to the live editor or the source. The live editor shows bullets for list items.
 - Removed the project coordinator and threads prototype (the project Threads tab, coordinator sessions, project brief and project memory). Its three database tables are dropped on upgrade; any `~/.odin/memory` files are left on disk.
 
 - Breaking: notebooks no longer record who wrote a cell or share kernels across sessions. `NotebookCell.author`, `NotebookNotice`, `sessionId` on executions and execute requests, `GET /api/sessions/:id/notebooks` and `POST /api/sessions/:id/notebooks/:kernelId/attach` are removed, sessions no longer receive notebook-change notices, and migration 0015 drops the session-link and notice tables. Existing `.ipynb` files with author metadata still open.
