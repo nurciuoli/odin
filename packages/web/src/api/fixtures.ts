@@ -1223,6 +1223,50 @@ export function createFixtures(now: number = Date.now()): Fixtures {
     })
   }
   lib.push({
+    kind: 'plugin',
+    id: 'release-helper',
+    name: 'Release helper',
+    description: 'Changelog, release notes and the publish MCP server.',
+    files: {
+      'plugin.json': JSON.stringify(
+        {
+          name: 'Release helper',
+          description: 'Changelog, release notes and the publish MCP server.',
+          version: '1.2.0',
+          includes: [{ kind: 'skill', id: 'triage' }],
+          source: { type: 'git', url: 'https://github.com/example/release-helper.git' },
+        },
+        null,
+        2,
+      ),
+      'skills/release-notes/SKILL.md':
+        '---\nname: release-notes\ndescription: Draft release notes from merged pull requests\n---\nList what changed, grouped by area.\n',
+      'mcp/publish.json': JSON.stringify({ type: 'http', url: 'https://publish.example.com/mcp' }),
+      'settings/guard.json': JSON.stringify({
+        hooks: {
+          PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: './guard.sh' }] }],
+        },
+      }),
+    },
+    meta: {
+      version: '1.2.0',
+      includes: [{ kind: 'skill', id: 'triage' }],
+      source: { type: 'git', url: 'https://github.com/example/release-helper.git' },
+      own: [
+        {
+          kind: 'skill',
+          id: 'release-notes',
+          name: 'release-notes',
+          description: 'Draft release notes from merged pull requests',
+          error: null,
+        },
+        { kind: 'mcp', id: 'publish', name: 'publish', description: '', error: null },
+        { kind: 'settings', id: 'guard', name: 'guard', description: '', error: null },
+      ],
+    },
+    at: ago(2 * DAY),
+  })
+  lib.push({
     kind: 'instruction',
     id: 'global',
     name: 'Global AGENTS.md',

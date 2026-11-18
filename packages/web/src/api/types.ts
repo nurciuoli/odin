@@ -9,7 +9,10 @@ import type {
   AssetKind,
   ClaudeCodeTrackingStatus,
   CreateProjectRequest,
+  ExportResult,
   FileSearchResult,
+  ImportPreview,
+  ImportRequest,
   ProjectFileMap,
   ForkSessionRequest,
   Installation,
@@ -176,6 +179,12 @@ export interface Api {
   rescanLibrary(): Promise<void>
   listInstallations(project: string): Promise<Installation[]>
   install(project: string, req: InstallRequest): Promise<InstallResult>
+  /** Reads a Claude Code plugin from a git address or local folder; writes nothing. */
+  previewPluginImport(req: ImportRequest): Promise<ImportPreview>
+  /** Writes the previewed plugin into the library. Previews last 10 minutes and work once. */
+  confirmPluginImport(previewId: string): Promise<LibraryAsset>
+  /** Writes a plugin as a Claude Code plugin folder at an absolute path (absent or empty). */
+  exportPlugin(id: string, path: string): Promise<ExportResult>
   /** The asset's files as they are in the project now (drift diff), or 404. */
   getProjectAssetFiles(project: string, kind: AssetKind, id: string): Promise<AssetFiles>
 

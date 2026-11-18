@@ -6,6 +6,7 @@ import SelectField from '@/screens/shared/SelectField.vue'
 import { mountScreen } from '@/screens/shared/testSupport'
 import AssetScreen from './AssetScreen.vue'
 import InstallModal from './InstallModal.vue'
+import ImportPluginModal from './ImportPluginModal.vue'
 import LibraryScreen from './LibraryScreen.vue'
 import SaveToLibraryModal from './SaveToLibraryModal.vue'
 import type { SessionSource } from './assetForm'
@@ -212,6 +213,79 @@ describe('InstallModal', () => {
     await flushPromises()
     expect((await api.listInstallations('odin')).some(i => i.id === 'playwright')).toBe(true)
     expect(wrapper.emitted('installed')).toHaveLength(1)
+  })
+})
+
+describe('plugins', () => {
+  it('has a Plugins tab with an Import action', async () => {
+    const { wrapper } = await mountScreen(LibraryScreen, '/library?kind=plugin')
+    await flushPromises()
+    expect(wrapper.text()).toContain('Release helper')
+    expect(button(wrapper, 'Import…')).toBeTruthy()
+  })
+
+  it('shows a plugin page with its own and included members and an export action', async () => {
+    const { wrapper } = await mountScreen(
+      AssetScreen,
+      '/library/plugin/release-helper',
+      undefined,
+      {
+        kind: 'plugin',
+        id: 'release-helper',
+      },
+    )
+    await flushPromises()
+    const text = wrapper.text()
+    expect(text).toContain('release-notes')
+    expect(text).toContain('triage')
+    expect(text).toContain('follows the current version')
+    expect(button(wrapper, 'Export…')).toBeTruthy()
+    expect(button(wrapper, 'Install into…')).toBeTruthy()
+  })
+
+  it('reviews a plugin before installing it and sends the confirm token', async () => {
+    const api = createMockApi()
+    const install = vi.spyOn(api, 'install')
+    const { wrapper } = await mountScreen(InstallModal, '/library', api, {
+      kind: 'plugin',
+      id: 'release-helper',
+      name: 'Release helper',
+      open: true,
+    })
+    await flushPromises()
+    expect(button(wrapper, 'Install')).toBeUndefined()
+    wrapper.findComponent(SelectField).vm.$emit('update:modelValue', 'odin')
+    await flushPromises()
+    await button(wrapper, 'Review')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('./guard.sh')
+    expect(wrapper.text()).toContain('https://publish.example.com/mcp')
+    expect((await api.listInstallations('odin')).some(i => i.id === 'release-helper')).toBe(false)
+    await button(wrapper, 'Install')!.trigger('click')
+    await flushPromises()
+    const last = install.mock.calls.at(-1)!
+    expect(last[1].action).toBe('install')
+    expect(last[1].confirm).toMatch(/^[0-9a-f]{16}$/)
+    expect((await api.listInstallations('odin')).some(i => i.id === 'release-helper')).toBe(true)
+    expect(wrapper.emitted('installed')).toHaveLength(1)
+  })
+
+  it('imports in two steps: review first, then write', async () => {
+    const api = createMockApi()
+    const confirm = vi.spyOn(api, 'confirmPluginImport')
+    const { wrapper } = await mountScreen(ImportPluginModal, '/library', api, { open: true })
+    await flushPromises()
+    await wrapper.find('dialog input').setValue('https://github.com/acme/ship-it.git')
+    await button(wrapper, 'Review')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('npx @modelcontextprotocol/server-github')
+    expect(wrapper.text()).toContain('GITHUB_TOKEN')
+    expect(confirm).not.toHaveBeenCalled()
+    expect((await api.listLibrary('plugin')).some(a => a.id === 'ship-it')).toBe(false)
+    await button(wrapper, 'Import “ship-it”')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.emitted('imported')).toEqual([['ship-it']])
+    expect((await api.listLibrary('plugin')).some(a => a.id === 'ship-it')).toBe(true)
   })
 })
 
