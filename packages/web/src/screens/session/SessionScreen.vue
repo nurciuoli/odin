@@ -56,7 +56,7 @@ import SessionPrompts from './SessionPrompts.vue'
 import { CHAT_MIN, PREVIEW_MIN, detailsFit, setLayoutDemand } from '@/app/layout'
 import SessionSide from './SessionSide.vue'
 import SessionThread from './SessionThread.vue'
-import RewindDialog from './RewindDialog.vue'
+import RewindPrompt from './RewindPrompt.vue'
 import { useCheckpoints } from './useCheckpoints'
 import type { CellRef } from './fileActivity'
 import SessionWorkbench from './SessionWorkbench.vue'
@@ -508,6 +508,14 @@ const rewindText = computed(() => {
   const entry = session.value?.transcript.find(e => e.id === id)
   return entry?.kind === 'user' ? entry.text : ''
 })
+// The card only makes sense while the session is idle: a turn or a prompt starting puts the message box back.
+const rewindShown = computed(
+  () =>
+    rewindOpen.value &&
+    !!rewindFor.value &&
+    session.value?.state !== 'running' &&
+    session.value?.state !== 'waiting',
+)
 function openRewind(cp: Checkpoint) {
   rewindFor.value = cp
   rewindOpen.value = true
@@ -517,7 +525,10 @@ const undoable = ref<{ checkpointId: string } | null>(null)
 const undoing = ref(false)
 watch(
   () => props.id,
-  () => (undoable.value = null),
+  () => {
+    undoable.value = null
+    rewindOpen.value = false
+  },
 )
 function onRestored(result: RestoreCheckpointResult) {
   if (result.archivedSessionId) {
@@ -734,8 +745,8 @@ function onDeleted() {
                 :slash-commands="view.detail.slashCommands"
                 :context="context"
                 :usage="{ costUsd: session.metrics.costUsd, tokens: session.metrics.tokens }"
-                :replaced="session.pending.length > 0"
-                :replacement-key="session.pending[0]?.id ?? null"
+                :replaced="session.pending.length > 0 || rewindShown"
+                :replacement-key="session.pending[0]?.id ?? (rewindShown ? 'rewind' : null)"
                 :queued="session.messageQueue.messages.filter(m => m.state === 'queued').length"
                 :queue-blocked="session.messageQueue.messages.some(m => m.state === 'uncertain')"
                 @sent="setRecord"
@@ -743,7 +754,19 @@ function onDeleted() {
                 @aside="onAside"
               >
                 <template #replacement>
+                  <RewindPrompt
+                    v-if="!session.pending.length && rewindShown"
+                    :session-id="session.id"
+                    :checkpoint="rewindFor"
+                    :checkpoints="allCheckpoints"
+                    :message-text="rewindText"
+                    :fork-at="forkAt"
+                    @close="rewindOpen = false"
+                    @forked="onForked"
+                    @restored="onRestored"
+                  />
                   <SessionPrompts
+                    v-else
                     :session-id="session.id"
                     :project="session.project"
                     :pending="session.pending"
@@ -833,17 +856,6 @@ function onDeleted() {
       @answered="setRecord"
       @shown="(id, version) => (shownArtifact = { id, version })"
       @close="onDrawerClosed"
-    />
-
-    <RewindDialog
-      v-model:open="rewindOpen"
-      :session-id="id"
-      :checkpoint="rewindFor"
-      :checkpoints="allCheckpoints"
-      :message-text="rewindText"
-      :fork-at="forkAt"
-      @forked="onForked"
-      @restored="onRestored"
     />
 
     <div class="session-screen__announce sr-only" aria-live="polite" role="status">

@@ -1,16 +1,16 @@
 <script setup lang="ts">
-// Go back to a checkpoint. A timeline of the session's turns shows where you are going back to and what would be left
-// behind; four cards say what happens (branch, rewind, restore files, fork); a one-line result says exactly what you
-// get; the files that would change sit under a disclosure. The server does the work (restoreCheckpoint, forkSession).
-// Destructive modes say so and are never the default.
-import { computed, ref, watch } from 'vue'
+// Go back to a checkpoint, in the message box's place (SessionComposer's `replacement` slot), like an agent question.
+// A timeline of the session's turns shows where you are going back to and what would be left behind; four cards say
+// what happens (branch, rewind, restore files, fork); a one-line result says exactly what you get; the files that
+// would change sit under a disclosure. Keys: 1–4 choose, Enter confirms, Esc cancels. The server does the work
+// (restoreCheckpoint, forkSession). Destructive modes say so and are never the default. Closing puts the message box back.
+import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from 'vue'
 import type { Checkpoint, CheckpointDiff, RestoreCheckpointResult, Session } from '@odin/shared/api'
 import { useApi } from '@/api'
 import { IuButton } from '@/components/Button'
 import { IuCallout } from '@/components/Callout'
 import { IuIcon } from '@/components/Icon'
 import type { IconName } from '@/components/Icon'
-import { IuDialog } from '@/components/Modal'
 
 type Mode = 'branch' | 'rewind' | 'files' | 'fork'
 
@@ -25,8 +25,9 @@ const props = defineProps<{
   forkAt: boolean
 }>()
 
-const open = defineModel<boolean>('open', { required: true })
 const emit = defineEmits<{
+  /** Esc, Cancel, or done: the message box comes back. */
+  close: []
   /** A new session exists (branch, fork or conversation rewind): go to it. */
   forked: [session: Session]
   /** The restore finished; `undoCheckpointId` undoes a files restore. */
@@ -54,23 +55,25 @@ const restoresFiles = computed(
   () => (mode.value === 'files' || mode.value === 'rewind') && hasFiles.value,
 )
 
-watch(
-  open,
-  isOpen => {
-    if (!isOpen) return
-    error.value = null
-    diff.value = null
-    diffError.value = null
-    mode.value = available.value.branch ? 'branch' : hasFiles.value ? 'files' : 'fork'
-    const cp = props.checkpoint
-    if (cp && hasFiles.value)
-      api
-        .checkpointDiff(props.sessionId, cp.id, 'current')
-        .then(d => (diff.value = d))
-        .catch(e => (diffError.value = e instanceof Error ? e.message : String(e)))
-  },
-  { immediate: true },
-)
+function init() {
+  error.value = null
+  diff.value = null
+  diffError.value = null
+  mode.value = available.value.branch ? 'branch' : hasFiles.value ? 'files' : 'fork'
+  const cp = props.checkpoint
+  if (cp && hasFiles.value)
+    api
+      .checkpointDiff(props.sessionId, cp.id, 'current')
+      .then(d => (diff.value = d))
+      .catch(e => (diffError.value = e instanceof Error ? e.message : String(e)))
+}
+const root = useTemplateRef<HTMLElement>('root')
+// The reader asked for this card, so it takes focus (unlike a prompt that appears on its own): the keys work at once.
+onMounted(() => {
+  init()
+  void nextTick(() => root.value?.focus())
+})
+watch(() => props.checkpoint?.id, init)
 
 // ── the timeline: one dot per turn; the chosen turn is the point you go back to ──
 const turns = computed(() =>
@@ -145,6 +148,22 @@ const verb = { added: 'recreated', modified: 'reverted', removed: 'deleted' } as
 const shownFiles = computed(() => diff.value?.files.slice(0, SHOWN) ?? [])
 const moreFiles = computed(() => (diff.value ? diff.value.files.length - SHOWN : 0))
 
+function onKey(e: KeyboardEvent) {
+  const t = e.target as HTMLElement
+  if (t.closest('summary,button,details')) {
+    if (e.key === 'Escape') emit('close')
+    return
+  }
+  if (e.key === 'Escape') return void emit('close')
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    return void confirm()
+  }
+  const n = Number(e.key)
+  const c = cards[n - 1]
+  if (n >= 1 && n <= cards.length && c && available.value[c.mode]) mode.value = c.mode
+}
+
 async function confirm() {
   const cp = props.checkpoint
   if (!cp || working.value || !available.value[mode.value]) return
@@ -156,18 +175,18 @@ async function confirm() {
         atMessageId: cp.messageId!,
         ...(hasFiles.value ? { worktree: true, restoreFiles: true } : {}),
       })
-      open.value = false
+      emit('close')
       emit('forked', session)
     } else if (mode.value === 'fork') {
       const session = await api.forkSession(props.sessionId, { atMessageId: cp.messageId! })
-      open.value = false
+      emit('close')
       emit('forked', session)
     } else {
       const result = await api.restoreCheckpoint(props.sessionId, cp.id, {
         files: hasFiles.value,
         conversation: mode.value === 'rewind',
       })
-      open.value = false
+      emit('close')
       if (mode.value === 'rewind') emit('forked', result.session)
       emit('restored', result)
     }
@@ -180,13 +199,21 @@ async function confirm() {
 </script>
 
 <template>
-  <IuDialog v-model:open="open" size="lg">
-    <template #header>
+  <section
+    ref="root"
+    class="rewind"
+    tabindex="-1"
+    role="group"
+    :aria-label="`Go back to before turn ${at}`"
+    @keydown="onKey"
+  >
+    <header class="rewind__top">
+      <IuIcon name="history" :size="16" class="rewind__top-icon" />
       <h2 class="rewind__title">Go back to before turn {{ at }}</h2>
-    </template>
-    <form class="rewind" @submit.prevent="confirm">
-      <blockquote class="rewind__message">{{ messageText }}</blockquote>
-
+      <span class="rewind__hint">1–4 choose · Enter confirms · Esc cancels</span>
+    </header>
+    <blockquote class="rewind__message">{{ messageText }}</blockquote>
+    <div class="rewind__body">
       <figure class="rewind__timeline" :aria-label="`Turn ${at} of ${turns.length}`">
         <ol class="rewind__track">
           <li
@@ -261,9 +288,9 @@ async function confirm() {
         </template>
       </details>
       <IuCallout v-if="error" intent="danger" variant="inline" live>{{ error }}</IuCallout>
-    </form>
-    <template #footer>
-      <IuButton variant="secondary" size="sm" :disabled="working" @click="open = false"
+    </div>
+    <footer class="rewind__foot">
+      <IuButton variant="ghost" size="sm" :disabled="working" @click="emit('close')"
         >Cancel</IuButton
       >
       <IuButton
@@ -274,35 +301,70 @@ async function confirm() {
         @click="confirm"
         >{{ card.action }}</IuButton
       >
-    </template>
-  </IuDialog>
+    </footer>
+  </section>
 </template>
 
 <style>
+/* same card chrome as an agent question (PermissionPrompt) */
+.rewind {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-inline-size: 0;
+  padding: 12px 14px;
+  background: var(--iu-surface);
+  border: 1px solid var(--iu-info-border);
+  border-inline-start: 3px solid var(--iu-info);
+  border-radius: var(--iu-radius-lg);
+}
+.rewind:focus-visible {
+  outline: 2px solid var(--iu-accent);
+  outline-offset: 2px;
+}
+.rewind__top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rewind__top-icon {
+  color: var(--iu-text-2);
+  flex: none;
+}
 .rewind__title {
   margin: 0;
   font-size: var(--iu-font-size-14);
   font-weight: var(--iu-font-weight-semibold);
+  white-space: nowrap;
 }
-.rewind {
+.rewind__hint {
+  white-space: nowrap;
+  margin-inline-start: auto;
+  font-size: var(--iu-font-size-12);
+  color: var(--iu-text-muted);
+}
+.rewind__body {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
+}
+.rewind__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 .rewind__message {
   margin: 0;
   color: var(--iu-text-2);
   font-size: var(--iu-font-size-13);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
+  white-space: nowrap;
   overflow: hidden;
-  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
 }
 .rewind__timeline {
   margin: 0;
-  padding: 14px 16px 12px;
+  padding: 10px 14px 8px;
   border: 1px solid var(--iu-border);
   border-radius: var(--iu-radius-lg);
   background: var(--iu-hover);
@@ -365,23 +427,23 @@ async function confirm() {
   color: var(--iu-text);
 }
 .rewind__caption {
-  margin-top: 10px;
+  margin-top: 6px;
   font-size: var(--iu-font-size-12);
   color: var(--iu-text-2);
 }
 .rewind__cards {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 6px;
 }
 .rewind__card {
   position: relative;
   display: grid;
-  grid-template-columns: 22px 1fr;
-  column-gap: 10px;
+  grid-template-columns: 20px 1fr;
+  column-gap: 8px;
   row-gap: 2px;
   align-items: center;
-  padding: 12px 14px;
+  padding: 8px 12px;
   border: 1px solid var(--iu-border);
   border-radius: var(--iu-radius-lg);
   cursor: pointer;
@@ -441,6 +503,8 @@ async function confirm() {
   display: flex;
   flex-direction: column;
   gap: 3px;
+  max-height: 64px;
+  overflow-y: auto;
 }
 .rewind__list li {
   display: flex;
@@ -459,9 +523,9 @@ async function confirm() {
 .rewind__muted {
   margin: 6px 0 0;
 }
-@media (max-width: 560px) {
-  .rewind__cards {
-    grid-template-columns: 1fr;
+@media (max-width: 700px) {
+  .rewind__hint {
+    display: none;
   }
 }
 </style>
