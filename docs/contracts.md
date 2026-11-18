@@ -592,7 +592,8 @@ only on harnesses that do (the fake, for now); the UI follows (`docs/plans/check
   `capture("turn.start", messageId)` (on the user entry, not awaited) creates the checkpoint from it;
   `capture("turn.end", null)` (not awaited) records the end tree and `files`. Captures never throw; each change is
   announced with `checkpoint.updated`.
-- **Conversation** rewind is a fork cut before the message: optional `Harness.forkAt` / `StartOptions.forkAtMessageId`,
+- **Conversation** rewind is a fork cut before the message: optional `Harness.forkAt` (the service then resumes the new
+  session when the fork has a prompt),
   declared by `capabilities.checkpoints.forkAt`. Odin keeps no transcript of its own, so a harness without it can only
   do files-only restores (`conversation: true` is a 400).
 - **Fork** with `atMessageId` is the conversation fork cut there; with `restoreFiles: true` (needs `worktree: true`) the

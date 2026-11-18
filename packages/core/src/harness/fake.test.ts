@@ -117,7 +117,7 @@ test("the demo script asks before running and posts artifacts through host tools
   await handle.close();
 });
 
-test("forkAt copies history up to, not including, a user message; start with forkAtMessageId does the same", async () => {
+test("forkAt copies history up to, not including, a user message", async () => {
   const h = fakeHarness();
   const handle = h.start({ cwd: "/p", sessionId: "s1", prompt: { text: "one" } });
   await eventsUntil(handle, (e) => e.type === "state" && e.state === "idle");
@@ -127,10 +127,7 @@ test("forkAt copies history up to, not including, a user message; start with for
   const second = parent.filter((e) => e.kind === "user")[1]!;
   const forked = await h.forkAt!("s1", second.id);
   assert.deepEqual((await h.messages(forked)).map((e) => e.kind), ["user", "assistant"]);
-  const live = h.start({ cwd: "/p", resume: "s1", fork: true, sessionId: "s2", forkAtMessageId: second.id });
-  assert.deepEqual((await h.messages("s2")).map((e) => e.kind), ["user", "assistant"]);
   await assert.rejects(h.forkAt!("s1", parent.find((e) => e.kind === "assistant")!.id), /not a user message/);
-  await live.close();
   await handle.close();
   assert.equal((await h.messages("s1")).length, 4);
 });
