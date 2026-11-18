@@ -181,7 +181,6 @@ server resources after live sessions close during server shutdown.
   `includePartialMessages: true`, `settingSources: ["user", "project", "local"]` (CLAUDE.md, skills, agents, hooks,
   permissions load as in Claude Code), `agent`, `agents`, `mcpServers` (plus an in-process `createSdkMcpServer` named
   `odin` for `hostTools`; tools appear as `mcp__odin__<name>`), `additionalDirectories`, `title`,
-  `disallowedTools: ["Projects"]` (the SDK's tool for a hosted claude.ai project; a local session has none),
   `env: process.env`, `stderr` (logged, never returned).
 - Mapping: `system/init` → `init` once (later inits → `model`/`permission.mode` when they changed); a sent message or
   `system/status requesting` → `state running`; `stream_event` text/thinking deltas → `delta` with entry id
@@ -653,28 +652,6 @@ a uv-managed .venv with the analysis baseline. Variable/dataframe inspection is 
 POST `/api/notebooks/:id/{variables,dataframe}`. GET `/api/notebooks/:id/widgets` returns bounded live widget
 models; POST `/api/notebooks/:id/comm` sends a validated callback.
 
-## Coordination
-
-Prototype; design in [plans/project-coordinator.md](plans/project-coordinator.md). A **coordinator** is an ordinary
-session started through `POST /api/projects/:name/coordinators` (tagged `coordinator`); a **thread** is an ordinary
-session a coordinator started with its `start_thread` host tool (tagged `thread`, a worktree by default, the
-coordinator's harness, projects, model and permission mode). Roles live in `coordinators` and `threads`, written just
-before `sessions.start(req, { id })` creates the record; no foreign keys, listings skip orphans.
-
-- At every start and resume, sessions adds `coordination.hostTools(id)` and appends `coordination.instructions(id)`
-  (role text, the project brief, `MEMORY.md`). Other sessions get neither.
-- Coordinator tools: `start_thread`, `list_threads`, `read_thread`, `message_thread`, `stop_thread`, `update_brief`,
-  plus the memory tools. Thread tools: `memory_list`, `memory_read`, `memory_write`, `memory_delete`. Thread tools
-  that take a `thread_id` refuse sessions that are not the caller's threads. At most 6 threads per coordinator are
-  `running` or `waiting` at once.
-- Project brief: `project_briefs`, ≤ `PROJECT_BRIEF_MAX` (16,000) characters; empty deletes it. Project memory:
-  `<ODIN_HOME>/memory/<project>/`, relative `.md` paths (`[A-Za-z0-9_][A-Za-z0-9._-]*` segments), ≤ 64 KB per file,
-  ≤ 200 files, confined with `resolveInside`.
-- Updates: a thread going `running|waiting → idle` sends its coordinator `[Odin thread update] "<title>" (thread <id>)
-  finished a turn[ on branch <b>]:\n<latest reply, ≤ 2,000 chars>`; `→ failed` sends a `failed: <error>` line.
-  Delivered with `sessions.send` (durable outbox) outside the update listener; held while the coordinator is
-  `waiting`, skipped when it is archived. `waiting` threads are not forwarded.
-
 ## Artifacts
 
 - Posted by the agent through the host tool **`post_artifact`** (`title`, `html`, `note?`, `artifact_id?`) that
@@ -919,12 +896,6 @@ The main routes; each module's `routes.ts` has the full list. All JSON. Errors: 
 | POST `/api/sessions/:id/end` | `Session` |
 | POST `/api/sessions/:id/fork` (`ForkSessionRequest`) | `Session` (201) |
 | POST `/api/projects/:name/discover` | `{ added }` |
-| POST `/api/projects/:name/coordinators` (`StartCoordinatorRequest`) | `Session` |
-| GET `/api/projects/:name/threads` | `ProjectThreads` |
-| GET/PUT `/api/projects/:name/brief` (PUT `{ instructions }`) | `ProjectBrief` |
-| GET `/api/projects/:name/memory?path=` | `{ path, content }` |
-| PUT `/api/projects/:name/memory` (`{ path, content }`) | `ProjectBrief` |
-| DELETE `/api/projects/:name/memory?path=` | 204 |
 | GET `/api/models?harness=claude` | `ModelInfo[]` |
 | GET `/api/artifacts/:id` | `ArtifactDetail` |
 | GET `/api/projects/:name/artifacts?limit=` | `Artifact[]` (newest first) |
@@ -972,7 +943,6 @@ The main routes; each module's `routes.ts` has the full list. All JSON. Errors: 
 | ingest | `session_events` |
 | artifacts | `artifacts`, `artifact_versions` |
 | library | `library_versions`, `installations` |
-| coordination | `coordinators`, `threads`, `project_briefs` |
 
   A module may **read** another module's tables for joins.
 

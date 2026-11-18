@@ -1,0 +1,1 @@
+- The session Details panel is tidier: repository, branch, pull request, quick links (copy path or branch, open the PR, and in the desktop app open in editor, terminal or files) and tags sit together at the top; Context shows cost, cache hit rate and a token-mix bar; Changes and Plan get quiet proportion bars; the redundant Thread section is gone.

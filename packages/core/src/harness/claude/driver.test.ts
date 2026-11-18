@@ -125,7 +125,6 @@ test("start: query options follow the contract", async () => {
   assert.equal(o.allowDangerouslySkipPermissions, true, "so a live session can switch to bypassPermissions");
   assert.equal(o.includePartialMessages, true);
   assert.deepEqual(o.settingSources, ["user", "project", "local"]);
-  assert.deepEqual(o.disallowedTools, ["Projects"], "the hosted claude.ai Projects tool has nothing to read locally");
   assert.equal(o.agent, undefined);
   assert.deepEqual(o.systemPrompt, { type: "preset", preset: "claude_code", append: "Follow global and project guidance." });
   assert.deepEqual(o.agents, { reviewer: { description: "Reviews", prompt: "You review.", tools: ["Read"] } });
