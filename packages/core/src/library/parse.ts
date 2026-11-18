@@ -1,6 +1,6 @@
 // Library assets: per-kind parsing of an asset's files into name, description and meta, never throwing. Problems are
 // reported in `error`. docs/contracts.md#library.
-import type { AssetFiles, AssetKind, McpServerSpec, PermissionMode, SettingsProfileSpec, TemplateSpec } from "@odin/shared/api";
+import type { AssetFiles, AssetKind, McpOAuthConfig, McpServerSpec, PermissionMode, SettingsProfileSpec, TemplateSpec } from "@odin/shared/api";
 import { ASSET_ID_PATTERN, LIBRARY_LAYOUT, LIBRARY_AGENT_PREFIX, badSecretRef, promptVariables } from "@odin/shared/library";
 import { parseAgentFile } from "../agents/parse.ts";
 import { type FrontmatterValue, parseFrontmatter } from "../frontmatter.ts";
@@ -251,7 +251,7 @@ function validateMcpShape(spec: Obj, errors: string[]): McpServerSpec | null {
     return out;
   }
   if (type === "http" || type === "sse") {
-    unknownKeys(spec, ["type", "url", "headers"], errors);
+    unknownKeys(spec, ["type", "url", "headers", "oauth"], errors);
     if (typeof spec.url !== "string" || !/^https?:\/\//.test(spec.url)) {
       errors.push(`a ${type} server needs an http(s) url`);
       return null;
@@ -260,6 +260,21 @@ function validateMcpShape(spec: Obj, errors: string[]): McpServerSpec | null {
     if (spec.headers !== undefined) {
       if (isStringMap(spec.headers)) out.headers = spec.headers;
       else errors.push("headers must map names to strings");
+    }
+    if (spec.oauth !== undefined) {
+      if (!isObj(spec.oauth) || spec.oauth.constructor !== Object) errors.push("oauth must be an object");
+      else {
+        unknownKeys(spec.oauth, ["scope", "clientId"], errors, "oauth.");
+        const oauth: McpOAuthConfig = {};
+        for (const key of ["scope", "clientId"] as const) {
+          const v = spec.oauth[key];
+          if (v === undefined) continue;
+          if (typeof v === "string" && v.trim() && !/[\u0000-\u001f\u007f]/.test(v)) oauth[key] = v.trim();
+          else errors.push(`oauth.${key} must be a non-empty string`);
+        }
+        out.oauth = oauth;
+        if (Object.keys(out.headers ?? {}).some((h) => h.toLowerCase() === "authorization")) errors.push("a server with oauth cannot also set an Authorization header");
+      }
     }
     return out;
   }

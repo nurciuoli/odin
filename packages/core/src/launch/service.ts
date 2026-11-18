@@ -71,9 +71,16 @@ export function createLaunchService(_deps: Deps, services: Services): LaunchServ
     const headers = map(s.headers);
     return { ...s, url: fill(s.url), ...(headers ? { headers } : {}) };
   }
-  function resolveMcpServers(ids: string[]): Record<string, McpServerStart> {
+  async function resolveMcpServers(ids: string[]): Promise<Record<string, McpServerStart>> {
     const servers: Record<string, McpServerStart> = {};
-    for (const id of ids) servers[id] = withSecrets(id, mcpStart(id, libraryAsset(services, "mcp", id).meta));
+    for (const id of ids) {
+      const meta = libraryAsset(services, "mcp", id).meta;
+      const start = withSecrets(id, mcpStart(id, meta));
+      // A server with oauth gets its current access token as the Authorization header.
+      servers[id] = start.type !== "stdio" && (meta as { oauth?: unknown }).oauth
+        ? { ...start, headers: { ...start.headers, Authorization: `Bearer ${await services.mcpOAuth.accessToken(id)}` } }
+        : start;
+    }
     return servers;
   }
   return {
@@ -127,7 +134,7 @@ export function createLaunchService(_deps: Deps, services: Services): LaunchServ
       if (!promptText.trim()) bad("a prompt is required");
 
       // MCP servers: library ids → server specs.
-      const mcpServers = resolveMcpServers(reqMcp ?? []);
+      const mcpServers = await resolveMcpServers(reqMcp ?? []);
 
       // Variables: built-ins first, the caller's override them. A null-prototype object so `{{constructor}}` stays as written.
       const values: Record<string, string> = Object.create(null);

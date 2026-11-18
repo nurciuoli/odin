@@ -29,6 +29,7 @@ import { createLibraryService } from "./library/service.ts";
 import { createSyncService } from "./sync/service.ts";
 import { createIngestService } from "./ingest/service.ts";
 import { createMetricsService } from "./metrics/service.ts";
+import { createMcpOAuthService } from "./oauth/service.ts";
 import { createSecretsService } from "./secrets/service.ts";
 import { createSettingsService } from "./settings/service.ts";
 import { getToolPathSource, setToolPathSource } from "./tools/resolve.ts";
@@ -38,6 +39,7 @@ import { createNotebooksService } from "./notebooks/service.ts";
 export interface AppOptions {
   config: Config;
   githubFetch?: typeof fetch;
+  mcpFetch?: typeof fetch;
   now?: () => Date;
   heartbeatMs?: number;
   /** Harness drivers; tests pass { claude: fakeHarness() }. Default: the Claude driver (or the fake one with ODIN_FAKE_HARNESS=1). */
@@ -68,6 +70,7 @@ export function createApp(options: AppOptions): App {
     db,
     bus,
     githubFetch: options.githubFetch ?? fetch,
+    mcpFetch: options.mcpFetch ?? fetch,
     now: options.now ?? (() => new Date()),
     harnesses: options.harnesses ?? (config.fakeHarness ? {
       claude: fakeHarness({ script: demoScript }),
@@ -97,6 +100,7 @@ export function createApp(options: AppOptions): App {
   services.library = createLibraryService(deps, services);
   services.artifacts = createArtifactsService(deps, services);
   services.secrets = createSecretsService(deps, services);
+  services.mcpOAuth = createMcpOAuthService(deps, services);
   services.launch = createLaunchService(deps, services);
   services.ingest = createIngestService(deps, services);
   services.metrics = createMetricsService(deps, services);

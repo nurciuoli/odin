@@ -100,6 +100,22 @@ test("MCP specs get ${secret:NAME} filled from the vault at launch; a missing se
   }
 });
 
+test("an oauth MCP server gets its access token as the Authorization header; a server needing sign-in → 400", async () => {
+  const assets = { "mcp/docs": { meta: { name: "docs", type: "http", url: "https://x.test/mcp", headers: { H: "v" }, oauth: { scope: "read" } } } };
+  const s = setup();
+  s.services.library = fakeLibrary(assets);
+  let signedIn = true;
+  s.services.mcpOAuth = { accessToken: async (id: string) => { if (!signedIn) throw new HttpError(400, `MCP server ${id} needs sign-in: connect it first`); return "at-9"; } } as unknown as Services["mcpOAuth"];
+  try {
+    const p = await s.services.launch.plan({ project: PROJECT, prompt: { text: "x" }, mcp: ["docs"] } as StartSessionRequest, ID);
+    assert.deepEqual(p.mcpServers, { docs: { type: "http", url: "https://x.test/mcp", headers: { H: "v", Authorization: "Bearer at-9" } } });
+    signedIn = false;
+    await assert.rejects(s.services.launch.plan({ project: PROJECT, prompt: { text: "x" }, mcp: ["docs"] } as StartSessionRequest, ID), (e: unknown) => e instanceof HttpError && e.status === 400 && /needs sign-in/.test(e.message));
+  } finally {
+    await s.sessions.close();
+  }
+});
+
 test("MCP ids → servers without name/description; unknown → 400", async () => {
   const assets = {
     "mcp/gh": { meta: { name: "gh", description: "GitHub", type: "stdio", command: "gh-mcp", args: ["--x"], env: { A: "b" } } },

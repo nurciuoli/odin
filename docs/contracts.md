@@ -15,7 +15,7 @@ say so in the PR.
 - In development the Vite server (`:5190`) proxies `/api` and `/a/` to core.
 - **apps/desktop** (Electron) starts core as a child process and loads the web app from it. The web app never
   depends on Electron: everything also works in a plain browser. See [Desktop shell](#desktop-shell).
-- State: `~/.odin/` (`ODIN_HOME`) holds `state.db`, `env` (the ingest token, mode 600), `secrets.json` (the secrets vault, mode 600), `pricing.json`,
+- State: `~/.odin/` (`ODIN_HOME`) holds `state.db`, `env` (the ingest token, mode 600), `secrets.json` (the secrets vault, mode 600), `oauth.json` (MCP sign-in tokens, mode 600), `pricing.json`,
   `library/` (plain files) and `worktrees/`. Projects live wherever
   they were registered; Odin never moves them.
 - Conversations live in the harness's own store (Claude: `~/.claude/projects/…/*.jsonl`). Odin keeps metadata and
@@ -38,6 +38,8 @@ say so in the PR.
   reading them, because harness processes (and their Bash tools) inherit it. Errors from GitHub are scrubbed of it.
 - **Vault secrets** (`<home>/secrets.json`, mode 600): values go in through `PUT /api/secrets/:name` and never come
   out of any response, log, event, `launch_config`, library file or repo file. See [Secrets](#secrets).
+- **MCP OAuth tokens** (`<home>/oauth.json`, mode 600): same rules as vault secrets. They leave core only as the
+  `Authorization` header of a session's MCP server. See [MCP OAuth](#mcp-oauth).
 - **Model credentials are not Odin's.** Whatever the environment gives Claude Code passes through untouched; core
   never reads, stores, logs or returns it. See [Model access](#model-access).
 - **Subprocesses** (`git`, `gh`) run with `execFile`/`spawn` and an argv array, never a shell.
@@ -633,8 +635,43 @@ Named values that library MCP specs refer to, so tokens and keys stay out of lib
 - **Install**: `.mcp.json` receives the spec as saved, placeholders included. A harness that reads `.mcp.json` on its
   own (a terminal Claude Code session in that project) does not know `${secret:…}` and will not fill it; only
   sessions Odin launches get values.
-- Planned on top of this: Odin-brokered OAuth for remote MCP servers (tokens stored in the vault), and a servers
-  screen. Neither is part of this contract yet.
+
+## MCP OAuth
+
+Odin signs in to remote MCP servers that use OAuth, once, and sends the token to every harness the same way.
+
+- **Spec**: an `http`/`sse` library MCP spec may carry `oauth: { scope?, clientId? }` (`McpOAuthConfig`). A spec with
+  `oauth` and its own `Authorization` header, or `oauth` on a stdio spec, fails to parse. `scope` is space-separated.
+  `clientId` names a client registered by hand (a public PKCE client, no secret) for servers without dynamic
+  registration.
+- **Discovery** (`oauth/discovery.ts`): probe the MCP url; a 401 whose `WWW-Authenticate` carries `resource_metadata`
+  points at the protected-resource metadata (RFC 9728), else `/.well-known/oauth-protected-resource[/path]` on the
+  server. Its first `authorization_servers` entry (else the server's own origin) gives the authorization-server
+  metadata (RFC 8414, then OpenID configuration). A server that lists `code_challenge_methods_supported` without
+  `S256` is refused. Every discovered endpoint must be https, or http on localhost; requests time out after 10 s,
+  follow no redirects, and responses over 256 KB are refused. Failures are 502.
+- **Registration**: with `clientId`, none. Otherwise a stored client for the same issuer and redirect URI is reused,
+  else RFC 7591 dynamic registration as a public client named "Odin". No registration endpoint and no `clientId` → 400.
+- **Sign-in** (`POST /api/mcp/:id/oauth/start`, body `{ origin }`): `origin` is the browser's own origin; it must be
+  this Odin's address (localhost names or `ODIN_EXTRA_HOSTS`, https unless localhost) or 400. The authorization URL
+  uses code flow, PKCE `S256`, a random single-use `state` held in memory for 10 minutes, and the RFC 8707
+  `resource`. The server returns to `GET /api/oauth/callback`, which exchanges the code and stores the tokens. The
+  state is consumed whatever happens, so a replayed or forged callback is a 400 and never reaches the token
+  endpoint. The callback answers a small HTML page that shows only the outcome (OAuth error codes limited to
+  `[a-z_]`, everything escaped), with `no-store`, `no-referrer` and a `default-src 'none'` CSP. Tokens must be
+  `bearer`.
+- **Storage**: `<home>/oauth.json` → `{ version: 1, servers: { <id>: { url, issuer, resource, endpoints, clientId,
+  clientSecret, redirectUri, tokens } } }`, mode 600, atomic replace, behind `OAuthStore`. A grant belongs to the spec
+  `url` it was made for: changing the url voids it. Token-endpoint error descriptions are never stored, shown or logged.
+- **Use at launch**: `resolveMcpServers` (start, resume, fork; now async) adds `Authorization: Bearer <token>` for a
+  spec with `oauth`. A token within 60 s of its end is refreshed first (one refresh at a time per server). A refresh
+  refused with `invalid_grant`/`invalid_client`, or no grant at all → 400 `MCP server <id> needs sign-in`, and the
+  session does not start; other refresh failures → 502 and the grant is kept. A token that ends during a running
+  session is not replaced until the next resume.
+- **API**: `GET /api/mcp/:id/oauth` → `McpOAuthStatus` (`connected` while the token is valid or refreshable, else
+  `needs-sign-in`; never a token). `POST …/oauth/start` → `{ authorizationUrl }`. `DELETE …/oauth` → 204 forgets the
+  grant (it is not revoked at the server). 404 for an unknown library id, 400 when the server has no `oauth`.
+- `Deps.mcpFetch` carries all of this traffic; tests inject a fake.
 
 ## Notebooks and Python analysis
 
@@ -963,6 +1000,10 @@ The main routes; each module's `routes.ts` has the full list. All JSON. Errors: 
 | GET `/api/secrets` | `SecretsResponse` (no values) |
 | PUT `/api/secrets/:name` (`PutSecretRequest`) | `SecretInfo` |
 | DELETE `/api/secrets/:name` | 204 |
+| GET `/api/mcp/:id/oauth` | `McpOAuthStatus` |
+| POST `/api/mcp/:id/oauth/start` (`StartMcpOAuthRequest`) | `StartMcpOAuthResponse` |
+| DELETE `/api/mcp/:id/oauth` | 204 |
+| GET `/api/oauth/callback?code=&state=&error=` | HTML page (the authorization server's redirect) |
 | PATCH `/api/settings` (`UpdateSettingsRequest`) | `SettingsResponse` |
 
 ## SSE (`GET /api/events`)

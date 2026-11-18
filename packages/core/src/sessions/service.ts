@@ -294,7 +294,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
     return msg;
   }
 
-  function savedMcp(id: string): StartOptions["mcpServers"] {
+  async function savedMcp(id: string): Promise<StartOptions["mcpServers"]> {
     const config = parseJson<{ mcpIds?: string[] }>(row(id)?.launch_config ?? null, {});
     return config.mcpIds?.length ? services.launch.resolveMcpServers(config.mcpIds) : undefined;
   }
@@ -713,7 +713,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       let mcpServers: StartOptions["mcpServers"];
       const queue = outbox.snapshot(id);
       if (!l && !queue.paused && queue.messages.length && queue.messages.every(message => message.state === "queued")) {
-        try { mcpServers = savedMcp(id); }
+        try { mcpServers = await savedMcp(id); }
         catch (err) {
           outbox.pause(id);
           patchAndEmit(id, { state: "failed", waitingFor: null, error: errorMessage(err) });
@@ -1245,7 +1245,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       }
       const title = (req.title?.trim() || (aside ? sideTitle(prompt!) : `${parent.title} (fork)`)).slice(0, 200);
       if (parent.projects.length > 1 && harness.capabilities?.additionalDirectories === false) bad(`${parent.harness} does not support additional project directories`);
-      const mcpServers = savedMcp(id);
+      const mcpServers = await savedMcp(id);
 
       let newId: string;
       if (prompt) newId = randomUUID();

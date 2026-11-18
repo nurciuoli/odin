@@ -42,7 +42,7 @@ export function testDeps(overrides: Partial<Deps> = {}): Deps & { events: Server
   const bus = new EventBus();
   const events: ServerEvent[] = [];
   bus.subscribe((e) => events.push(e));
-  return { config, db: openDb(":memory:"), bus, githubFetch: noNetwork, now: () => FIXED_NOW, harnesses: { claude: fakeHarness({ now: () => FIXED_NOW }) }, events, ...overrides };
+  return { config, db: openDb(":memory:"), bus, githubFetch: noNetwork, mcpFetch: noNetwork, now: () => FIXED_NOW, harnesses: { claude: fakeHarness({ now: () => FIXED_NOW }) }, events, ...overrides };
 }
 
 export interface TestApp {
@@ -58,9 +58,9 @@ export interface TestApp {
  * A real app on a random port with temp dirs, no network, and the fake harness (pass your own to script it).
  * Tests never touch ~/.odin, ~/.claude or GitHub.
  */
-export async function startApp(options: { config?: Partial<Config>; githubFetch?: typeof fetch; now?: () => Date; harnesses?: Harnesses } = {}): Promise<TestApp> {
+export async function startApp(options: { config?: Partial<Config>; githubFetch?: typeof fetch; mcpFetch?: typeof fetch; now?: () => Date; harnesses?: Harnesses } = {}): Promise<TestApp> {
   const config = tempConfig(options.config);
-  const app = createApp({ config, githubFetch: options.githubFetch ?? noNetwork, now: options.now, heartbeatMs: 60_000, harnesses: options.harnesses ?? { claude: fakeHarness() } });
+  const app = createApp({ config, githubFetch: options.githubFetch ?? noNetwork, mcpFetch: options.mcpFetch ?? noNetwork, now: options.now, heartbeatMs: 60_000, harnesses: options.harnesses ?? { claude: fakeHarness() } });
   const addr = await app.listen();
   const base = `http://127.0.0.1:${addr.port}`;
   const api = (path: string, init: RequestInit = {}) =>
