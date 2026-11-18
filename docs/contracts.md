@@ -173,6 +173,10 @@ server resources after live sessions close during server shutdown.
   message:`, `<agent-message`, `<cross-session-message`, `<teammate-message`, `<channel`,
   `[SYSTEM NOTIFICATION`, scheduled-wakeup wrappers. Text that only contains these mid-message stays the user's.
   Background `<task-notification>` blocks keep becoming task entries (malformed ones stay user text, as before).
+- Claude driver, local commands: `<command-name>`/`<command-message>`/`<command-args>` and `<bash-input>` become a `user`
+  entry of what was typed (`/mcp`, `!ls`; history only, the driver already echoes live sends);
+  `<local-command-stdout>`/`<bash-stdout>` become a `system` info entry and the `-stderr` ones an error entry (ANSI
+  stripped); `<local-command-caveat>` is dropped. Text with anything else beside the wrappers stays the user's.
 - Live and stored history give the same entry (id = the message uuid), so old sessions re-render correctly on
   reload; nothing is migrated.
 
