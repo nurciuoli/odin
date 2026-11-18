@@ -20,9 +20,6 @@ const emit = defineEmits<{
   submit: []
 }>()
 
-// TEMP (design exploration): ?qv=centered|split|stacked|chips|inline
-const variant =
-  (typeof location !== 'undefined' && new URLSearchParams(location.search).get('qv')) || 'centered'
 const uid = useId()
 const root = useTemplateRef<HTMLElement>('root')
 
@@ -57,11 +54,7 @@ const onReview = computed(() => hasReview.value && step.value === count.value)
 const question = computed(() => props.questions[step.value])
 
 const hint = computed(() =>
-  onReview.value
-    ? '← → move · Enter submits'
-    : variant === 'chips'
-      ? '1–9 choose · Enter confirms'
-      : '← → move · 1–9 choose · Enter confirms',
+  onReview.value ? '← → move · Enter submits' : '← → move · 1–9 choose · Enter confirms',
 )
 watchEffect(() => emit('hint', hint.value))
 
@@ -212,7 +205,7 @@ const stepLabel = (i: number) => {
       </fieldset>
     </div>
 
-    <div class="iu-question-carousel__bar" :class="`is-${variant}`">
+    <div class="iu-question-carousel__bar" :class="{ 'is-single': !hasReview }">
       <div v-if="hasReview" class="iu-question-carousel__steps">
         <span class="iu-question-carousel__count" aria-live="polite">{{
           onReview ? 'Review' : `${step + 1} of ${count}`
@@ -254,10 +247,10 @@ const stepLabel = (i: number) => {
         </ol>
       </div>
 
-      <div class="iu-question-carousel__nav" :class="`is-${variant}`">
+      <div class="iu-question-carousel__nav">
         <IuButton
           v-if="hasReview"
-          :variant="variant === 'centered' ? 'secondary' : 'ghost'"
+          variant="ghost"
           size="sm"
           class="iu-question-carousel__back"
           :disabled="busy || step === 0"
@@ -265,7 +258,6 @@ const stepLabel = (i: number) => {
         >
           <template #icon><IuIcon name="chevronLeft" :size="14" /></template>
           Back
-          <template v-if="variant === 'chips'" #trailing><kbd class="iu-btn__kbd">←</kbd></template>
         </IuButton>
         <IuButton
           v-if="isFinal"
@@ -286,10 +278,7 @@ const stepLabel = (i: number) => {
           @click="advance()"
         >
           {{ step === count - 1 ? 'Review answers' : 'Next' }}
-          <template #trailing>
-            <kbd v-if="variant === 'chips'" class="iu-btn__kbd">→</kbd>
-            <IuIcon v-else name="chevronRight" :size="14" />
-          </template>
+          <template #trailing><IuIcon name="chevronRight" :size="14" /></template>
         </IuButton>
       </div>
     </div>
@@ -470,52 +459,32 @@ const stepLabel = (i: number) => {
   color: var(--iu-text-muted);
   font-style: italic;
 }
-.iu-question-carousel__nav {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-/* design exploration variants */
+/* Back at the left, the step circles and "N of N" in the middle, Next at the right */
 .iu-question-carousel__bar {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.iu-question-carousel__bar.is-inline {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: 8px 10px;
 }
-.iu-question-carousel__bar.is-inline .iu-question-carousel__nav {
+.iu-question-carousel__nav {
   display: contents;
 }
-.iu-question-carousel__bar.is-inline .iu-question-carousel__back {
+.iu-question-carousel__steps {
+  grid-row: 1;
+  grid-column: 2;
+}
+.iu-question-carousel__back {
   grid-row: 1;
   grid-column: 1;
   justify-self: start;
 }
-.iu-question-carousel__bar.is-inline .iu-question-carousel__steps {
-  grid-row: 1;
-  grid-column: 2;
-}
-.iu-question-carousel__bar.is-inline .iu-question-carousel__next {
+.iu-question-carousel__next {
   grid-row: 1;
   grid-column: 3;
   justify-self: end;
 }
-.iu-question-carousel__nav.is-split {
-  flex-wrap: nowrap;
-  justify-content: space-between;
-}
-.iu-question-carousel__nav.is-stacked .iu-question-carousel__next {
-  order: -1;
-  flex: 1 1 100%;
-  justify-content: center;
-}
-.iu-question-carousel__nav.is-stacked {
-  justify-content: flex-start;
+.iu-question-carousel__bar.is-single .iu-question-carousel__next {
+  grid-column: 1 / -1;
+  justify-self: center;
 }
 </style>
