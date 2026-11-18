@@ -1,6 +1,6 @@
 ---
 name: odin-web
-description: Builds and fixes Odin's Vue web app in packages/web (session screen, home, history, library, project tabs, compare, app shell, API client, mock fixtures, Instrument UI additions). Use for UI work on Odin.
+description: Builds and fixes Odin's Vue web app in packages/web (session screen, home, history, library, project tabs, app shell, API client, mock fixtures, Instrument UI additions). Use for UI work on Odin.
 tools: Read, Edit, Write, Bash, Grep, Glob
 model: inherit
 color: green
