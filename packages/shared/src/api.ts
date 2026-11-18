@@ -1,6 +1,6 @@
 // REST types shared by core and web. docs/contracts.md explains how they behave; this file is the source of truth.
 // Times are ISO-8601 strings. Session IDs are stable Odin IDs (Claude uses the same UUID; Codex IDs are mapped).
-import type { PermissionRequest, SlashCommand, TranscriptEntry } from "./harness.ts";
+import type { PermissionRequest, SessionGoal, SlashCommand, TranscriptEntry } from "./harness.ts";
 
 /** Paths are slash-separated relative to the session's working directory. */
 export interface SessionFileEntry {
@@ -481,6 +481,8 @@ export interface SessionDetail extends Session {
   pending: PermissionRequest[];
   /** Latest todo list the agent wrote (TodoWrite), or empty. */
   todos: Todo[];
+  /** The standing goal, while a live handle holds one. Absent or null when none (not stored: gone once the handle closes). */
+  goal?: SessionGoal | null;
   /** Artifacts posted in this session. */
   artifacts: Artifact[];
   /** True while Odin holds a live harness handle (it can send/answer/interrupt without a resume). */

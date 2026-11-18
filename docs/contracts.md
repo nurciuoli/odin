@@ -194,7 +194,7 @@ server resources after live sessions close during server shutdown.
   `system/status requesting` → `state running`; `stream_event` text/thinking deltas → `delta` with entry id
   `<message.id>:<content block index>`; `assistant` content blocks → `entry` (text → assistant, thinking → thinking,
   tool_use → tool with its `id`; `parent_tool_use_id` → `parentToolUseId`); `user` tool_result blocks → `tool.result`
-  (`is_error` → `ok: false`, text via `toolResult()`); TodoWrite input → `todos`; `result` → `usage` per model with the **turn's own** usage
+  (`is_error` → `ok: false`, text via `toolResult()`); TodoWrite input → `todos`; `active_goal` → `goal`; `result` → `usage` per model with the **turn's own** usage
   (`cumulative: false`): the difference between this and the previous `modelUsage` in the same process (`costUsd`
   likewise from `costUSD`); for the first result of a resumed/forked process, the sum of the turn's assistant
   message `usage` (deduped by message id) with `costUsd` = `costUSD` × its share by token weight (input 1, output 5,
@@ -404,11 +404,11 @@ AppSettings.defaultWorktree`.
 - **Live handles**: kept while running/waiting and for 10 minutes idle, then closed (state stays `idle`, resumable).
   `detail.live` says whether one is open. On boot, records left running/waiting become `idle` with no pending prompts.
 - **Events**: every harness event updates the record (state, waitingFor, model, permissionMode, pending prompts,
-  todos), is passed to `ingest.recordHarnessEvent`, is fired to `onEvent` listeners and goes out as `session.event`;
+  todos, goal), is passed to `ingest.recordHarnessEvent`, is fired to `onEvent` listeners and goes out as `session.event`;
   record changes go out as `session.updated`. On `turn.end`: `metrics.refreshOutput(id)` (async).
 - **Detail** (`GET /api/sessions/:id`): the record + `transcript` (the harness's stored messages, plus a live
   session's events since; completed entries only: text still streaming arrives through `session.event`), `pending`,
-  `todos`, `artifacts`, `live`, `slashCommands`. Clients then apply `session.event` frames with `applyHarnessEvent`.
+  `todos`, `goal`, `artifacts`, `live`, `slashCommands`. Clients then apply `session.event` frames with `applyHarnessEvent`.
 - **Slash commands**: every `init` and `commands` event stores its `slashCommands` (`SlashCommand[]`) on the record
   (`sessions.slash_commands`, not part of `Session`; older rows holding bare names read as `source: "custom"`).
   `detail.slashCommands` = the live handle's, else the session's stored list, else the newest stored list in the same

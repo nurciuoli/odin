@@ -12,7 +12,7 @@ import { parseLocalCommand, type LocalCommandParts } from "./localcommand.ts";
 import { injectedMessage, type Injected } from "./injected.ts";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { PermissionMode, Todo, TokenUsage } from "@odin/shared/api";
-import type { HarnessEvent, ToolResult, TranscriptEntry } from "@odin/shared/harness";
+import type { HarnessEvent, SessionGoal, ToolResult, TranscriptEntry } from "@odin/shared/harness";
 import { toolResult } from "@odin/shared/transcript";
 import { DEFAULT_DENY_MESSAGE } from "./permissions.ts";
 import { taskEvents } from "./activity.ts";
@@ -25,6 +25,8 @@ export type LiveState = "running" | "idle" | "waiting";
 export interface MapState {
   tasks: Map<string, TaskActivity>;
   initSent: boolean;
+  /** A goal event was sent and not yet cleared (a `null` with none set sends nothing). */
+  goalSet: boolean;
   model: string | null;
   permissionMode: PermissionMode | null;
   /** The last `state` event sent (null before any). */
@@ -53,6 +55,7 @@ export function createMapState(options: { resumed?: boolean } = {}): MapState {
     usageBase: options.resumed ? null : new Map(),
     turnUsage: new Map(),
     initSent: false,
+    goalSet: false,
     model: null,
     permissionMode: null,
     state: null,
@@ -564,6 +567,19 @@ export function mapMessage(state: MapState, message: SDKMessage | Loose, sent: R
       return resultMessage(state, m);
     case "rate_limit_event":
       return rateLimitNotice(m.rate_limit_info);
+    case "active_goal": {
+      const g = m.value as Loose | null;
+      if (!g) {
+        if (!state.goalSet) return [];
+        state.goalSet = false;
+        return [{ type: "goal", goal: null }];
+      }
+      if (typeof g.condition !== "string") return [];
+      const goal: SessionGoal = { condition: g.condition, iterations: typeof g.iterations === "number" ? g.iterations : 0 };
+      if (typeof g.last_reason === "string") goal.lastReason = g.last_reason;
+      state.goalSet = true;
+      return [{ type: "goal", goal }];
+    }
     case "conversation_reset":
       // Odin blocks /clear; other resets (e.g. leaving plan mode with a cleared context) still happen.
       return [{ type: "notice", level: "warning", text: "Claude started a fresh conversation; earlier messages are no longer in its context" }];

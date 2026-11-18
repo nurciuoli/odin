@@ -141,6 +141,15 @@ export interface SlashCommand {
  * The common event stream of a live session. Ordering: `init` first, then any mix, with `turn.end` closing each turn.
  * Deltas are optional (a driver may send only whole `entry` events); a whole entry replaces any deltas with its id.
  */
+/** A standing goal the harness works toward until its condition is met. */
+export interface SessionGoal {
+  condition: string;
+  /** Times the harness checked the condition and found it not yet met. */
+  iterations: number;
+  /** Why the last check said not yet; absent before the first check. */
+  lastReason?: string;
+}
+
 export type HarnessEvent =
   /** Full normalized task snapshot, reconciled by native task/run identity. */
   | { type: "task"; task: TaskActivity }
@@ -160,6 +169,8 @@ export type HarnessEvent =
   /** A prompt was answered (by the user, or withdrawn by the harness). */
   | { type: "permission.resolved"; requestId: string; behavior: "allow" | "deny" | "cancelled" }
   | { type: "todos"; todos: Todo[] }
+  /** The session's goal (a condition the harness keeps working toward) was set, advanced or cleared (`null`). */
+  | { type: "goal"; goal: SessionGoal | null }
   /**
    * Token usage. `cumulative: false` = this call's usage (add it); `true` = the session total for that model so far
    * (replace). `costUsd` is the harness's own figure for the same span when it reports one.
