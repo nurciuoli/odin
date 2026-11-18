@@ -31,6 +31,7 @@ const tree = computed(() => buildTree(detail.value.title, res.data.value?.files 
 const idx = computed(() => indexTree(tree.value))
 
 const mode = ref('state')
+const view = ref('map')
 const focusId = ref('')
 const selectedId = ref<string | null>(null)
 
@@ -151,6 +152,17 @@ const cells = computed(() => {
   return out
 })
 
+// List view: the focused folder's children, folders first, then biggest first.
+const rows = computed(() => {
+  const kids = idx.value.get(focusId.value)?.node.children ?? []
+  return kids
+    .slice()
+    .sort(
+      (a, b) =>
+        Number(b.kind === 'folder') - Number(a.kind === 'folder') || nodeBytes(b) - nodeBytes(a),
+    )
+})
+
 const diff = computed(() => mode.value === 'diff')
 
 function tint(node: FileNode): Record<string, string> | undefined {
@@ -220,6 +232,14 @@ const changed = computed(() => {
         >
       </p>
       <IuSegmented
+        v-model="view"
+        label="View"
+        :options="[
+          { value: 'map', label: 'Heatmap' },
+          { value: 'list', label: 'List' },
+        ]"
+      />
+      <IuSegmented
         v-model="mode"
         label="Map"
         :options="[
@@ -243,7 +263,24 @@ const changed = computed(() => {
       body="This project's folder is missing or empty."
     />
     <div v-else class="files__stage">
-      <div ref="box" class="files__map" role="group" aria-label="File map">
+      <ul v-if="view === 'list'" class="files__list" aria-label="Files">
+        <li v-for="n in rows" :key="n.id">
+          <button
+            type="button"
+            class="files__row"
+            :class="{ 'files__row--selected': n.id === selectedId }"
+            :aria-pressed="n.kind === 'folder' ? undefined : n.id === selectedId"
+            @click="n.kind === 'folder' ? drill(n.id) : (selectedId = n.id)"
+          >
+            <span class="files__row-name">{{ n.name }}{{ n.kind === 'folder' ? '/' : '' }}</span>
+            <IuBadge variant="tag" size="xs">{{ n.kind }}</IuBadge>
+            <span v-if="diff && n.delta" class="files__row-delta">{{ deltaText(n.delta) }}</span>
+            <span class="files__row-size">{{ formatBytes(nodeBytes(n)) }}</span>
+          </button>
+        </li>
+        <li v-if="!rows.length" class="files__note">This folder is empty.</li>
+      </ul>
+      <div v-else ref="box" class="files__map" role="group" aria-label="File map">
         <template v-for="c in cells" :key="c.node.id">
           <div v-if="c.nest" class="files__cell files__cell--nest" :style="cellStyle(c)">
             <button
@@ -367,6 +404,58 @@ const changed = computed(() => {
   border-radius: var(--iu-radius-lg);
   background: var(--iu-surface-sunken);
   overflow: hidden;
+}
+.files__list {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--iu-border-quiet);
+  border-radius: var(--iu-radius-lg);
+  background: var(--iu-surface);
+  max-height: 520px;
+  overflow-y: auto;
+}
+.files__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--iu-radius-md);
+  background: none;
+  font-family: var(--iu-font-sans);
+  font-size: var(--iu-font-size-13);
+  color: var(--iu-text);
+  text-align: left;
+  cursor: pointer;
+}
+.files__row:hover {
+  background: var(--iu-surface-sunken);
+}
+.files__row--selected,
+.files__row--selected:hover {
+  box-shadow: inset 0 0 0 2px var(--iu-accent);
+}
+.files__row:focus-visible {
+  outline: 2px solid var(--iu-accent);
+  outline-offset: -2px;
+}
+.files__row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.files__row-delta,
+.files__row-size {
+  flex: none;
+  font-family: var(--iu-font-mono);
+  font-size: var(--iu-font-size-12);
+  color: var(--iu-text-2);
 }
 .files__cell {
   position: absolute;

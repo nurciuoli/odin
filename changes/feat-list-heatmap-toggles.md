@@ -1,0 +1,1 @@
+- Every file view can switch between a list and a heatmap: the project Files tab gains a list, and the session Changes section and file browser gain a heatmap.
