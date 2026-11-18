@@ -849,6 +849,49 @@ export interface PluginRun {
   text: string;
 }
 
+/** Where a plugin to import comes from (v1: a git address or a folder on this machine; there is no registry). */
+export type PluginSource = { type: "git"; url: string; rev?: string } | { type: "local"; path: string };
+
+/** POST /api/library/import: reads a Claude Code plugin and returns what importing it would add. Writes nothing. */
+export interface ImportRequest {
+  source: PluginSource;
+  /** Library id for the plugin. Default: the plugin's name as a slug. */
+  id?: string;
+}
+
+/** What importing would create. Send `previewId` to `POST /api/library/import/:previewId` to write it. */
+export interface ImportPreview {
+  previewId: string;
+  /** Library id the plugin will get; a plugin with that id already in the library is a 409 at preview. */
+  id: string;
+  name: string;
+  description: string;
+  version: string | null;
+  members: { kind: PluginMemberKind; id: string }[];
+  /** Hooks, local commands and remote servers it brings, with their exact text (nothing runs at import). */
+  runs: PluginRun[];
+  /** Things that were converted, renamed, skipped or need editing. */
+  warnings: string[];
+  /** Secrets its MCP specs refer to. */
+  secrets: string[];
+}
+
+/** POST /api/library/plugin/:id/export */
+export interface ExportRequest {
+  /** Absolute path of a folder that does not exist yet, or is empty. The Claude Code layout is written there. */
+  path: string;
+}
+
+export interface ExportResult {
+  path: string;
+  /** Files written, relative to `path`. */
+  files: string[];
+  /** Members a Claude Code plugin cannot express. */
+  skipped: { kind: PluginMemberKind; id: string; reason: string }[];
+  /** Things dropped or left as placeholders (OAuth settings, secret names, non-hook settings). */
+  notes: string[];
+}
+
 /** POST …/library with action `preview` for a plugin. */
 export interface PluginPreview {
   project: string;

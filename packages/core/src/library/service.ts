@@ -1,10 +1,11 @@
 // LibraryService: plain files under <ODIN_HOME>/library (one directory per kind), versions in library_versions,
 // installs into projects (copy or merge) in installations, drift recomputed from disk. docs/contracts.md#library.
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { randomBytes } from "node:crypto";
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { basename, isAbsolute, join } from "node:path";
 import type {
   AssetDetail, AssetFiles, AssetKind, AssetVersion, DriftState, Installation, InstallRequest, InstallResult, LibraryAsset,
-  PluginMemberKind, PluginMemberState, PluginOwnMember, PluginPreview, PluginRun, PluginSpec, SettingsProfileSpec,
+  ExportResult, ImportPreview, ImportRequest, PluginMemberKind, PluginMemberState, PluginOwnMember, PluginPreview, PluginRun, PluginSpec, SettingsProfileSpec,
 } from "@odin/shared/api";
 import { ASSET_ID_PATTERN, INSTALL_TARGETS, LIBRARY_KINDS, LIBRARY_LAYOUT, secretRefs } from "@odin/shared/library";
 import { filesHash } from "../hash.ts";
@@ -18,6 +19,8 @@ import {
 import { instructionFragment, setInstruction } from "./instructions.ts";
 import { migrateLegacyLibrary } from "./migrate.ts";
 import { MAX_ASSET_FILE_BYTES, entryFile, filesError, parseAsset, pluginOwnFiles } from "./parse.ts";
+import { type Converted, convertClaudePlugin, exportClaudePlugin, slug } from "./plugin-io.ts";
+import { type GitFetcher, gitFetch, gitSourceError, readSourceTree, withTempDir } from "./plugin-source.ts";
 
 interface Entry {
   asset: LibraryAsset;
@@ -103,7 +106,7 @@ function checkKindId(kind: unknown, id: unknown): asserts kind is AssetKind {
   if (typeof id !== "string" || !ASSET_ID_PATTERN.test(id)) throw new HttpError(400, `invalid asset id ${JSON.stringify(id)}`);
 }
 
-export function createLibraryService(deps: Deps, services: Services): LibraryService {
+export function createLibraryService(deps: Deps, services: Services, opts: { gitFetch?: GitFetcher } = {}): LibraryService {
   const { db, bus, config } = deps;
   const root = config.libraryDir;
   const nowIso = () => deps.now().toISOString();
@@ -752,6 +755,77 @@ export function createLibraryService(deps: Deps, services: Services): LibrarySer
     return (db.prepare(`SELECT * FROM plugin_installations WHERE ${where} ORDER BY project, plugin_id`).all(...args) as unknown as PluginRow[]).map(toPluginInstallation);
   }
 
+  // ── import and export ─────────────────────────────────────────────────────
+
+  const PREVIEW_TTL_MS = 10 * 60 * 1000;
+  const MAX_PREVIEWS = 20;
+  const previews = new Map<string, { expires: number; conv: Converted }>();
+
+  async function importPreview(req: ImportRequest): Promise<ImportPreview> {
+    const src = req?.source as ImportRequest["source"] | undefined;
+    if (!src || typeof src !== "object") throw new HttpError(400, "expected { source: { type: \"git\", url } | { type: \"local\", path } }");
+    if (req.id !== undefined && (typeof req.id !== "string" || !ASSET_ID_PATTERN.test(req.id))) throw new HttpError(400, `invalid plugin id ${JSON.stringify(req.id)}`);
+    let read: { files: AssetFiles; warnings: string[] };
+    let fallbackName: string;
+    let git: { url: string; rev?: string } | undefined;
+    if (src.type === "local") {
+      if (typeof src.path !== "string" || !isAbsolute(src.path)) throw new HttpError(400, "a local source needs an absolute path");
+      if (!isDirectory(src.path)) throw new HttpError(400, `${src.path} is not a folder`);
+      read = readSourceTree(src.path);
+      fallbackName = basename(src.path);
+    } else if (src.type === "git") {
+      const bad = typeof src.url !== "string" ? "a git source needs a url" : (src.rev !== undefined && typeof src.rev !== "string") ? "rev must be text" : gitSourceError(src.url, src.rev);
+      if (bad) throw new HttpError(400, bad);
+      git = { url: src.url, ...(src.rev ? { rev: src.rev } : {}) };
+      read = await withTempDir(config.home, async (dir) => {
+        await (opts.gitFetch ?? gitFetch)(src.url, src.rev, dir);
+        return readSourceTree(dir);
+      });
+      fallbackName = basename(src.url.replace(/\/+$/, "").replace(/\.git$/, "").replace(/^.*:/, "")) || "plugin";
+    } else throw new HttpError(400, `unknown source type ${JSON.stringify((src as { type?: unknown }).type)}`);
+    const conv = convertClaudePlugin(read.files, { fallbackName: slug(fallbackName) ? fallbackName : "plugin", id: req.id, git });
+    if (cache.has(key("plugin", conv.id))) throw new HttpError(409, `the library already has a plugin "${conv.id}": pass another id`);
+    conv.warnings.unshift(...read.warnings);
+    const now = Date.now();
+    for (const [k, v] of previews) if (v.expires <= now) previews.delete(k);
+    while (previews.size >= MAX_PREVIEWS) previews.delete(previews.keys().next().value!);
+    const previewId = randomBytes(8).toString("hex");
+    previews.set(previewId, { expires: now + PREVIEW_TTL_MS, conv });
+    const { id, name, description, version, members, runs, warnings, secrets } = conv;
+    return { previewId, id, name, description, version, members, runs, warnings, secrets };
+  }
+
+  function importConfirm(previewId: string): LibraryAsset {
+    const hit = previews.get(previewId);
+    previews.delete(previewId);
+    if (!hit || hit.expires <= Date.now()) throw new HttpError(404, "that import preview is gone (they last 10 minutes): preview again");
+    if (cache.has(key("plugin", hit.conv.id))) throw new HttpError(409, `the library already has a plugin "${hit.conv.id}": preview again with another id`);
+    return save("plugin", hit.conv.id, hit.conv.files);
+  }
+
+  function exportPlugin(id: string, dest: string): ExportResult {
+    if (typeof dest !== "string" || !isAbsolute(dest)) throw new HttpError(400, "path must be an absolute folder path");
+    const plan = resolvePlugin(id);
+    const entry = cache.get(key("plugin", id))!;
+    const out = exportClaudePlugin(
+      { id, name: entry.asset.name, description: entry.asset.description, version: (entry.asset.meta as { version?: string }).version ?? null },
+      plan.members.map((m) => ({ kind: m.kind, id: m.pid, files: m.src.files, meta: m.src.asset.meta })),
+    );
+    if (existsSync(dest) && (!isDirectory(dest) || readdirSync(dest).length)) throw new HttpError(409, `${dest} already exists and is not an empty folder`);
+    const written: string[] = [];
+    try {
+      mkdirSync(dest, { recursive: true });
+      for (const [rel, content] of Object.entries(out.files)) {
+        writeFileAtomic(resolveInside(dest, rel), content);
+        written.push(rel);
+      }
+    } catch (err) {
+      for (const rel of written) rmSync(join(dest, rel), { force: true });
+      throw err instanceof HttpError ? err : new HttpError(409, (err as Error).message);
+    }
+    return { path: dest, files: written.sort(), skipped: out.skipped, notes: out.notes };
+  }
+
   // ── the service ───────────────────────────────────────────────────────────
 
   const sortAssets = (a: LibraryAsset, b: LibraryAsset) => a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id);
@@ -798,6 +872,9 @@ export function createLibraryService(deps: Deps, services: Services): LibrarySer
     save,
     remove,
     rescan,
+    importPreview,
+    importConfirm,
+    exportPlugin,
     installations(project) {
       if (!services.projects.get(project)) throw new HttpError(404, `unknown project "${project}"`);
       return [...installationsWhere("project = ?", project), ...pluginInstallations("project = ?", project)];
