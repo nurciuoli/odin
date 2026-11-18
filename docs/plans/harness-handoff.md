@@ -1,6 +1,6 @@
 # Plan: hand a session off to another harness
 
-Status: **phase 1 (contract) in review; nothing else built.** Approved by Nick (Nov 18 2026). Related: session
+Status: **built: contract, core and web (the `/handoff` command and picker) are all in one PR; not yet released.** Approved by Nick (Nov 18 2026). Related: session
 checkpoints and rewind (separate thread; both touch session state, see "Interaction with checkpoints").
 
 ## Why
@@ -37,9 +37,9 @@ harness is the thing that is down). Sections, each capped, in this order:
 
 Total cap 24 KiB. Anything cut is marked `[… cut]`; the response says `truncated: true`. The text is plain Markdown.
 
-The briefing is **previewed before it is used.** `GET /api/sessions/:id/handoff?harness=` returns it; the web shows it
-in an editable box so Nick can trim or add to it. The edited text is what `POST` sends as the first message. A client
-that sends no `brief` gets the generated one.
+The briefing is **previewed through the API** (`GET /api/sessions/:id/handoff?harness=` returns it with the target's
+models and availability) and the web uses that for model choices. The web has no briefing editor: `/handoff` sends the
+generated one. A client may still send its own `brief` on `POST`.
 
 ### What does not carry over
 
@@ -53,7 +53,7 @@ that sends no `brief` gets the generated one.
 Library MCP selections, the project list and tags are copied. The `launch_config` MCP ids are re-resolved for the
 target (a harness that cannot take a given server type fails explicitly, like resume).
 
-## Contract (phase 1, its own PR)
+## Contract
 
 - `Session.handoff: SessionHandoff | null` with `{ from: string; harness: HarnessId; at: string }` (the source's id
   and harness, and when). New nullable column `sessions.handoff` (JSON), migration `0021_session_handoff.sql`.
@@ -71,17 +71,18 @@ target (a harness that cannot take a given server type fails explicitly, like re
 - No harness interface change: the new session is an ordinary `harness.start({ cwd, prompt })` on the target.
   `harness/types.ts` and `services.ts` change only by the new `sessions.handoff` and `sessions.handoffPreview` methods.
 
-## Build order
+## What was built
 
-1. **Contract PR** (`contract` label): types in `packages/shared/src/api.ts`, `docs/contracts.md`
-   (Sessions section and the REST table), `web/src/api/types.ts`, the migration and the schema column, `Session.handoff`
-   null everywhere it is constructed, fixtures. No behaviour.
-2. **Core PR**: `packages/core/src/sessions/handoff.ts` (briefing builder, pure and unit-tested on transcripts) and the
-   two service methods and routes. Tests with `fakeHarness()` for both source and target.
-3. **Web PR**: the `/handoff [harness] [model]` slash command (also in the session menu and the palette). With a
-   harness it runs at once with the generated briefing; bare `/handoff` shows a compact card with one line per harness;
-   ↑↓ or 1–9 pick the harness, ←→ or Tab cycle its models, Enter hands off. There is no briefing editor: the briefing is generated. The new session shows a "Continued from
-   <title> on <harness>" line that links back; the old one shows "Continued as …". Mock API support and screenshots.
+Contract, core and web landed together (they were developed as three stacked PRs):
+
+1. **Contract**: types in `packages/shared/src/api.ts`, `docs/contracts.md` (Sessions section and the REST table), the
+   migration, `Session.handoff` (optional, absent means null).
+2. **Core**: `packages/core/src/sessions/handoff.ts` (briefing builder, pure and unit-tested on transcripts), the
+   `handoffPreview` and `handoff` service methods and the two routes. Tests use `fakeHarness()` for source and target.
+3. **Web**: the `/handoff [harness] [model]` slash command (also in the session menu and the palette). With a harness
+   it runs at once. Bare `/handoff` shows a compact card with one line per harness: ↑↓ or 1–9 pick the harness, ←→ or
+   Tab cycle its models, Enter hands off, Esc cancels. The new session's details show "Continued from <harness>
+   session"; the old one shows "Continued on <harness>".
 
 ## Interaction with checkpoints
 
