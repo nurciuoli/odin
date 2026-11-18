@@ -16,10 +16,14 @@ import { IuSegmented } from '@/components/Segmented'
 import FileHeatmap, { type HeatItem } from '@/screens/shared/FileHeatmap.vue'
 import { IuPropertyList, type PropertyItem } from '@/components/PropertyList'
 import type { ActivityItem } from '@/components/ActivityStrip/ActivityStrip.vue'
+import type { TaskActivity } from '@odin/shared/harness'
 import { IuStatusDot } from '@/components/StatusDot'
 import { useToast } from '@/components/Toast'
 import type { Status } from '@/styles/status'
 import { contextWindow } from './sessionView'
+import TaskLanes from './TaskLanes.vue'
+import TaskStrip from './TaskStrip.vue'
+import { buildTaskTree, limitRows } from './taskTree'
 import { fileChanges, latestPlan, latestPlanFile } from './workbench'
 import { IuMarkdown } from '@/components/Markdown'
 import {
@@ -33,9 +37,16 @@ import {
   tokenMix,
 } from './sideStats'
 
-const props = withDefaults(defineProps<{ session: SessionDetail; tasks?: ActivityItem[] }>(), {
-  tasks: () => [],
-})
+const props = withDefaults(
+  defineProps<{
+    session: SessionDetail
+    tasks?: ActivityItem[]
+    /** The same tasks with their times and parents, for the branch graph. */
+    taskActivity?: TaskActivity[]
+    now?: number
+  }>(),
+  { tasks: () => [], taskActivity: () => [], now: () => Date.now() },
+)
 const emit = defineEmits<{
   updated: [session: Session]
   openFile: [path: string]
@@ -93,9 +104,9 @@ const mostChanged = computed(() => Math.max(1, ...files.value.map(f => f.added +
 
 // ── disclosures: context details and finished tasks start closed ──
 const contextOpen = ref(false)
-const finishedOpen = ref(false)
 const liveTasks = computed(() => props.tasks.filter(t => t.status === 'running'))
 const doneTasks = computed(() => props.tasks.filter(t => t.status !== 'running'))
+const taskRows = computed(() => limitRows(buildTaskTree(props.taskActivity, props.now), 14))
 const ctxPct = computed(() =>
   ctxUsed.value === null || !(ctxMax.value > 0)
     ? null
@@ -538,38 +549,23 @@ function addTag(e: KeyboardEvent) {
         <span class="session-side__summary-value"
           >{{ liveTasks.length }} running, {{ doneTasks.length }} finished</span
         >
+        <!-- shown only while the section is closed: the shape of the run, the expanded graph's small cousin -->
+        <TaskStrip
+          v-if="taskRows.shown.length"
+          class="session-side__strip"
+          :nodes="taskRows.shown"
+          :now="now"
+        />
       </summary>
-      <ul v-if="liveTasks.length" class="session-side__list">
-        <li v-for="t in liveTasks" :key="t.id" class="session-side__file">
-          <IuStatusDot :status="t.status" :label="t.state" />
-          <button type="button" class="session-side__open" @click="emit('openTask', t.id)">
-            {{ t.label }}
-          </button>
-          <span v-if="t.time" class="session-side__count">{{ t.time }}</span>
-        </li>
-      </ul>
-      <p v-if="!tasks.length" class="session-side__none">No background tasks.</p>
-      <template v-if="doneTasks.length">
-        <button
-          type="button"
-          class="session-side__toggle session-side__toggle--quiet"
-          :aria-expanded="finishedOpen"
-          aria-controls="side-tasks-done"
-          @click="finishedOpen = !finishedOpen"
-        >
-          {{ doneTasks.length }} finished
-          <IuIcon :name="finishedOpen ? 'chevronDown' : 'chevronRight'" :size="14" />
-        </button>
-        <ul v-show="finishedOpen" id="side-tasks-done" class="session-side__list">
-          <li v-for="t in doneTasks" :key="t.id" class="session-side__file">
-            <IuStatusDot :status="t.status" :label="t.state" />
-            <button type="button" class="session-side__open" @click="emit('openTask', t.id)">
-              {{ t.label }}
-            </button>
-            <span v-if="t.time" class="session-side__count">{{ t.time }}</span>
-          </li>
-        </ul>
-      </template>
+      <TaskLanes
+        v-if="taskRows.shown.length"
+        :nodes="taskRows.shown"
+        :now="now"
+        :hidden="taskRows.hidden"
+        :running="liveTasks.length > 0"
+        @select="emit('openTask', $event)"
+      />
+      <p v-else class="session-side__none">No background tasks.</p>
     </details>
 
     <details v-if="session.todos.length" class="session-side__section" aria-labelledby="side-todos">
@@ -608,6 +604,7 @@ function addTag(e: KeyboardEvent) {
 <style>
 .session-side__summary {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   cursor: pointer;
@@ -1023,5 +1020,15 @@ details[open] > .session-side__summary .session-side__caret {
 }
 .session-side__tag-input:focus-visible {
   outline: 2px solid var(--iu-accent);
+}
+</style>
+
+<style>
+.session-side__strip {
+  flex: 0 0 100%;
+  margin-top: 4px;
+}
+details[open] > .session-side__summary .session-side__strip {
+  display: none;
 }
 </style>
