@@ -114,8 +114,8 @@ test("checkName accepts ordinary names", () => {
 
 test("file management routes", async () => {
   const t = await startApp();
+  const dir = mkdtempSync(join(tmpdir(), "odin-manage-routes-"));
   try {
-    const dir = mkdtempSync(join(tmpdir(), "odin-manage-routes-"));
     writeFileSync(join(dir, "one.txt"), "1");
     const added = await t.api("/api/projects", { method: "POST", body: JSON.stringify({ path: dir, name: "mp" }) });
     assert.ok(added.status < 300);
@@ -131,8 +131,9 @@ test("file management routes", async () => {
     assert.equal((await post(`trash/${entry!.id}/restore`, {})).status, 200);
     assert.equal(existsSync(join(dir, "two.txt")), true);
     assert.equal((await t.api("/api/projects/mp/files/trash", { method: "DELETE" })).status, 204);
-    rmSync(dir, { recursive: true, force: true });
   } finally {
     await t.close();
+    // Windows can still hold the folder for a moment after the app closes; a leftover temp dir is not a failure.
+    try { rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } catch { /* best effort */ }
   }
 });
