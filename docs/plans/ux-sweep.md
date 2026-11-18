@@ -1,6 +1,6 @@
 # Plan: UX sweep (Library management and file management)
 
-Status: **designs approved by Nick (Nov 18 2026); phase 0 (this plan) in review, nothing else built.** Mockups: branch
+Status: **designs approved by Nick (Nov 18 2026). Phase 1 (#51), phase 2 (#54) and the Files core API are in review; the Files screen is next.** Mockups: branch
 `claude/project-thread-g7q1zg` (`packages/web/src/screens/ux/UxSweep.vue`, route `/ux/<view>`, not for merging).
 
 ## Why
@@ -26,7 +26,7 @@ create and save, not rename, move or delete.
    Delete), a "Used in" column, and a delete dialog that shows install count and offers "Disable instead".
    Duplicate is a client-side save under a new id. No new contract beyond phase 1.
 3. **Files half** (`feat(core)` then `feat(web)`). Core: rename, move, duplicate, trash (soft delete into
-   `<project>/.odin/trash/`, kept 7 days), list trash, restore, empty trash. All paths checked inside the project; 409
+   `<home>/trash/<project>/`, outside the repo so it never shows in git status, kept 7 days), list trash, restore, empty trash. All paths checked inside the project; 409
    on name clash or when a running notebook kernel uses the path (`notebooks.usesPath`). Web: row ⋯ menu, selection
    bar, drag a row onto a folder to move, Move dialog (folder picker), Rename dialog, Undo toast, a Trash view,
    shortcuts F2 (rename), ⌘M (move), ⌫ (trash).
