@@ -44,6 +44,8 @@ import {
 const props = withDefaults(
   defineProps<{
     project?: string
+    /** Opens on this harness instead of the remembered one (when it is installed). */
+    harness?: string
     autofocus?: boolean
     visual?: boolean
     /**
@@ -54,6 +56,7 @@ const props = withDefaults(
   }>(),
   {
     project: undefined,
+    harness: undefined,
     autofocus: false,
     visual: false,
     backgroundDefault: false,
@@ -152,7 +155,7 @@ onMounted(async () => {
     harnesses.value = response.harnesses
     if (form.worktree === initialWorktree)
       form.worktree = worktreeDefault(currentProject(), response.settings)
-    const remembered = lastRuntime().harness
+    const remembered = props.harness ?? lastRuntime().harness
     form.harness = response.harnesses.some(h => h.id === remembered)
       ? remembered
       : emptySessionForm(form.project, response.settings).harness

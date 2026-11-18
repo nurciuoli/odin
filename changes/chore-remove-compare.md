@@ -1,0 +1,1 @@
+- Removed the Compare placeholder screen and its `/compare` route, and the "Open in Compare" link on the project Models panel.

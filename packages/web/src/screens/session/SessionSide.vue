@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // The Details column: where the session runs (repository, branch, pull request, quick links, tags), then usage and
-// context, outputs, changes, background tasks and the plan. Each section's header carries a quiet one-glance reading.
+// context, outputs, changes, the plan and, last, background tasks. Each section's header carries a quiet one-glance reading.
 import { computed, ref, watchEffect } from 'vue'
 import type { Session, SessionDetail } from '@odin/shared/api'
 import { useApi } from '@/api'
@@ -16,11 +16,15 @@ import { IuSegmented } from '@/components/Segmented'
 import FileHeatmap, { type HeatItem } from '@/screens/shared/FileHeatmap.vue'
 import { IuPropertyList, type PropertyItem } from '@/components/PropertyList'
 import type { ActivityItem } from '@/components/ActivityStrip/ActivityStrip.vue'
+import type { TaskActivity } from '@odin/shared/harness'
 import { IuStatusDot } from '@/components/StatusDot'
 import { useToast } from '@/components/Toast'
 import type { Status } from '@/styles/status'
 import { harnessLabel } from '@/screens/shared/format'
 import { contextWindow } from './sessionView'
+import TaskLanes from './TaskLanes.vue'
+import TaskStrip from './TaskStrip.vue'
+import { buildTaskTree, limitRows } from './taskTree'
 import { fileChanges, latestPlan, latestPlanFile } from './workbench'
 import { IuMarkdown } from '@/components/Markdown'
 import {
@@ -34,9 +38,16 @@ import {
   tokenMix,
 } from './sideStats'
 
-const props = withDefaults(defineProps<{ session: SessionDetail; tasks?: ActivityItem[] }>(), {
-  tasks: () => [],
-})
+const props = withDefaults(
+  defineProps<{
+    session: SessionDetail
+    tasks?: ActivityItem[]
+    /** The same tasks with their times and parents, for the branch graph. */
+    taskActivity?: TaskActivity[]
+    now?: number
+  }>(),
+  { tasks: () => [], taskActivity: () => [], now: () => Date.now() },
+)
 const emit = defineEmits<{
   updated: [session: Session]
   openFile: [path: string]
@@ -109,9 +120,9 @@ const mostChanged = computed(() => Math.max(1, ...files.value.map(f => f.added +
 
 // ── disclosures: context details and finished tasks start closed ──
 const contextOpen = ref(false)
-const finishedOpen = ref(false)
 const liveTasks = computed(() => props.tasks.filter(t => t.status === 'running'))
 const doneTasks = computed(() => props.tasks.filter(t => t.status !== 'running'))
+const taskRows = computed(() => limitRows(buildTaskTree(props.taskActivity, props.now), 14))
 const ctxPct = computed(() =>
   ctxUsed.value === null || !(ctxMax.value > 0)
     ? null
@@ -304,6 +315,18 @@ function addTag(e: KeyboardEvent) {
         <div v-if="session.origin === 'external'" class="session-side__row">
           <IuIcon name="terminal" :size="14" />
           <span class="session-side__grow">From terminal</span>
+        </div>
+        <div v-if="session.goal" class="session-side__row session-side__goal" aria-label="Goal">
+          <IuIcon name="check" :size="14" />
+          <span class="session-side__goal-text">
+            <span class="session-side__goal-condition">{{ session.goal.condition }}</span>
+            <span v-if="session.goal.lastReason" class="session-side__goal-reason">{{
+              session.goal.lastReason
+            }}</span>
+          </span>
+          <IuBadge v-if="session.goal.iterations" size="xs" variant="tag">{{
+            `${session.goal.iterations} ${session.goal.iterations === 1 ? 'check' : 'checks'}`
+          }}</IuBadge>
         </div>
         <div v-if="plan" class="session-side__row" aria-label="Plan">
           <IuIcon name="file" :size="14" />
@@ -543,47 +566,6 @@ function addTag(e: KeyboardEvent) {
       <p v-else class="session-side__none">No edits yet.</p>
     </details>
 
-    <details class="session-side__section" aria-labelledby="side-tasks">
-      <summary id="side-tasks" class="session-side__summary">
-        <span>Background tasks</span>
-        <IuIcon name="chevronRight" :size="14" class="session-side__caret" />
-        <span class="session-side__summary-value"
-          >{{ liveTasks.length }} running, {{ doneTasks.length }} finished</span
-        >
-      </summary>
-      <ul v-if="liveTasks.length" class="session-side__list">
-        <li v-for="t in liveTasks" :key="t.id" class="session-side__file">
-          <IuStatusDot :status="t.status" :label="t.state" />
-          <button type="button" class="session-side__open" @click="emit('openTask', t.id)">
-            {{ t.label }}
-          </button>
-          <span v-if="t.time" class="session-side__count">{{ t.time }}</span>
-        </li>
-      </ul>
-      <p v-if="!tasks.length" class="session-side__none">No background tasks.</p>
-      <template v-if="doneTasks.length">
-        <button
-          type="button"
-          class="session-side__toggle session-side__toggle--quiet"
-          :aria-expanded="finishedOpen"
-          aria-controls="side-tasks-done"
-          @click="finishedOpen = !finishedOpen"
-        >
-          {{ doneTasks.length }} finished
-          <IuIcon :name="finishedOpen ? 'chevronDown' : 'chevronRight'" :size="14" />
-        </button>
-        <ul v-show="finishedOpen" id="side-tasks-done" class="session-side__list">
-          <li v-for="t in doneTasks" :key="t.id" class="session-side__file">
-            <IuStatusDot :status="t.status" :label="t.state" />
-            <button type="button" class="session-side__open" @click="emit('openTask', t.id)">
-              {{ t.label }}
-            </button>
-            <span v-if="t.time" class="session-side__count">{{ t.time }}</span>
-          </li>
-        </ul>
-      </template>
-    </details>
-
     <details v-if="session.todos.length" class="session-side__section" aria-labelledby="side-todos">
       <summary id="side-todos" class="session-side__summary">
         <span>To-dos</span>
@@ -614,12 +596,39 @@ function addTag(e: KeyboardEvent) {
         </li>
       </ul>
     </details>
+
+    <details class="session-side__section" aria-labelledby="side-tasks">
+      <summary id="side-tasks" class="session-side__summary">
+        <span>Background tasks</span>
+        <IuIcon name="chevronRight" :size="14" class="session-side__caret" />
+        <span class="session-side__summary-value"
+          >{{ liveTasks.length }} running, {{ doneTasks.length }} finished</span
+        >
+        <!-- shown only while the section is closed: the shape of the run, the expanded graph's small cousin -->
+        <TaskStrip
+          v-if="taskRows.shown.length"
+          class="session-side__strip"
+          :nodes="taskRows.shown"
+          :now="now"
+        />
+      </summary>
+      <TaskLanes
+        v-if="taskRows.shown.length"
+        :nodes="taskRows.shown"
+        :now="now"
+        :hidden="taskRows.hidden"
+        :running="liveTasks.length > 0"
+        @select="emit('openTask', $event)"
+      />
+      <p v-else class="session-side__none">No background tasks.</p>
+    </details>
   </div>
 </template>
 
 <style>
 .session-side__summary {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   cursor: pointer;
@@ -721,6 +730,27 @@ details[open] > .session-side__summary .session-side__caret {
 .session-side__plan:focus-visible {
   outline: 2px solid var(--iu-accent);
   outline-offset: 2px;
+}
+.session-side__goal {
+  align-items: flex-start;
+}
+.session-side__goal > .iu-icon {
+  margin-top: 2px;
+}
+.session-side__goal-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.session-side__goal-condition {
+  color: var(--iu-text);
+}
+.session-side__goal-reason {
+  font-size: var(--iu-font-size-12);
+  color: var(--iu-text-muted);
 }
 .session-side__planbody {
   max-height: 240px;
@@ -1014,5 +1044,15 @@ details[open] > .session-side__summary .session-side__caret {
 }
 .session-side__tag-input:focus-visible {
   outline: 2px solid var(--iu-accent);
+}
+</style>
+
+<style>
+.session-side__strip {
+  flex: 0 0 100%;
+  margin-top: 4px;
+}
+details[open] > .session-side__summary .session-side__strip {
+  display: none;
 }
 </style>
