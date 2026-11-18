@@ -1,0 +1,1 @@
+- The session Details panel puts copy and open icons beside each repository folder and the branch (open reveals the folder, or opens the branch on GitHub), shows the plan as one row you click to open its file, and tucks the tag field into a small "+ tag".
