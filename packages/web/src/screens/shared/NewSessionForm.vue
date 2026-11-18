@@ -29,6 +29,7 @@ import { effortChoices, asEffort, pickerExtras } from './effort'
 import ComposerProjects from './ComposerProjects.vue'
 import ComposerWhere from './ComposerWhere.vue'
 import Murmuration from './Murmuration.vue'
+import { useStormSignal } from './useStormSignal'
 import { lastRuntime, rememberRuntime } from './lastRuntime'
 import { harnessLabel, PERMISSION_MODE_LABELS } from './format'
 import {
@@ -71,6 +72,7 @@ const searchFiles = async (query: string) =>
 const router = useRouter()
 const store = useProjects()
 const drafts = useDrafts()
+const sky = useStormSignal()
 const { toast } = useToast()
 const form = reactive(emptySessionForm())
 const root = ref<HTMLElement | null>(null)
@@ -429,7 +431,7 @@ defineExpose({ focus })
 
 <template>
   <div ref="root" class="new-session">
-    <Murmuration v-if="visual" :draft="form.prompt" :sending="starting" />
+    <Murmuration v-if="visual" :running="sky.running.value" :signal="sky.signal.value" />
     <div class="new-session__launch-controls" aria-label="Session configuration">
       <ComposerProjects
         v-model="form.project"
