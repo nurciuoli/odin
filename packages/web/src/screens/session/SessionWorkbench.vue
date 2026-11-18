@@ -8,6 +8,7 @@ import { IuTabs } from '@/components/Tabs'
 import SessionEnvironment from './SessionEnvironment.vue'
 import type SessionFilesType from './SessionFiles.vue'
 import type { PreviewView } from './workbench'
+import type { CellRef } from './fileActivity'
 const SessionFiles = defineAsyncComponent(() => import('./SessionFiles.vue'))
 const props = withDefaults(
   defineProps<{ session: SessionDetail; width: number; resizable?: boolean }>(),
@@ -22,12 +23,22 @@ const filesTabs = [
 ]
 const filePanel = ref<InstanceType<typeof SessionFilesType>>()
 const pendingPath = ref<string | null>(null)
+const pendingCell = ref<CellRef | null>(null)
 watch(filePanel, panel => {
   if (panel && pendingPath.value !== null) {
     void panel.open(pendingPath.value)
     pendingPath.value = null
   }
+  if (panel && pendingCell.value) {
+    void panel.openCell(pendingCell.value)
+    pendingCell.value = null
+  }
 })
+function openCell(cell: CellRef) {
+  tab.value = 'files'
+  if (filePanel.value) void filePanel.value.openCell(cell)
+  else pendingCell.value = cell
+}
 function openFile(path: string) {
   tab.value = 'files'
   filesTab.value = 'files'
@@ -121,7 +132,7 @@ watch(
   },
 )
 onBeforeUnmount(stopDrag)
-defineExpose({ openFile })
+defineExpose({ openFile, openCell })
 </script>
 <template>
   <div

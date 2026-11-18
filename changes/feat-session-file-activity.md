@@ -1,0 +1,1 @@
+- The Files tab lists the files this session read or changed, newest first; tool steps in the thread open their file (or notebook cell) there.
