@@ -676,9 +676,8 @@ Odin signs in to remote MCP servers that use OAuth, once, and sends the token to
 ### Plugins
 
 A plugin is a library asset of kind `plugin`: a folder `<library>/plugins/<id>/` with a manifest and optional members of
-its own. Design: `docs/plans/plugins.md`. **Status: the format and parser exist (`PluginSpec`, `parseAsset("plugin", …)`);
-the kind is not yet in `ASSET_KINDS`, so core neither scans nor saves nor installs plugins until the install change
-lands.**
+its own. Design: `docs/plans/plugins.md`. Core scans, saves, lists and installs plugins (`LIBRARY_KINDS` in
+`shared/src/library.ts` is `ASSET_KINDS` plus `plugin`); the web app does not show them yet, so `ASSET_KINDS` is unchanged.
 
 - **Manifest** `plugin.json`: `name`, `description`, `version` (a label, ≤ 64 characters), `includes`
   (`{ kind, id, version? }[]`, at most 64, no duplicates; `kind` is one of `PLUGIN_MEMBER_KINDS`: instruction, skill,
@@ -693,6 +692,33 @@ lands.**
   `own: PluginOwnMember[]` (kind, id, name, description, error), sorted by kind then id; `error` joins every problem.
   The parser cannot see the library, so whether included assets exist is checked when a plugin is installed.
 - Limits are the library's: 64 files per plugin, 1 MB per file.
+
+#### Installing a plugin
+
+`POST /api/projects/:name/library` with `kind: "plugin"` (`InstallRequest`): actions `preview`, `install`, `update`
+and `forget`; `push` is 400. A plugin has no files of its own in a project (`INSTALL_TARGETS.plugin.mode` is
+`"bundle"`). It installs its members one by one with the normal rules above.
+
+- **Members**: own members are library-shaped "virtual" assets keyed `plugin:<plugin>/<member>` (versions in
+  `library_versions` under that key) and installed under their plain id (`installations.project_id`). Included members
+  are ordinary installations of the library asset, optionally at a pinned version (`installations.pinned_version`).
+  Own members never appear in `GET /api/projects/:name/library` as installations; the plugin's `Installation.members`
+  (`PluginMemberState`: kind, id, origin `own|library`, state) lists them. The plugin row is in
+  `plugin_installations` (installed version, hash of what it runs, member list).
+- **All or nothing**: every member is checked (conflicts, untracked files, ids claimed by another asset or plugin, a
+  missing include → 409) before any is written. `force` overrides what it overrides for a single asset.
+- **Preview** (`action: "preview"`, writes nothing): `InstallResult.preview` is a `PluginPreview` with the members and
+  what would happen to each, `runs` (hooks, local MCP commands and remote servers, with their text), `missing` includes,
+  the `${secret:NAME}` names with whether each is set, the remote servers that need an OAuth sign-in, and `confirm`.
+- **Confirm**: a plugin with hooks or local MCP commands refuses to install (409) unless `InstallRequest.confirm`
+  equals the preview's token (a hash of what runs). An update asks again only when that hash changed from the one
+  stored at install. Remote servers need no confirmation.
+- **Drift**: the plugin's state is the worst member state (conflict, modified, missing, then update-available when a
+  member is not installed yet or the plugin version moved). `update` adds new members, rewrites changed ones and
+  releases members the manifest dropped.
+- **Forget**: releases only members the plugin installed itself: not ones that were already installed by hand
+  (`adopted`) and not ones another installed plugin lists. Copy files stay and merged fragments come out, as for
+  any `forget`.
 
 ## Notebooks and Python analysis
 
@@ -1050,7 +1076,7 @@ The main routes; each module's `routes.ts` has the full list. All JSON. Errors: 
 | sync | `gh_map`, `sync_state`, `pulls` |
 | ingest | `session_events` |
 | artifacts | `artifacts`, `artifact_versions` |
-| library | `library_versions`, `installations` |
+| library | `library_versions`, `installations`, `plugin_installations` |
 
   A module may **read** another module's tables for joins.
 
