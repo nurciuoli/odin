@@ -116,6 +116,11 @@ export const registerSessionsRoutes: RegisterRoutes = (router, deps, services) =
     send(res, 201, session);
   });
 
+  router.get("/api/sessions/:id/handoff", ({ params, url }) => sessions.handoffPreview(params.id!, url.searchParams.get("harness") ?? ""));
+  router.post("/api/sessions/:id/handoff", async ({ req, res, params }) => {
+    send(res, 201, await sessions.handoff(params.id!, await readJson(req, MESSAGE_BODY_MAX_BYTES)));
+  });
+
   router.post("/api/projects/:name/discover", async ({ params }) => ({ added: await sessions.discover(params.name!) }));
 
   router.get("/api/models", async ({ url }) => {
