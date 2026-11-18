@@ -11,6 +11,8 @@ import { IuIcon } from '@/components/Icon'
 import { IuField } from '@/components/Fields'
 import { IuFilePath } from '@/components/FilePath'
 import { IuMeter } from '@/components/Meter'
+import { IuSegmented } from '@/components/Segmented'
+import FileHeatmap, { type HeatItem } from '@/screens/shared/FileHeatmap.vue'
 import { IuPropertyList, type PropertyItem } from '@/components/PropertyList'
 import type { ActivityItem } from '@/components/ActivityStrip/ActivityStrip.vue'
 import { IuStatusDot } from '@/components/StatusDot'
@@ -65,6 +67,20 @@ const totals = computed(() => ({
   removed: files.value.reduce((n, f) => n + f.removed, 0),
 }))
 const split = computed(() => changeSplit(totals.value.added, totals.value.removed))
+const changesView = ref('list')
+const heatItems = computed<HeatItem[]>(() =>
+  files.value.map(f => ({
+    id: f.path,
+    label: f.path.split('/').pop() ?? f.path,
+    value: f.added + f.removed,
+    title: `${f.path} · +${f.added} −${f.removed}`,
+    note: [f.added ? `+${f.added}` : '', f.removed ? `−${f.removed}` : '']
+      .filter(Boolean)
+      .join(' '),
+    added: f.added,
+    removed: f.removed,
+  })),
+)
 const mostChanged = computed(() => Math.max(1, ...files.value.map(f => f.added + f.removed)))
 
 // ── disclosures: context details and finished tasks start closed ──
@@ -442,7 +458,23 @@ function addTag(e: KeyboardEvent) {
           />
         </span>
       </div>
-      <ul v-if="files.length" class="session-side__list">
+      <IuSegmented
+        v-if="files.length"
+        v-model="changesView"
+        class="session-side__view"
+        label="Changes view"
+        :options="[
+          { value: 'list', label: 'List' },
+          { value: 'heatmap', label: 'Heatmap' },
+        ]"
+      />
+      <FileHeatmap
+        v-if="files.length && changesView === 'heatmap'"
+        label="Changed files, sized by lines changed"
+        :items="heatItems"
+        @select="emit('openFile', $event)"
+      />
+      <ul v-else-if="files.length" class="session-side__list">
         <li v-for="f in files" :key="f.path" class="session-side__file">
           <button type="button" class="session-side__open" @click="emit('openFile', f.path)">
             <IuFilePath class="session-side__path" :path="f.path" :root="session.cwd" />
@@ -845,6 +877,9 @@ details[open] > .session-side__summary .session-side__caret {
   overflow-wrap: anywhere;
 }
 /* a per-file sliver sized against the busiest file */
+.session-side__view {
+  margin: 4px 0;
+}
 .session-side__heat {
   flex: none;
   height: 3px;
