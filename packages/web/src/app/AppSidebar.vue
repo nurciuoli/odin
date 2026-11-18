@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { IuBadge } from '@/components/Badge'
 import { IuButton } from '@/components/Button'
@@ -16,6 +16,7 @@ import type { Session } from '@odin/shared/api'
 import { SESSION_DISPLAY } from '@/screens/shared/format'
 import { plural, projectStatus, relativeTime } from '@/screens/shared/format'
 import { useSessionPerches } from '@/screens/shared/useSessionPerches'
+import { layoutDemand, sidebarCrowded } from './layout'
 import { useProjects } from './projects'
 import { useSessions } from './sessions'
 import { isUnread } from './seen'
@@ -110,12 +111,17 @@ const rows = computed(() =>
   }),
 )
 
-// Narrow windows start folded; desktop keeps the user's last choice.
+// The sidebar folds to its icon rail when the window is narrow, or when the open screen needs the room (a docked
+// preview pane beside the conversation). Folding that way is not a choice, so it is not remembered: the rail opens
+// again when there is room, and desktop otherwise keeps the user's last choice.
 const NARROW = '(max-width: 860px)'
 const COLLAPSED_KEY = 'odin.sidebar.collapsed'
 const collapsed = ref(false)
+const narrow = ref(false)
+const viewport = ref(typeof window === 'undefined' ? 1600 : window.innerWidth)
+const crowded = computed(() => sidebarCrowded(viewport.value, layoutDemand.value))
+const folded = computed(() => narrow.value || crowded.value)
 let query: MediaQueryList | null = null
-let narrow = false
 const readDesktopChoice = () => {
   try {
     return window.localStorage.getItem(COLLAPSED_KEY) === 'true'
@@ -132,23 +138,23 @@ const saveDesktopChoice = (value: boolean) => {
 }
 const toggleCollapsed = () => {
   collapsed.value = !collapsed.value
-  if (!narrow) saveDesktopChoice(collapsed.value)
+  if (!narrow.value) saveDesktopChoice(collapsed.value)
 }
-const onQuery = (e: MediaQueryListEvent) => {
-  narrow = e.matches
-  collapsed.value = narrow ? true : readDesktopChoice()
-}
+const onQuery = (e: MediaQueryListEvent) => (narrow.value = e.matches)
+const onResize = () => (viewport.value = window.innerWidth)
+watch(folded, f => (collapsed.value = f ? true : readDesktopChoice()))
 onMounted(() => {
+  viewport.value = window.innerWidth
+  window.addEventListener('resize', onResize)
   query = typeof window.matchMedia === 'function' ? window.matchMedia(NARROW) : null
-  if (!query) {
-    collapsed.value = readDesktopChoice()
-    return
-  }
-  narrow = query.matches
-  collapsed.value = narrow ? true : readDesktopChoice()
-  query.addEventListener('change', onQuery)
+  narrow.value = query?.matches ?? false
+  collapsed.value = folded.value ? true : readDesktopChoice()
+  query?.addEventListener('change', onQuery)
 })
-onBeforeUnmount(() => query?.removeEventListener('change', onQuery))
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', onResize)
+  query?.removeEventListener('change', onQuery)
+})
 </script>
 
 <template>
