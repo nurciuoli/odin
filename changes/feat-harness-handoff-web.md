@@ -1,1 +1,1 @@
-- Session menu: "Hand off to another harness…" starts the same task on a different harness in the same folder and branch. You review and edit the briefing first, and the new session links back to the old one.
+- `/handoff` in the message box continues the session on another harness in the same folder and branch. `/handoff codex` (optionally with a model) does it at once; plain `/handoff` asks which harness and model in a card. The new session links back to the old one.

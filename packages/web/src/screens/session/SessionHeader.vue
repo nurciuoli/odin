@@ -26,7 +26,7 @@ import { plural, SESSION_DISPLAY } from '@/screens/shared/format'
 import { useQuickAnswer } from '@/screens/shared/useQuickAnswer'
 import SaveToLibraryModal from '@/screens/library/SaveToLibraryModal.vue'
 import ForkModal from './ForkModal.vue'
-import HandoffModal from './HandoffModal.vue'
+import { openHandoff } from './handoff'
 
 const props = defineProps<{
   session: SessionDetail
@@ -37,7 +37,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   updated: [session: Session]
   forked: [session: Session]
-  handedOff: [session: Session]
   deleted: []
 }>()
 
@@ -102,7 +101,6 @@ function onRenameKey(e: KeyboardEvent) {
 
 // ── actions ──
 const forkOpen = ref(false)
-const handoffOpen = ref(false)
 const saveOpen = ref(false)
 const deleteOpen = ref(false)
 const deleting = ref(false)
@@ -142,7 +140,7 @@ async function onAction(id: string) {
   else if (id === 'pin')
     await patch({ pinned: !props.session.pinned }, props.session.pinned ? 'unpin' : 'pin')
   else if (id === 'fork') forkOpen.value = true
-  else if (id === 'handoff') handoffOpen.value = true
+  else if (id === 'handoff') openHandoff(props.session.id)
   else if (id === 'save') saveOpen.value = true
   else if (id === 'delete') {
     deleteError.value = null
@@ -252,7 +250,7 @@ onMounted(() => {
       id: 'session-handoff',
       label: 'Hand off to another harness…',
       icon: 'arrowRight',
-      run: () => (handoffOpen.value = true),
+      run: () => openHandoff(props.session.id),
     }),
   )
 })
@@ -357,15 +355,6 @@ async function confirmDelete() {
       :title="session.title"
       :in-worktree="!!worktree"
       @forked="emit('forked', $event)"
-    />
-
-    <HandoffModal
-      v-model:open="handoffOpen"
-      :session-id="session.id"
-      :harness="session.harness"
-      :busy="session.state === 'running' || session.state === 'waiting'"
-      :final="isFinal"
-      @handed-off="emit('handedOff', $event)"
     />
 
     <SaveToLibraryModal

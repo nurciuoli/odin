@@ -78,8 +78,9 @@ target (a harness that cannot take a given server type fails explicitly, like re
    null everywhere it is constructed, fixtures. No behaviour.
 2. **Core PR**: `packages/core/src/sessions/handoff.ts` (briefing builder, pure and unit-tested on transcripts) and the
    two service methods and routes. Tests with `fakeHarness()` for both source and target.
-3. **Web PR**: "Hand off…" in the session header menu opens a dialog: target harness (only available ones, other than
-   the current), model, the editable briefing, "End this session" checkbox (on). The new session shows a "Continued from
+3. **Web PR**: the `/handoff [harness] [model]` slash command (also in the session menu and the palette). With a
+   harness it runs at once with the generated briefing; bare `/handoff` shows a question card (the same one agents use
+   to ask questions) for the harness, then the model. There is no briefing editor: the briefing is generated. The new session shows a "Continued from
    <title> on <harness>" line that links back; the old one shows "Continued as …". Mock API support and screenshots.
 
 ## Interaction with checkpoints
