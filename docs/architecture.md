@@ -10,7 +10,7 @@ apps/desktop (Electron) ──▶ packages/core (node:http, node:sqlite, SSE) �
 | Package | What it holds |
 |---|---|
 | `packages/shared` | Types and small helpers shared by core and web: sessions, harness events and the transcript reducer, library rules, labels, pricing, agent files. The source of truth for data shapes. |
-| `packages/core` | The server. One folder per module (`projects`, `sessions`, `launch`, `library`, `artifacts`, `notebooks`, `coordination`, `sync`, `ingest`, `metrics`, `settings`, `tracking`), each with a `service.ts` implementing an interface from `services.ts` and a `routes.ts`. |
+| `packages/core` | The server. One folder per module (`projects`, `sessions`, `launch`, `library`, `artifacts`, `notebooks`, `sync`, `ingest`, `metrics`, `settings`, `tracking`), each with a `service.ts` implementing an interface from `services.ts` and a `routes.ts`. |
 | `packages/core/src/harness` | The `Harness` interface (`types.ts`), the scriptable fake driver, and one folder per runtime. Only a driver may import its runtime's SDK or protocol types. |
 | `packages/web` | The Vue 3.5 app. `src/components`, `src/styles`, `src/composables` are the Instrument UI design system; `src/screens` and `src/app` are Odin's; `src/api` is the client (`types.ts` the contract, `http.ts` real, `mock.ts` fixtures). |
 | `apps/desktop` | The Electron shell. See [desktop.md](desktop.md). |
