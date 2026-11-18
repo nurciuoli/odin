@@ -113,7 +113,7 @@ The dialog lists the files each mode would change (from the checkpoint diff) bef
 | # | PR | Notes |
 |---|---|---|
 | 0 | `docs: plan session checkpoints and rewind` | this file |
-| 1 | `feat(shared)!`-free contract PR: types, harness interface, migration, `docs/contracts.md`, fake harness `forkAt`) | `contract`, no behaviour yet |
+| 1 | `feat(shared): add checkpoint contracts` (types, harness interface, migration, `docs/contracts.md`, fake harness `forkAt`) | `contract`, no behaviour yet |
 | 2 | `feat(core)`: shadow store, capture on turn boundaries, list/diff/restore routes, retention | tested with `testDeps()` and temp repos; includes a Windows path test |
 | 3 | `feat(harness)`: `forkAt` for Claude first, then Codex and OpenCode; others report `forkAt: false` | spike for the SDK first |
 | 4 | `feat(web)`: checkpoint markers, rewind dialog, undo, branch tree link; screenshots reviewed by Nick before it is final | mock data covers every mode |
