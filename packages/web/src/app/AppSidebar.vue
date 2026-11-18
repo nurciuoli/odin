@@ -6,6 +6,7 @@ import { IuButton } from '@/components/Button'
 import { IuIcon } from '@/components/Icon'
 import { IuCallout } from '@/components/Callout'
 import { IuField } from '@/components/Fields'
+import { IuHoverCard } from '@/components/HoverCard'
 import { IuMenu, type MenuItem } from '@/components/Menu'
 import { IuDialog } from '@/components/Modal'
 import { IuNavGroup, IuNavItem, IuSidebar } from '@/components/Sidebar'
@@ -19,6 +20,8 @@ import { useSessionPerches } from '@/screens/shared/useSessionPerches'
 import { layoutDemand, sidebarCrowded } from './layout'
 import { useProjects } from './projects'
 import { useSessions } from './sessions'
+import ProjectHoverCard from './hovercards/ProjectHoverCard.vue'
+import SessionHoverCard from './hovercards/SessionHoverCard.vue'
 import { isUnread } from './seen'
 
 const route = useRoute()
@@ -229,27 +232,28 @@ onBeforeUnmount(() => {
         @click="store.reload()"
       />
       <template v-else>
-        <IuNavItem
-          v-for="p in rows"
-          :key="p.name"
-          :label="p.title"
-          :status="projectStatus(p)"
-          :to="{ name: 'project-overview', params: { name: p.name } }"
-          :count="p.sessions.waiting + p.sessions.running || undefined"
-          :active="route.params.name === p.name"
-          :aria-label="
-            [
-              p.title,
-              p.sessions.waiting > 0
-                ? `${plural(p.sessions.waiting, 'session')} waiting for you`
-                : '',
-              p.sessions.running > 0 ? `${plural(p.sessions.running, 'session')} running` : '',
-              p.sync.state === 'error' || p.missing ? 'needs attention' : '',
-            ]
-              .filter(Boolean)
-              .join(', ')
-          "
-        />
+        <IuHoverCard v-for="p in rows" :key="p.name" :label="`${p.title} overview`">
+          <IuNavItem
+            :label="p.title"
+            :status="projectStatus(p)"
+            :to="{ name: 'project-overview', params: { name: p.name } }"
+            :count="p.sessions.waiting + p.sessions.running || undefined"
+            :active="route.params.name === p.name"
+            :aria-label="
+              [
+                p.title,
+                p.sessions.waiting > 0
+                  ? `${plural(p.sessions.waiting, 'session')} waiting for you`
+                  : '',
+                p.sessions.running > 0 ? `${plural(p.sessions.running, 'session')} running` : '',
+                p.sync.state === 'error' || p.missing ? 'needs attention' : '',
+              ]
+                .filter(Boolean)
+                .join(', ')
+            "
+          />
+          <template #card><ProjectHoverCard :name="p.name" /></template>
+        </IuHoverCard>
         <p v-if="!store.projects.value.length" class="app-sidebar-note">No projects yet</p>
       </template>
     </IuNavGroup>
@@ -283,60 +287,60 @@ onBeforeUnmount(() => {
         <p v-if="!collapsed && !section.sessions.length" class="app-sidebar-note">
           {{ section.active ? 'No sessions in progress' : 'No finished sessions' }}
         </p>
-        <IuMenu
-          v-for="s in section.sessions"
-          :key="s.id"
-          class="app-nav-slot"
-          :class="{
-            'is-collapsed': collapsed,
-          }"
-          :items="sessionActions"
-          context-menu
-          @select="openAction(s, $event)"
-        >
-          <template #trigger="{ open }">
-            <IuNavItem
-              class="app-nav-slot__item"
-              :label="s.title"
-              :description="section.active && !collapsed ? projectOf(s) : undefined"
-              :status="!section.active && collapsed ? SESSION_DISPLAY[s.state].status : undefined"
-              :to="{ name: 'session', params: { id: s.id } }"
-              :active="route.params.id === s.id"
-              aria-haspopup="menu"
-              :aria-expanded="open"
-              :aria-label="`${s.title}${section.active ? `, ${activityOf(s)}${isLive(s) ? `, ${perches[s.id]?.word}` : ''}` : ''}, ${SESSION_DISPLAY[s.state].label}`"
-              :title="section.active ? `${s.title} — ${activityOf(s)}` : s.title"
-            >
-              <template v-if="section.active && collapsed" #leading>
-                <IuFlock
-                  :state="flockOf(s)"
-                  :agents="perches[s.id]?.agents"
-                  :size="collapsed ? 'sm' : 'md'"
-                  tone="neutral"
-                />
-              </template>
-              <template v-if="section.active && !collapsed" #content>
-                <span class="app-session-row">
-                  <span class="app-session-row__title">{{ s.title }}</span>
-                  <time
-                    class="app-session-row__time"
-                    :datetime="s.updatedAt"
-                    :title="s.updatedAt"
-                    >{{ relativeTime(s.updatedAt, now) }}</time
-                  >
-                  <span class="app-session-row__project">{{ projectOf(s) }}</span>
+        <IuHoverCard v-for="s in section.sessions" :key="s.id" :label="`${s.title} overview`">
+          <IuMenu
+            class="app-nav-slot"
+            :class="{
+              'is-collapsed': collapsed,
+            }"
+            :items="sessionActions"
+            context-menu
+            @select="openAction(s, $event)"
+          >
+            <template #trigger="{ open }">
+              <IuNavItem
+                class="app-nav-slot__item"
+                :label="s.title"
+                :description="section.active && !collapsed ? projectOf(s) : undefined"
+                :status="!section.active && collapsed ? SESSION_DISPLAY[s.state].status : undefined"
+                :to="{ name: 'session', params: { id: s.id } }"
+                :active="route.params.id === s.id"
+                aria-haspopup="menu"
+                :aria-expanded="open"
+                :aria-label="`${s.title}${section.active ? `, ${activityOf(s)}${isLive(s) ? `, ${perches[s.id]?.word}` : ''}` : ''}, ${SESSION_DISPLAY[s.state].label}`"
+              >
+                <template v-if="section.active && collapsed" #leading>
                   <IuFlock
-                    class="app-session-row__flock"
                     :state="flockOf(s)"
                     :agents="perches[s.id]?.agents"
-                    size="sm"
+                    :size="collapsed ? 'sm' : 'md'"
                     tone="neutral"
                   />
-                </span>
-              </template>
-            </IuNavItem>
-          </template>
-        </IuMenu>
+                </template>
+                <template v-if="section.active && !collapsed" #content>
+                  <span class="app-session-row">
+                    <span class="app-session-row__title">{{ s.title }}</span>
+                    <time
+                      class="app-session-row__time"
+                      :datetime="s.updatedAt"
+                      :title="s.updatedAt"
+                      >{{ relativeTime(s.updatedAt, now) }}</time
+                    >
+                    <span class="app-session-row__project">{{ projectOf(s) }}</span>
+                    <IuFlock
+                      class="app-session-row__flock"
+                      :state="flockOf(s)"
+                      :agents="perches[s.id]?.agents"
+                      size="sm"
+                      tone="neutral"
+                    />
+                  </span>
+                </template>
+              </IuNavItem>
+            </template>
+          </IuMenu>
+          <template #card><SessionHoverCard :session="s" /></template>
+        </IuHoverCard>
       </section>
     </IuNavGroup>
 
