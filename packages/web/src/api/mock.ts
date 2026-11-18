@@ -13,7 +13,6 @@ import type {
   MetricsQuery,
   MetricsRow,
   PermissionAnswer,
-  ProjectBrief,
   ProjectDetail,
   ProjectSummary,
   Session,
@@ -22,7 +21,7 @@ import type {
   MessageQueue,
   UserMessage,
 } from '@odin/shared/api'
-import { emptyProjectContext, parseProjectSources, PROJECT_BRIEF_MAX } from '@odin/shared/api'
+import { emptyProjectContext, parseProjectSources } from '@odin/shared/api'
 import type { HarnessEvent, PermissionRequest, SlashCommand } from '@odin/shared/harness'
 import type { ServerEvent } from '@odin/shared/events'
 import {
@@ -729,31 +728,6 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
     matches: fuzzyMatchPaths(workspacePaths(), query),
     truncated: false,
   })
-
-  const MEMORY_PATH = /^[A-Za-z0-9_][A-Za-z0-9._-]*(\/[A-Za-z0-9_][A-Za-z0-9._-]*)*\.md$/
-  function memoryPath(path: string): string {
-    if (path.length > 200 || !MEMORY_PATH.test(path) || path.split('/').includes('..'))
-      bad('memory path must be a relative .md path (letters, digits, . _ - and /)')
-    return path
-  }
-  function memoryOf(project: string) {
-    projectOf(project)
-    return (db.memory[project] ??= {})
-  }
-  function briefOf(project: string): ProjectBrief {
-    const brief = db.briefs[project]
-    return {
-      instructions: brief?.instructions ?? '',
-      updatedAt: brief?.updatedAt ?? null,
-      memory: Object.entries(memoryOf(project))
-        .map(([path, f]) => ({
-          path,
-          sizeBytes: new TextEncoder().encode(f.content).length,
-          updatedAt: f.updatedAt,
-        }))
-        .sort((a, b) => a.path.localeCompare(b.path)),
-    }
-  }
 
   const api: MockApi = {
     ...mockNotebooks({
@@ -1654,72 +1628,6 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
         for (const b of db.branches[project] ?? [])
           if (b.worktreePath === path) b.worktreePath = null
         emit({ type: 'project.updated', project })
-      }),
-    async startCoordinator(project, req) {
-      const id = (
-        await api.startSession({
-          ...req,
-          project,
-          tags: [...new Set(['coordinator', ...(req.tags ?? [])])],
-        })
-      ).id
-      db.coordinators.push({ sessionId: id, project, createdAt: nowIso() })
-      return clone(sessionOf(id))
-    },
-    listProjectThreads: project =>
-      respond(() => {
-        projectOf(project)
-        const newest = <T extends { createdAt: string }>(a: T, b: T) =>
-          b.createdAt.localeCompare(a.createdAt)
-        const live = (id: string) => db.sessions.find(x => x.id === id)
-        return {
-          coordinators: db.coordinators
-            .filter(c => c.project === project && live(c.sessionId))
-            .sort(newest)
-            .map(c => ({
-              session: live(c.sessionId)!,
-              threads: db.threads
-                .filter(t => t.coordinatorId === c.sessionId && live(t.sessionId))
-                .sort(newest)
-                .map(t => ({
-                  sessionId: t.sessionId,
-                  coordinatorId: t.coordinatorId,
-                  task: t.task,
-                  createdAt: t.createdAt,
-                  session: live(t.sessionId)!,
-                })),
-            })),
-        }
-      }),
-    getProjectBrief: project => respond(() => briefOf(project)),
-    updateProjectBrief: (project, instructions) =>
-      respond(() => {
-        projectOf(project)
-        if (instructions.length > PROJECT_BRIEF_MAX)
-          bad(`instructions are limited to ${PROJECT_BRIEF_MAX} characters`)
-        if (instructions.trim()) db.briefs[project] = { instructions, updatedAt: nowIso() }
-        else delete db.briefs[project]
-        return briefOf(project)
-      }),
-    readProjectMemory: (project, path) =>
-      respond(() => {
-        const file = memoryOf(project)[memoryPath(path)]
-        if (!file) notFound(`memory file ${path}`)
-        return { path, content: file!.content }
-      }),
-    writeProjectMemory: (project, path, content) =>
-      respond(() => {
-        const files = memoryOf(project)
-        if (new TextEncoder().encode(content).length > 64 * 1024)
-          bad('a memory file is limited to 64 KB')
-        files[memoryPath(path)] = { content, updatedAt: nowIso() }
-        return briefOf(project)
-      }),
-    deleteProjectMemory: (project, path) =>
-      respond(() => {
-        const files = memoryOf(project)
-        if (!files[memoryPath(path)]) notFound(`memory file ${path}`)
-        delete files[path]
       }),
     listProjectArtifacts: (project, limit) =>
       respond(() => {

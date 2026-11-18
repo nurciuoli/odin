@@ -57,18 +57,6 @@ export interface Fixtures {
   branches: Record<string, ProjectBranch[]>
   models: ModelInfo[]
   settings: SettingsResponse
-  /** Coordinator sessions by id, and the threads they started. */
-  coordinators: { sessionId: string; project: string; createdAt: string }[]
-  threads: {
-    sessionId: string
-    coordinatorId: string
-    project: string
-    task: string
-    createdAt: string
-  }[]
-  /** Project briefs and memory files, by project. */
-  briefs: Record<string, { instructions: string; updatedAt: string }>
-  memory: Record<string, Record<string, { content: string; updatedAt: string }>>
 }
 
 /** A stable stand-in for a sha256: 64 hex chars from the seed. Not cryptographic; fixtures only. */
@@ -1676,43 +1664,6 @@ export function createFixtures(now: number = Date.now()): Fixtures {
       '3/1': DEPENDENCY_HTML,
     },
     tracking: { odin: true, rick: false, harbor: false },
-    coordinators: [{ sessionId: s.idle, project: 'odin', createdAt: ago(5 * HOUR) }],
-    threads: [
-      {
-        sessionId: s.waiting,
-        coordinatorId: s.idle,
-        project: 'odin',
-        task: 'Build the permission prompt component: allow once / always / deny, keyboard first.',
-        createdAt: ago(4 * HOUR),
-      },
-      {
-        sessionId: s.running,
-        coordinatorId: s.idle,
-        project: 'odin',
-        task: 'Stream assistant replies into the session screen without moving focus.',
-        createdAt: ago(3 * HOUR),
-      },
-    ],
-    briefs: {
-      odin: {
-        instructions:
-          'Target main. Each thread runs `yarn typecheck` and `yarn test` before it reports back.\nAsk before adding a dependency.',
-        updatedAt: ago(6 * HOUR),
-      },
-    },
-    memory: {
-      odin: {
-        'MEMORY.md': {
-          content: '- [pitfalls/sse.md](pitfalls/sse.md): SSE reconnect gotchas\n',
-          updatedAt: ago(2 * HOUR),
-        },
-        'pitfalls/sse.md': {
-          content:
-            'The client refetches REST state after a reconnect; never rely on missed frames.\n',
-          updatedAt: ago(2 * HOUR),
-        },
-      },
-    },
     activity,
     branches,
     models: MODELS,

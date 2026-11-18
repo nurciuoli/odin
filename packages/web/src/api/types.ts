@@ -29,9 +29,6 @@ import type {
   SecretInfo,
   SecretsResponse,
   StartMcpOAuthResponse,
-  ProjectBrief,
-  ProjectThreads,
-  StartCoordinatorRequest,
   ProjectSummary,
   Session,
   SessionDetail,
@@ -118,18 +115,6 @@ export interface Api {
   listProjectBranches(project: string): Promise<ProjectBranch[]>
   /** Removes a worktree Odin created (the branch stays). 409 when a live session uses it or it is dirty. */
   removeWorktree(project: string, path: string): Promise<void>
-
-  // coordination (docs/contracts.md#coordination)
-  /** Starts a coordinator session: it can start and steer threads in the project. */
-  startCoordinator(project: string, req: StartCoordinatorRequest): Promise<Session>
-  /** Coordinators of a project with their threads, newest first. */
-  listProjectThreads(project: string): Promise<ProjectThreads>
-  getProjectBrief(project: string): Promise<ProjectBrief>
-  /** Empty clears it. At most PROJECT_BRIEF_MAX characters. */
-  updateProjectBrief(project: string, instructions: string): Promise<ProjectBrief>
-  readProjectMemory(project: string, path: string): Promise<{ path: string; content: string }>
-  writeProjectMemory(project: string, path: string, content: string): Promise<ProjectBrief>
-  deleteProjectMemory(project: string, path: string): Promise<void>
 
   // sessions
   listSessions(filter?: SessionFilter): Promise<Session[]>

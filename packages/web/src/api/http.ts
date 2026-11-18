@@ -178,16 +178,6 @@ export function createHttpApi(options: HttpApiOptions = {}): Api {
       ),
     listProjectBranches: name => get(`${project(name)}/branches`),
     removeWorktree: (name, path) => send('DELETE', `${project(name)}/worktrees`, { path }),
-    startCoordinator: (name, req) => send('POST', `${project(name)}/coordinators`, req),
-    listProjectThreads: name => get(`${project(name)}/threads`),
-    getProjectBrief: name => get(`${project(name)}/brief`),
-    updateProjectBrief: (name, instructions) =>
-      send('PUT', `${project(name)}/brief`, { instructions }),
-    readProjectMemory: (name, path) => get(`${project(name)}/memory${query({ path })}`),
-    writeProjectMemory: (name, path, content) =>
-      send('PUT', `${project(name)}/memory`, { path, content }),
-    deleteProjectMemory: (name, path) =>
-      send('DELETE', `${project(name)}/memory${query({ path })}`),
     listProjectArtifacts: (name, limit) =>
       get(
         `${project(name)}/artifacts${query({ limit: limit === undefined ? undefined : String(limit) })}`,

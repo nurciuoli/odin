@@ -1,0 +1,1 @@
+- MCP servers screen (sidebar, `/mcp`): lists the library's MCP servers with how each connects and whether it can start, **Sign in** / **Sign out** for servers that use OAuth, and the secrets their specs refer to, with add, replace and delete. Values are write-only. Servers that still need a secret or a sign-in are flagged.

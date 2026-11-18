@@ -565,43 +565,6 @@ export interface StartSessionRequest {
   tags?: string[];
 }
 
-// ── coordination (docs/plans/project-coordinator.md) ──────────────────────
-
-/** Project brief cap, in characters (matches Claude Code Projects' instructions cap). */
-export const PROJECT_BRIEF_MAX = 16_000;
-
-/** POST /api/projects/:name/coordinators. The session start fields; the project comes from the path. */
-export type StartCoordinatorRequest = Omit<StartSessionRequest, "project">;
-
-export interface CoordinatorThread {
-  sessionId: string;
-  coordinatorId: string;
-  /** The task the coordinator gave the thread. */
-  task: string;
-  createdAt: string;
-  session: Session;
-}
-
-/** GET /api/projects/:name/threads */
-export interface ProjectThreads {
-  coordinators: { session: Session; threads: CoordinatorThread[] }[];
-}
-
-export interface MemoryFile {
-  path: string;
-  sizeBytes: number;
-  updatedAt: string;
-}
-
-/** GET/PUT /api/projects/:name/brief */
-export interface ProjectBrief {
-  /** Sent to every coordinator and thread at start, ≤ PROJECT_BRIEF_MAX characters. Empty when unset. */
-  instructions: string;
-  updatedAt: string | null;
-  /** Project memory files (`MEMORY.md` is the index), sorted by path. */
-  memory: MemoryFile[];
-}
-
 /** POST /api/sessions/:id/fork */
 export interface ForkSessionRequest {
   title?: string;
