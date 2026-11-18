@@ -1706,7 +1706,13 @@ export function createFixtures(now: number = Date.now()): Fixtures {
     transcripts,
     pending,
     todos,
-    goals: {},
+    goals: {
+      [s.idle]: {
+        condition: 'History search stays under 100 ms with 50k sessions',
+        iterations: 2,
+        lastReason: 'Still 340 ms at 50k rows',
+      },
+    },
     library,
     libraryFiles,
     libraryVersions,

@@ -586,6 +586,15 @@ describe('SessionScreen', () => {
     expect(side.text()).not.toContain('Session thread')
   })
 
+  it('shows the standing goal in the top block when one is set', async () => {
+    await mountSession(FIXTURE_SESSION_IDS.idle)
+    const goal = wrapper!.find('.session-side__top [aria-label="Goal"]')
+    expect(goal.text()).toContain('History search stays under 100 ms')
+    expect(goal.text()).toContain('2 checks')
+    await mountSession(FIXTURE_SESSION_IDS.waiting)
+    expect(wrapper!.find('[aria-label="Goal"]').exists()).toBe(false)
+  })
+
   it('announces a new prompt politely without moving focus', async () => {
     const { api } = await mountSession(FIXTURE_SESSION_IDS.idle)
     const live = wrapper!.find('.session-screen__announce')
