@@ -15,7 +15,7 @@ defineProps<{ word: string; since?: string }>()
   font-family: var(--iu-font-mono);
   font-size: var(--iu-font-size-11);
   font-weight: var(--iu-font-weight-semibold);
-  letter-spacing: 0.08em;
+  letter-spacing: var(--iu-tracking-caps-tight);
   text-transform: uppercase;
   color: var(--iu-text);
   white-space: nowrap;
