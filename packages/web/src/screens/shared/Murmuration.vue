@@ -86,7 +86,7 @@ onMounted(() => {
     el!.width = Math.round(width * scale)
     el!.height = Math.round(height * scale)
     flock = createFlock(width, height)
-    storm = createStorm(width, height)
+    storm = createStorm(width, height, scale)
     // a flock that mounts mid-run starts under the clouds rather than watching them arrive
     storm.settle(props.running)
     sync()

@@ -1,34 +1,31 @@
-// Storm clouds over the flock. Two banks of dots crawl in from the left and right edges while a session is running
+// Storm clouds over the flock. Two soft cloud banks slide in from the left and right edges while a session is running
 // and drift back out when none is; a faint flash of cool light inside the clouds marks a session that finished or
-// needs you. Pure drawing + easing, no DOM: Murmuration owns the canvas. Coordinates are CSS pixels.
+// needs you. The clouds are painted once into offscreen canvases (layered radial gradients, lightly blurred) and then
+// only moved and cross-faded, so a frame costs a few drawImage calls. Coordinates are CSS pixels.
 export type FlashKind = 'done' | 'attention'
 
 export interface StormColors {
-  /** cloud dots */
+  /** cloud body */
   cloud: string
   /** flash glow (cool, never the accent) */
   glow: string
-  /** dots lit by a flash */
+  /** cloud tops and flash-lit cloud */
   lit: string
 }
 
-interface Dot {
-  /** 0 = outer edge of the bank, 1 = leading (inner) edge */
-  u: number
-  /** 0 = top of the canvas, 1 = bottom of the bank */
-  v: number
-  /** how dense the cloud is here, 0..1 */
-  d: number
-  phase: number
-  r: number
-}
 interface Flash {
   t0: number
   kind: FlashKind
   side: 0 | 1 | 2
 }
 
-/** A CSS colour as [r, g, b], so a gradient can fade to the same hue instead of to transparent black. */
+const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
+const smooth = (a: number, b: number, v: number) => {
+  const t = clamp((v - a) / (b - a), 0, 1)
+  return t * t * (3 - 2 * t)
+}
+
+/** A CSS colour as [r, g, b], so gradients fade to the same hue instead of to transparent black. */
 const rgbCache = new Map<string, [number, number, number]>()
 function rgb(ctx: CanvasRenderingContext2D, color: string): [number, number, number] {
   let out = rgbCache.get(color)
@@ -43,93 +40,135 @@ function rgb(ctx: CanvasRenderingContext2D, color: string): [number, number, num
   }
   return out
 }
-const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
-const smooth = (a: number, b: number, v: number) => {
-  const t = clamp((v - a) / (b - a), 0, 1)
-  return t * t * (3 - 2 * t)
-}
 
 /** Seconds for the clouds to roll in (time constant), to roll out, and how long a flash holds some cloud in view. */
-export const STORM = { inTau: 7, outTau: 10, hold: 5, reach: 0.4, depth: 0.5 }
+export const STORM = { inTau: 7, outTau: 10, hold: 5, reach: 0.42, depth: 0.5 }
 
-function bank(seed: number, spacing: number, w: number, h: number): Dot[] {
+function rng(seed: number) {
   let s = seed
-  const rnd = () => {
+  return () => {
     s = (s + 0x6d2b79f5) | 0
     let t = Math.imul(s ^ (s >>> 15), 1 | s)
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
-  const bw = w * STORM.reach
-  const bh = h * STORM.depth
-  // A cumulus: a flat base, a row of round lobes on it, smaller lobes stacked above, taller at the outer edge and
-  // tapering toward the leading edge. Dots outline the lobes, fill them lightly (lit on top, shaded underneath) and
-  // thin out into wisps at the front.
-  const base = bh * 0.8
-  const puffs: { x: number; y: number; r: number }[] = []
+}
+
+interface Puff {
+  x: number
+  y: number
+  r: number
+}
+
+/** Lobes of one cumulus bank in bank coordinates: wide, flat-based, tall at the outer edge, tapering inward. */
+function puffsFor(seed: number, bw: number, bh: number): Puff[] {
+  const rnd = rng(seed)
+  const base = bh * 0.78
+  const out: Puff[] = []
   const tier = (count: number, y: number, r: number, from: number, to: number) => {
     for (let i = 0; i < count; i++) {
       const u = count === 1 ? from : from + ((to - from) * i) / (count - 1)
-      const taper = 1 - 0.5 * u
+      const taper = 1 - 0.55 * u
       const pr = r * taper * (0.8 + rnd() * 0.4)
-      puffs.push({
-        x: bw * u + (rnd() - 0.5) * bw * 0.05,
-        y: Math.min(base - pr * 0.55, y * (0.75 + 0.25 * taper) + (rnd() - 0.5) * bh * 0.05),
+      out.push({
+        x: bw * u + (rnd() - 0.5) * bw * 0.06,
+        y: Math.min(base - pr * 0.5, y * (0.8 + 0.2 * taper) + (rnd() - 0.5) * bh * 0.06),
         r: pr,
       })
     }
   }
-  tier(7, base, bh * 0.25, 0.03, 0.92)
-  tier(5, bh * 0.52, bh * 0.26, 0.08, 0.76)
-  tier(2, bh * 0.3, bh * 0.2, 0.12, 0.4)
-  const dots: Dot[] = []
-  for (let y = 0; y < bh; y += spacing) {
-    for (let x = 0; x < bw; x += spacing) {
-      const px = x + (rnd() - 0.5) * spacing * 0.5
-      const py = y + (rnd() - 0.5) * spacing * 0.5
-      let f = -1
-      for (const p of puffs) f = Math.max(f, 1 - Math.hypot(px - p.x, py - p.y) / p.r)
-      f = Math.min(f, (base - py) / (bh * 0.05)) // flat underside
-      if (f <= 0) continue
-      const u = px / bw
-      let d: number
-      if (f < 0.16)
-        d = 0.95 // the lobed outline
-      else d = (0.5 - 0.3 * (py / base)) * (py > base * 0.82 ? 0.65 : 1) + (rnd() - 0.5) * 0.12
-      // wisps: the leading edge breaks up instead of ending
-      if (u > 0.78 && rnd() < smooth(0.78, 1, u)) continue
-      dots.push({ u, v: py / bh, d: clamp(d, 0, 1), phase: rnd() * 6.28, r: 0.8 })
-    }
-  }
-  // the outline: points along each lobe's arc that no other lobe covers, plus the flat base
-  const inside = (px: number, py: number, skip: number) =>
-    puffs.some((q, j) => j !== skip && Math.hypot(px - q.x, py - q.y) < q.r * 0.97)
-  puffs.forEach((p, i) => {
-    const step = 3.2 / p.r
-    for (let a = 0; a < 6.2832; a += step) {
-      const px = p.x + Math.cos(a) * p.r
-      const py = p.y + Math.sin(a) * p.r
-      if (py > base || px < 0 || px > bw || inside(px, py, i)) continue
-      const u = px / bw
-      if (u > 0.82 && rnd() < smooth(0.82, 1, u)) continue
-      dots.push({ u, v: py / bh, d: 0.95, phase: rnd() * 6.28, r: 1.1 })
-    }
-  })
-  for (let x = 0; x < bw * 0.9; x += 3.2) {
-    const u = x / bw
-    if (u > 0.8 && rnd() < smooth(0.8, 0.95, u)) continue
-    if (puffs.some(q => Math.abs(x - q.x) < q.r * 0.9 && base - q.y < q.r * 1.6))
-      dots.push({ u, v: base / bh, d: 0.7, phase: rnd() * 6.28, r: 0.9 })
-  }
-  return dots
+  tier(7, base, bh * 0.26, 0.02, 0.92)
+  tier(5, bh * 0.5, bh * 0.27, 0.06, 0.76)
+  tier(3, bh * 0.28, bh * 0.2, 0.08, 0.46)
+  return out
 }
 
-export function createStorm(w: number, h: number) {
-  const spacing = w < 520 ? 5 : 5.5
-  const left = bank(11, spacing, w, h)
-  const right = bank(47, spacing, w, h)
+/**
+ * Paint one bank into a canvas: a soft body, brighter tops, a shaded underside, and small billows along the edges.
+ * `gain` scales every alpha, so the same painting serves as the dim resting cloud and the lit flash version.
+ */
+function paintBank(
+  el: HTMLCanvasElement,
+  puffs: Puff[],
+  bw: number,
+  bh: number,
+  scale: number,
+  body: [number, number, number],
+  top: [number, number, number],
+  gain: number,
+  seed: number,
+) {
+  const g = el.getContext('2d')
+  if (!g) return
+  const rnd = rng(seed)
+  g.setTransform(scale, 0, 0, scale, 0, 0)
+  g.clearRect(0, 0, bw, bh)
+  const blob = (x: number, y: number, r: number, c: [number, number, number], a: number) => {
+    const grad = g.createRadialGradient(x, y, 0, x, y, r)
+    grad.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},${a * gain})`)
+    grad.addColorStop(0.5, `rgba(${c[0]},${c[1]},${c[2]},${a * gain * 0.55})`)
+    grad.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`)
+    g.fillStyle = grad
+    g.fillRect(x - r, y - r, r * 2, r * 2)
+  }
+  g.filter = `blur(${Math.max(2.5, bh * 0.04)}px)`
+  // body: each lobe as a wide, soft disc
+  for (const p of puffs) blob(p.x, p.y, p.r * 1.2, body, 0.4)
+  // billows: small soft blobs just inside each lobe's edge give the cauliflower texture
+  for (const p of puffs) {
+    for (let i = 0; i < 7; i++) {
+      const a = rnd() * 6.2832
+      const d = p.r * (0.55 + rnd() * 0.3)
+      blob(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, p.r * (0.3 + rnd() * 0.22), body, 0.16)
+    }
+  }
+  // tops: lit crescents on the upper left of each lobe
+  for (const p of puffs) {
+    blob(p.x - p.r * 0.18, p.y - p.r * 0.34, p.r * 0.62, top, 0.2)
+    blob(p.x - p.r * 0.1, p.y - p.r * 0.5, p.r * 0.34, top, 0.16)
+  }
+  g.filter = 'none'
+  // shade the underside and keep the base flat: fade everything out toward the bottom
+  g.globalCompositeOperation = 'destination-out'
+  const fall = g.createLinearGradient(0, bh * 0.52, 0, bh * 0.8)
+  fall.addColorStop(0, 'rgba(0,0,0,0)')
+  fall.addColorStop(0.6, 'rgba(0,0,0,0.55)')
+  fall.addColorStop(1, 'rgba(0,0,0,1)')
+  g.fillStyle = fall
+  g.fillRect(0, 0, bw, bh)
+  // the leading edge dissolves into wisps instead of ending
+  const lead = g.createLinearGradient(bw * 0.62, 0, bw, 0)
+  lead.addColorStop(0, 'rgba(0,0,0,0)')
+  lead.addColorStop(1, 'rgba(0,0,0,1)')
+  g.fillStyle = lead
+  g.fillRect(0, 0, bw, bh)
+  g.globalCompositeOperation = 'source-over'
+}
+
+export function createStorm(w: number, h: number, scale = 1) {
   const bw = w * STORM.reach
   const bh = h * STORM.depth
+  const puffs = [puffsFor(11, bw, bh), puffsFor(47, bw, bh)]
+  // offscreen paintings, built on the first draw (they need the theme colours): [side][0 resting, 1 lit]
+  let sprites: HTMLCanvasElement[][] | null = null
+  let paintedWith = ''
+  function build(ctx: CanvasRenderingContext2D, c: StormColors) {
+    const key = `${c.cloud}|${c.lit}`
+    if (sprites && paintedWith === key) return sprites
+    const body = rgb(ctx, c.cloud)
+    const top = rgb(ctx, c.lit)
+    sprites = [0, 1].map(side =>
+      [0.9, 2.1].map((gain, lit) => {
+        const el = document.createElement('canvas')
+        el.width = Math.max(1, Math.round(bw * scale))
+        el.height = Math.max(1, Math.round(bh * scale))
+        paintBank(el, puffs[side]!, bw, bh, scale, lit ? top : body, top, gain, 90 + side)
+        return el
+      }),
+    )
+    paintedWith = key
+    return sprites
+  }
   let gather = 0
   let holdUntil = -1
   let flashes: Flash[] = []
@@ -177,8 +216,9 @@ export function createStorm(w: number, h: number) {
       opts: { drift: boolean; calm?: boolean } = { drift: true },
     ) {
       if (gather < 0.01 && !flashes.length) return
+      const art = build(ctx, c)
       const e = smooth(0, 1, gather) // ease the crawl so it starts and ends slowly
-      const present = smooth(0, 0.2, gather) // dots fade in as the bank arrives
+      const present = smooth(0, 0.25, gather) // fade in as the bank arrives
       const calm = opts.calm ? 0.5 : 1 // reduced motion: lower contrast
       const level = (side: 0 | 1) =>
         flashes.reduce(
@@ -187,9 +227,11 @@ export function createStorm(w: number, h: number) {
         )
       for (const side of [0, 1] as const) {
         const lit = level(side) * calm
-        const dots = side === 0 ? left : right
         const lead = e * bw // the bank's leading edge sits this far in from its canvas edge
-        const x0 = side === 0 ? lead - bw : w - lead + bw
+        const sway = opts.drift ? Math.sin(t * 0.09 + side * 2.1) * 6 : 0
+        const bob = opts.drift ? Math.sin(t * 0.13 + side) * 2 : 0
+        const x = (side === 0 ? lead - bw : w - lead) + sway
+        const y = 4 + bob
         if (lit > 0.01) {
           const gx =
             side === 0 ? Math.max(lead * 0.6, bw * 0.15) : w - Math.max(lead * 0.6, bw * 0.15)
@@ -207,25 +249,19 @@ export function createStorm(w: number, h: number) {
           ctx.fillStyle = g
           ctx.fillRect(0, 0, w, h)
         }
-        for (const lightBatch of [false, true]) {
-          if (lightBatch && lit < 0.02) break
-          ctx.fillStyle = lightBatch ? c.lit : c.cloud
-          ctx.beginPath()
-          for (const d of dots) {
-            const x = side === 0 ? x0 + d.u * bw : x0 - d.u * bw
-            if (x < -4 || x > w + 4) continue
-            const y = d.v * bh + (opts.drift ? Math.sin(t * 0.35 + d.phase) * 1.1 : 0)
-            const a = Math.min(0.75, 0.18 + d.d * 0.7) * present
-            if (lightBatch) {
-              const k = clamp((d.d - 0.3) * 1.5, 0, 1) * lit // only the denser dots catch the light
-              if (k < 0.04) continue
-              ctx.globalAlpha = Math.min(0.95, a + k * 0.6)
-            } else ctx.globalAlpha = a
-            ctx.moveTo(x + d.r, y)
-            ctx.arc(x, y, d.r, 0, 6.2832)
-          }
-          ctx.fill()
+        ctx.save()
+        if (side === 1) {
+          // the right bank is the same painting mirrored, so its lit tops face the middle too
+          ctx.translate(x + bw, y)
+          ctx.scale(-1, 1)
+        } else ctx.translate(x, y)
+        ctx.globalAlpha = present
+        ctx.drawImage(art[side]![0]!, 0, 0, bw, bh)
+        if (lit > 0.01) {
+          ctx.globalAlpha = present * clamp(lit * 1.1, 0, 1)
+          ctx.drawImage(art[side]![1]!, 0, 0, bw, bh)
         }
+        ctx.restore()
       }
       ctx.globalAlpha = 1
     },
