@@ -1,0 +1,1 @@
+- Slash commands and their output (`/mcp`, `!` shell commands) now show as what you typed and what it printed, instead of raw `<command-name>` and `<local-command-stdout>` tags.

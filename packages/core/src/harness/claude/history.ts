@@ -6,8 +6,9 @@ import type { SessionMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { TranscriptEntry } from "@odin/shared/harness";
 import { taskKey, type TaskActivity } from "@odin/shared/harness";
 import { taskEvents } from "./activity.ts";
+import { parseLocalCommand, type LocalCommandParts } from "./localcommand.ts";
 import { injectedMessage, type Injected } from "./injected.ts";
-import { assistantEntries, createMapState, injectedEntry, injectedId, isInterruptMessage, mapMessage, parseTaskNotifications, stripSystemReminders, taskNoticeEntry, taskNoticeId, toToolResult, type TaskNotice } from "./map.ts";
+import { assistantEntries, createMapState, injectedEntry, injectedId, isInterruptMessage, localOutputEntries, mapMessage, parseTaskNotifications, stripSystemReminders, taskNoticeEntry, taskNoticeId, toToolResult, type TaskNotice } from "./map.ts";
 
 type Loose = Record<string, any>;
 
@@ -65,9 +66,12 @@ export function historyEntries(messages: readonly SessionMessage[]): TranscriptE
       const attachments: { name: string; mediaType: string }[] = [];
       const notices: TaskNotice[] = [];
       const injected: Injected[] = [];
+      const locals: LocalCommandParts[] = [];
       const addText = (text: string) => {
         const found = parseTaskNotifications(text);
+        const local = found ? null : parseLocalCommand(text);
         if (found) notices.push(...found);
+        else if (local) locals.push(local);
         else if (text.trim() && !stripSystemReminders(text)) return;
         else {
           const inj = injectedMessage(m, text);
@@ -110,6 +114,8 @@ export function historyEntries(messages: readonly SessionMessage[]): TranscriptE
         ids.add(id);
         entries.push(taskNoticeEntry(n, id, atOf(m), parent));
       });
+      for (const l of locals) if (l.typed) entries.push({ kind: "user", id: locals.length > 1 || l.outputs.length ? `${m.uuid}:typed` : m.uuid, text: l.typed, at: atOf(m), parentToolUseId: parent });
+      entries.push(...localOutputEntries(locals, m.uuid, atOf(m), parent));
       injected.forEach((inj, i) => entries.push(injectedEntry(inj, injectedId(m.uuid, i, injected.length), atOf(m), parent)));
       // A message carrying a notification wasn't typed by the user: no reminders in what's left of it.
       if (notices.length) texts.splice(0, texts.length, ...texts.map(stripSystemReminders).filter(Boolean));
