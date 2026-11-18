@@ -289,6 +289,18 @@ function addTag(e: KeyboardEvent) {
           <IuIcon name="terminal" :size="14" />
           <span class="session-side__grow">From terminal</span>
         </div>
+        <div v-if="session.goal" class="session-side__row session-side__goal" aria-label="Goal">
+          <IuIcon name="check" :size="14" />
+          <span class="session-side__goal-text">
+            <span class="session-side__goal-condition">{{ session.goal.condition }}</span>
+            <span v-if="session.goal.lastReason" class="session-side__goal-reason">{{
+              session.goal.lastReason
+            }}</span>
+          </span>
+          <IuBadge v-if="session.goal.iterations" size="xs" variant="tag">{{
+            `${session.goal.iterations} ${session.goal.iterations === 1 ? 'check' : 'checks'}`
+          }}</IuBadge>
+        </div>
         <div v-if="plan" class="session-side__row" aria-label="Plan">
           <IuIcon name="file" :size="14" />
           <span>Plan</span>
@@ -697,6 +709,27 @@ details[open] > .session-side__summary .session-side__caret {
 .session-side__plan:focus-visible {
   outline: 2px solid var(--iu-accent);
   outline-offset: 2px;
+}
+.session-side__goal {
+  align-items: flex-start;
+}
+.session-side__goal > .iu-icon {
+  margin-top: 2px;
+}
+.session-side__goal-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.session-side__goal-condition {
+  color: var(--iu-text);
+}
+.session-side__goal-reason {
+  font-size: var(--iu-font-size-12);
+  color: var(--iu-text-muted);
 }
 .session-side__planbody {
   max-height: 240px;
