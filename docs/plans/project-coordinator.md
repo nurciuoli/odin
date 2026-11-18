@@ -1,6 +1,6 @@
 # Plan: project coordinator and threads
 
-Status: **prototype in core** (no web UI yet). Owner: open.
+Status: **phase 1 and most of phase 2 shipped** (core, plus the project's Threads tab). Owner: open.
 
 ## Why
 
@@ -138,9 +138,10 @@ SSE: none new. Thread and coordinator changes are already `session.updated` even
 1. **Core prototype** (this change): module, tables, host tools, updates, REST, tests on `fakeHarness()`.
    The contract parts (`services.ts`, shared types, migration) should land as their own PR before the module when
    this graduates from prototype.
-2. **Web**: a "Coordinator" start option on the new-session screen; a project tab section listing coordinators and
-   threads (waiting first, using `@/styles/status`), thread rows link to sessions; brief and memory editors.
-   Coordinator session screen shows its threads beside the transcript.
+2. **Web**: done: a project **Threads** tab that starts a coordinator, lists coordinators and their threads
+   (waiting first, `SESSION_DISPLAY` badges), links each row to its session, and edits the brief and memory files.
+   Still open: a "Coordinator" option in the new-session composer, and the coordinator's threads beside its
+   transcript on the session screen.
 3. **Polish**: suggested threads (coordinator proposes, user clicks to start), thread budgets, closing a thread's
    worktree when its branch merges (sync already links PRs), forwarding `waiting` as a desktop notification naming
    the coordinator.

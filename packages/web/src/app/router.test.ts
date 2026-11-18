@@ -7,6 +7,7 @@ it('has the project tabs in order', () => {
   expect(PROJECT_SECTIONS.map(s => s.id)).toEqual([
     'overview',
     'sessions',
+    'threads',
     'files',
     'outputs',
     'resources',
