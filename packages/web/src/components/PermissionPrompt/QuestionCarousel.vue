@@ -274,6 +274,7 @@ const stepLabel = (i: number) => {
 }
 .iu-question-carousel__steps {
   display: flex;
+  justify-content: center;
   align-items: center;
   gap: 10px;
 }
@@ -442,10 +443,12 @@ const stepLabel = (i: number) => {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: 8px;
 }
 .iu-question-carousel__keys {
-  margin-left: auto;
+  flex-basis: 100%;
+  text-align: center;
   font-family: var(--iu-font-mono);
   font-size: var(--iu-font-size-11);
   color: var(--iu-text-muted);

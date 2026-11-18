@@ -160,9 +160,10 @@ const denyLabel = computed(() => (props.request.kind === 'plan' ? 'Keep planning
   <section
     ref="root"
     class="iu-permission-prompt"
-    :class="{ 'is-careful': request.defaultToDeny }"
+    :class="{ 'is-careful': request.defaultToDeny, 'is-question': request.kind === 'question' }"
     role="group"
-    :aria-labelledby="titleId"
+    :aria-labelledby="request.kind === 'question' ? undefined : titleId"
+    :aria-label="request.kind === 'question' ? 'Question for you' : undefined"
     :aria-describedby="hasDetails ? detailsId : undefined"
     :aria-busy="busy"
     @keydown="onKeydown"
@@ -173,14 +174,16 @@ const denyLabel = computed(() => (props.request.kind === 'plan' ? 'Keep planning
         request.kind === 'plan'
           ? 'Plan approval'
           : request.kind === 'question'
-            ? 'Question'
+            ? 'Question for you'
             : 'Permission needed'
       }}</IuEyebrow>
       <span v-if="request.defaultToDeny" class="iu-permission-prompt__risk">▲ Review first</span>
     </div>
 
-    <p :id="titleId" class="iu-permission-prompt__title">{{ request.title }}</p>
-    <div class="iu-permission-prompt__tool">{{ request.tool }}</div>
+    <template v-if="request.kind !== 'question'">
+      <p :id="titleId" class="iu-permission-prompt__title">{{ request.title }}</p>
+      <div class="iu-permission-prompt__tool">{{ request.tool }}</div>
+    </template>
 
     <div v-if="hasDetails" :id="detailsId" class="iu-permission-prompt__details">
       <p v-if="request.description" class="iu-permission-prompt__desc">{{ request.description }}</p>
@@ -366,5 +369,13 @@ const denyLabel = computed(() => (props.request.kind === 'plan' ? 'Keep planning
 
 .iu-permission-prompt__msg {
   margin-left: auto;
+}
+
+/* a question's controls sit in the middle of the card, under the carousel's own */
+.iu-permission-prompt.is-question .iu-permission-prompt__actions {
+  justify-content: center;
+}
+.iu-permission-prompt.is-question .iu-permission-prompt__msg {
+  margin-left: 0;
 }
 </style>
