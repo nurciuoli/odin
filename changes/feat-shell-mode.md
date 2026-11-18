@@ -1,0 +1,1 @@
+- Type `!` followed by a command in the session composer (for example `!git status`) to run it in the session's folder. The output appears above the message box and goes to the agent with your next message, for every harness.

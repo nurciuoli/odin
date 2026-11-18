@@ -38,7 +38,12 @@ import { IuCallout } from '@/components/Callout'
 import { IuIcon } from '@/components/Icon'
 import type { MenuItem } from '@/components/Menu'
 import { PROJECTS_KEY } from '@/app/projects'
-import { harnessLabel, PERMISSION_MODE_LABELS } from '@/screens/shared/format'
+import {
+  formatCost,
+  formatTokens,
+  harnessLabel,
+  PERMISSION_MODE_LABELS,
+} from '@/screens/shared/format'
 import { useToast } from '@/components/Toast'
 import { attachmentProblem, messageProblem, readAttachment } from './attachments'
 import { composerMode } from './sessionView'
@@ -54,6 +59,8 @@ import { useDrafts, type DraftAttachment } from '@/app/drafts'
 import { registerCommand } from '@/app/commands'
 import { keyLabel, registerShortcut } from '@/app/shortcuts'
 import { parseSideCommand } from './SideThreads'
+import SessionShellRuns from './SessionShellRuns.vue'
+import { parseShellCommand, withShellContext, type ShellRun } from './shellRuns'
 import { completeMessageAttempt, messageAttempt, unresolvedMessages } from './sendAttempt'
 
 const SIDE_KEYS = 'Alt+/'
@@ -75,6 +82,8 @@ const props = withDefaults(
     /** From the harness's init event; empty until one arrives. */
     slashCommands?: SlashCommand[]
     context?: { used: number; max: number }
+    /** From the session record, for `/cost`. */
+    usage?: { costUsd: number | null; tokens: import('@odin/shared/api').TokenUsage }
     /** Something waits for the user: the `replacement` slot shows instead of the message box. */
     replaced?: boolean
     /** Queued messages that Send now can release. Messages already handed off are not counted. */
@@ -498,6 +507,27 @@ function runOwnCommand(message: string): boolean {
     // /btw with a question is handled before this; bare /btw asks for one.
     void nextTick(() => (text.value = message))
     toast({ title: 'Ask a question', description: 'Usage: /btw <question>', intent: 'warning' })
+  } else if (cmd.name === 'status') {
+    const parts = [
+      harnessLabel(props.harness),
+      currentModel.value || 'default model',
+      props.effort ? `effort ${props.effort}` : null,
+      PERMISSION_MODE_LABELS[props.permissionMode] ?? props.permissionMode,
+      props.context
+        ? `context ${formatTokens(props.context.used)} of ${formatTokens(props.context.max)}`
+        : null,
+    ].filter(Boolean)
+    toast({ title: 'Session status', description: parts.join(' · '), intent: 'info' })
+  } else if (cmd.name === 'cost') {
+    const u = props.usage
+    toast({
+      title: 'Session usage',
+      description: u
+        ? `${formatTokens(u.tokens.input + u.tokens.cacheRead + u.tokens.cacheWrite)} in · ${formatTokens(u.tokens.output)} out` +
+          (u.costUsd === null ? '' : ` · ${formatCost(u.costUsd)}`)
+        : 'No usage recorded yet',
+      intent: 'info',
+    })
   } else if (cmd.name === 'send') {
     if (cmd.arg) {
       const attempt = messageAttempt(props.sessionId, { text: cmd.arg })
@@ -546,8 +576,44 @@ async function onAttach(list: File[]) {
   }
 }
 
+// ── `!` shell mode: runs in the session's folder through Odin; results ride along with the next message ──
+const shellRuns = ref<ShellRun[]>([])
+const shellRunning = ref(false)
+watch(
+  () => props.sessionId,
+  () => (shellRuns.value = []),
+)
+async function runShell(command: string, original: string) {
+  if (!command) {
+    void nextTick(() => (text.value = original))
+    toast({ title: 'Type a command', description: 'Usage: !<command>', intent: 'warning' })
+    return
+  }
+  const id = props.sessionId
+  shellRunning.value = true
+  try {
+    const result = await api.runShell(id, command)
+    if (id === props.sessionId)
+      shellRuns.value = [...shellRuns.value, { ...result, id: crypto.randomUUID() }]
+  } catch (e) {
+    void nextTick(() => (text.value = original))
+    toast({
+      title: "Couldn't run that command",
+      description: e instanceof Error ? e.message : String(e),
+      intent: 'danger',
+    })
+  } finally {
+    shellRunning.value = false
+  }
+}
+
 async function onSubmit(payload: { text: string; attachments: ChatAttachment[] }) {
   if (sending.value) return
+  const shell = parseShellCommand(payload.text)
+  if (shell !== null && !sideMode.value && !payload.attachments.length) {
+    if (!shellRunning.value) await runShell(shell, payload.text)
+    return
+  }
   const question = parseSideCommand(payload.text)
   if (sideMode.value || question !== null) {
     void askSide(question !== null ? { ...payload, text: question } : payload)
@@ -565,9 +631,10 @@ async function onSubmit(payload: { text: string; attachments: ChatAttachment[] }
     return
   }
   const message = messageAttempt(id, {
-    text: payload.text,
+    text: withShellContext(payload.text, shellRuns.value),
     ...(attachments.length ? { attachments } : {}),
   })
+  shellRuns.value = []
   await sendAttempt(id, message)
   for (const a of payload.attachments)
     if (!files.value.some(file => file.id === a.id)) payloads.delete(a.id)
@@ -659,8 +726,10 @@ function draftMessage(): UserMessage | undefined {
   if (!body && !attachments.length) return undefined
   text.value = ''
   files.value = []
+  const runs = shellRuns.value
+  shellRuns.value = []
   return messageAttempt(props.sessionId, {
-    text: body,
+    text: withShellContext(body, runs),
     ...(attachments.length ? { attachments } : {}),
   })
 }
@@ -770,6 +839,12 @@ function onTakeoverBlur(e: FocusEvent) {
         </template>
       </IuCallout>
     </template>
+    <SessionShellRuns
+      :runs="shellRuns"
+      :running="shellRunning"
+      @dismiss="id => (shellRuns = shellRuns.filter(r => r.id !== id))"
+      @clear="shellRuns = []"
+    />
     <div class="session-composer__row">
       <div class="session-composer__box">
         <IuComposerSurface :joined="hasActivity">
@@ -843,7 +918,7 @@ function onTakeoverBlur(e: FocusEvent) {
               <span v-else-if="state === 'running'"
                 >↵ send queues · Send now interrupts · /send</span
               >
-              <span v-else>↵ send · ⌥↵ side question · / commands · @ files</span>
+              <span v-else>↵ send · ⌥↵ side question · / commands · @ files · ! shell</span>
             </template>
           </IuComposer>
         </IuComposerSurface>

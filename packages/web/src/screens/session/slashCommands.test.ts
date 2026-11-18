@@ -23,12 +23,16 @@ describe('odin slash commands', () => {
       'rename',
       'btw',
       'send',
+      'status',
+      'cost',
     ])
     expect(odinCommands({ model: false }).map(c => c.name)).toEqual([
       'clear',
       'rename',
       'btw',
       'send',
+      'status',
+      'cost',
     ])
   })
 
@@ -39,6 +43,8 @@ describe('odin slash commands', () => {
       'odin:rename',
       'odin:btw',
       'odin:send',
+      'odin:status',
+      'odin:cost',
       'builtin:compact',
     ])
   })
