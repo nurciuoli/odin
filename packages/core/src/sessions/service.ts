@@ -438,11 +438,6 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       "Use window.odin.submit(data) for user answers and window.odin.theme for theme tokens; external resources cannot load. " +
       "If post_artifact is unavailable, explain that the preview cannot be displayed in this session and provide the saved file path instead."
     );
-    try {
-      parts.push(services.coordination.instructions(s.id) ?? "");
-    } catch (err) {
-      console.error("coordination.instructions failed:", errorMessage(err));
-    }
     opts.instructions = parts.filter(Boolean).join("\n\n");
   }
 
@@ -454,11 +449,6 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       console.error("artifacts.hostTools failed:", errorMessage(err));
     }
     tools.push(...services.notebooks.hostTools(id));
-    try {
-      tools.push(...services.coordination.hostTools(id));
-    } catch (err) {
-      console.error("coordination.hostTools failed:", errorMessage(err));
-    }
     return tools.map(tool => approvals.wrap(id, tool));
   }
 
@@ -1018,14 +1008,13 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       } finally { nativeBusy.delete(id); }
     },
 
-    async start(req: StartSessionRequest, options?: { id?: string }) {
+    async start(req: StartSessionRequest) {
       if (!req || typeof req !== "object") bad("invalid request");
       const harnessId: unknown = req.harness ?? services.settings.get().defaultHarness ?? "claude";
       if (typeof harnessId !== "string" || !Object.hasOwn(deps.harnesses, harnessId)) bad(`unknown harness ${String(harnessId)}`);
       const harness = deps.harnesses[harnessId]!;
       req = { ...req, harness: harnessId };
-      if (options?.id !== undefined && (typeof options.id !== "string" || !/^[0-9a-f-]{36}$/.test(options.id) || row(options.id))) bad("invalid session id");
-      const id = options?.id ?? randomUUID();
+      const id = randomUUID();
       const plan = await services.launch.plan(req, id);
       const native = req.runtimeOptions === undefined ? undefined : runtimeOptions(req.runtimeOptions, harness.capabilities);
       await validateEffort(harness, plan.model, req.effort);
