@@ -160,6 +160,9 @@ export function createHttpApi(options: HttpApiOptions = {}): Api {
     rescanLibrary: () => send('POST', '/api/library/rescan'),
     listInstallations: name => get(`${project(name)}/library`),
     install: (name, req) => send('POST', `${project(name)}/library`, req),
+    previewPluginImport: req => send('POST', '/api/library/import', req),
+    confirmPluginImport: previewId => send('POST', `/api/library/import/${seg(previewId)}`),
+    exportPlugin: (id, path) => send('POST', `/api/library/plugin/${seg(id)}/export`, { path }),
     getProjectAssetFiles: (name, kind, id) =>
       get(`${project(name)}/library/${seg(kind)}/${seg(id)}/files`),
 

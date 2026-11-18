@@ -1,0 +1,1 @@
+- Plugins have a screen: a Plugins tab in the Library, a plugin page showing what it carries and what it includes, an install dialog that shows every hook, command and MCP server before anything is written, updates that go through the same review, and import from git or a folder and export to a Claude Code plugin.
