@@ -454,7 +454,7 @@ export function createClaudeHarness(options: ClaudeHarnessOptions = {}): Harness
   return {
     id: "claude",
     name: "Claude",
-    capabilities: { permissionModes: ["default", "acceptEdits", "plan", "dontAsk", "bypassPermissions", "auto"], permissionScopes: ["once", "session", "project", "user"], additionalDirectories: true, instructions: true, attachments: true },
+    capabilities: { permissionModes: ["default", "acceptEdits", "plan", "dontAsk", "bypassPermissions", "auto"], permissionScopes: ["once", "session", "project", "user"], additionalDirectories: true, instructions: true, attachments: true, checkpoints: { forkAt: true } },
     async check() {
       const executable = claudeExecutable();
       if (executable) {
@@ -496,6 +496,19 @@ export function createClaudeHarness(options: ClaudeHarnessOptions = {}): Harness
     },
     async fork(sessionId, projectPath) {
       const r = await api.forkSession(sessionId, projectPath ? { dir: projectPath } : undefined);
+      return r.sessionId;
+    },
+    async forkAt(sessionId, messageId, projectPath) {
+      const opts = projectPath ? { dir: projectPath } : undefined;
+      const stored = await api.getSessionMessages(sessionId, { ...opts, includeSystemMessages: true });
+      // Entry ids are message uuids, with a suffix when one message makes several entries.
+      const uuid = messageId.split(":")[0];
+      const at = stored.findIndex((m) => m.uuid === uuid && m.type === "user");
+      if (at < 0) throw new Error(`${messageId} is not a user message of session ${sessionId}`);
+      // `upToMessageId` keeps the named message, so cut at the one before: the conversation just before the user spoke.
+      const before = stored[at - 1]?.uuid;
+      if (!before) throw new Error("there is nothing before the first message to rewind to; start a new session instead");
+      const r = await api.forkSession(sessionId, { ...opts, upToMessageId: before });
       return r.sessionId;
     },
     async delete(sessionId, projectPath) {

@@ -508,6 +508,24 @@ test("history functions call the SDK with the project dir and map the results", 
   ]);
 });
 
+test("forkAt cuts the stored conversation at the message before the user message", async () => {
+  const calls: unknown[][] = [];
+  const message = (type: string, uuid: string) => ({ type, uuid, session_id: SID, message: { role: type, content: "x" }, parent_tool_use_id: null, parent_agent_id: null });
+  const h = harness(fakeQuery(), {
+    getSessionMessages: async () => [message("user", "u1"), message("assistant", "a1"), message("user", "u2"), message("assistant", "a2")] as SessionMessage[],
+    forkSession: async (id, o) => {
+      calls.push(["fork", id, o]);
+      return { sessionId: "forked" };
+    },
+  });
+  assert.equal(h.capabilities?.checkpoints?.forkAt, true);
+  assert.equal(await h.forkAt!(SID, "u2", "/fixture/proj"), "forked");
+  assert.equal(await h.forkAt!(SID, "u2:typed"), "forked");
+  assert.deepEqual(calls, [["fork", SID, { dir: "/fixture/proj", upToMessageId: "a1" }], ["fork", SID, { upToMessageId: "a1" }]]);
+  await assert.rejects(h.forkAt!(SID, "a1"), /not a user message/);
+  await assert.rejects(h.forkAt!(SID, "u1"), /nothing before the first message/);
+});
+
 test("check(): a Settings override is read at each check and reported as the path used", async () => {
   let override: string | null = null;
   const h = createClaudeHarness({ resolvePackage: (s) => `/nm/${s}`, toolOverride: () => override });
