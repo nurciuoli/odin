@@ -10,6 +10,7 @@ import { registerSyncRoutes } from "../sync/routes.ts";
 import { registerIngestRoutes } from "../ingest/routes.ts";
 import { registerTrackingRoutes } from "../tracking/routes.ts";
 import { registerMetricsRoutes } from "../metrics/routes.ts";
+import { registerSecretsRoutes } from "../secrets/routes.ts";
 import { registerSettingsRoutes } from "../settings/routes.ts";
 import { registerFilesRoutes } from "../files/routes.ts";
 import { registerNotebookRoutes } from "../notebooks/routes.ts";
@@ -44,6 +45,7 @@ export function apiRouter(deps: Deps, services: Services): Router {
     registerTrackingRoutes,
     registerMetricsRoutes,
     registerSettingsRoutes,
+    registerSecretsRoutes,
   ]) {
     register(router, deps, services);
   }

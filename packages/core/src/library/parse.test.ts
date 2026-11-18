@@ -51,6 +51,15 @@ test("templates validate into a full TemplateSpec with clear errors", () => {
   assert.match(parseAsset("template", "x", { "x.json": "[1]" }).error!, /JSON object/);
 });
 
+test("mcp specs: secret references must be well formed", () => {
+  const ok = parseAsset("mcp", "docs", { "docs.json": JSON.stringify({ type: "http", url: "https://example.test/mcp", headers: { Authorization: "Bearer ${secret:DOCS_TOKEN}" } }) });
+  assert.equal(ok.error, null);
+  for (const bad of ["${secret:}", "${secret:9x}", "${secret:a b}", "${secret:oops"]) {
+    const r = parseAsset("mcp", "x", { "x.json": JSON.stringify({ command: "x", env: { A: bad } }) });
+    assert.match(r.error!, /bad secret reference/, bad);
+  }
+});
+
 test("mcp specs: stdio, http, sse; a bare command means stdio", () => {
   assert.deepEqual(parseAsset("mcp", "gh", { "gh.json": JSON.stringify({ name: "GitHub", command: "gh-mcp", args: ["--x"] }) }).meta, { type: "stdio", command: "gh-mcp", args: ["--x"] });
   const http = parseAsset("mcp", "docs", { "docs.json": JSON.stringify({ type: "http", url: "https://example.test/mcp", headers: { a: "b" } }) });

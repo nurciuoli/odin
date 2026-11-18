@@ -60,9 +60,20 @@ function mcpStart(id: string, meta: Record<string, unknown>): McpServerStart {
 }
 
 export function createLaunchService(_deps: Deps, services: Services): LaunchService {
+  /** Fills `${secret:NAME}` from the vault. Values exist only in the returned start options, never stored. */
+  function withSecrets(id: string, s: McpServerStart): McpServerStart {
+    const fill = (text: string) => (text.includes("${secret:") ? services.secrets.fill(text, `MCP server ${id}`) : text);
+    const map = (m: Record<string, string> | undefined) => (m ? Object.fromEntries(Object.entries(m).map(([k, v]) => [k, fill(v)])) : undefined);
+    if (s.type === "stdio") {
+      const env = map(s.env);
+      return { ...s, ...(s.args ? { args: s.args.map(fill) } : {}), ...(env ? { env } : {}) };
+    }
+    const headers = map(s.headers);
+    return { ...s, url: fill(s.url), ...(headers ? { headers } : {}) };
+  }
   function resolveMcpServers(ids: string[]): Record<string, McpServerStart> {
     const servers: Record<string, McpServerStart> = {};
-    for (const id of ids) servers[id] = mcpStart(id, libraryAsset(services, "mcp", id).meta);
+    for (const id of ids) servers[id] = withSecrets(id, mcpStart(id, libraryAsset(services, "mcp", id).meta));
     return servers;
   }
   return {

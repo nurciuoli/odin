@@ -272,6 +272,17 @@ export interface MetricsService extends Closeable {
   refreshOutput(sessionId: string): Promise<void>;
 }
 
+export interface SecretsService {
+  /** Secrets (no values) and the names library MCP specs need that are not set. */
+  list(): import("@odin/shared/api").SecretsResponse;
+  /** Creates or replaces. 400 on a bad name or value. The value is never returned, logged or put in an event. */
+  put(name: string, value: string): import("@odin/shared/api").SecretInfo;
+  /** 404 unknown name. Specs that refer to it fail at launch until it is set again. */
+  remove(name: string): void;
+  /** Fills each `${secret:NAME}` in `text`. 400 naming `what` and the missing secret; never names a value. */
+  fill(text: string, what: string): string;
+}
+
 export interface SettingsService {
   get(): AppSettings;
   update(patch: Partial<AppSettings>): AppSettings;
@@ -294,10 +305,11 @@ export interface Services {
   ingest: IngestService;
   metrics: MetricsService;
   settings: SettingsService;
+  secrets: SecretsService;
 }
 
 export type ServiceName = keyof Services;
-export const SERVICE_NAMES: ServiceName[] = ["notebooks", "files", "projects", "sessions", "launch", "artifacts", "library", "sync", "ingest", "metrics", "settings"];
+export const SERVICE_NAMES: ServiceName[] = ["notebooks", "files", "projects", "sessions", "launch", "artifacts", "library", "sync", "ingest", "metrics", "settings", "secrets"];
 
 export interface NotebooksService extends Closeable {
   widgetState(kernelId: string): import("@odin/shared/notebooks").NotebookComm[];
