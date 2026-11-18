@@ -1,0 +1,1 @@
+- Project files can be renamed, moved and duplicated through the API, and deleted files go to a trash kept for 7 days where they can be restored (API only for now; the Files screen follows).
