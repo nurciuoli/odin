@@ -46,6 +46,7 @@ import NativeControls from '@/screens/shared/NativeControls.vue'
 import SessionMessageQueue from './SessionMessageQueue.vue'
 import SessionHeader from './SessionHeader.vue'
 import SessionPrompts from './SessionPrompts.vue'
+import { CHAT_MIN, PREVIEW_MIN, detailsFit, setLayoutDemand } from '@/app/layout'
 import SessionSide from './SessionSide.vue'
 import SessionThread from './SessionThread.vue'
 import SessionWorkbench from './SessionWorkbench.vue'
@@ -118,7 +119,7 @@ async function openTask(id: string) {
   selectedTask.value = id
   previewDismissed.value = false
   workbenchTab.value = 'activity'
-  if (narrow.value || compact.value) setSide(false)
+  if (!detailsFits.value) setSide(false)
   if (narrow.value) {
     await nextTick()
     taskPreview.value?.focus()
@@ -254,6 +255,29 @@ function readDetails(): boolean | null {
 let chosen = readDetails()
 const roomy = useMediaQuery('(min-width: 1280px)')
 const sideOpen = ref(chosen ?? false)
+// The screen's own width, which the preview pane and Details share with the conversation.
+const screenEl = useTemplateRef<HTMLElement>('screenEl')
+const screenWidth = ref(typeof window === 'undefined' ? 1600 : window.innerWidth)
+let screenObserver: ResizeObserver | undefined
+function measureScreen() {
+  screenWidth.value = screenEl.value?.clientWidth || window.innerWidth
+}
+onMounted(() => {
+  measureScreen()
+  window.addEventListener('resize', measureScreen)
+  if (typeof ResizeObserver !== 'undefined' && screenEl.value) {
+    screenObserver = new ResizeObserver(measureScreen)
+    screenObserver.observe(screenEl.value)
+  }
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', measureScreen)
+  screenObserver?.disconnect()
+  setLayoutDemand(0)
+})
+const detailsFits = computed(() =>
+  detailsFit(screenWidth.value, showWorkbench.value && !narrow.value ? previewWidth.value : 0),
+)
 let automatic = false
 /** Open or close the panel for the layout's sake: not a choice, so it is not remembered. */
 function setSide(open: boolean) {
@@ -277,7 +301,6 @@ watch(sideOpen, open => {
 // ── artifact column ──
 const artifacts = computed(() => view.value?.detail.artifacts ?? [])
 // below this width the column would squeeze the conversation: it becomes a drawer
-const compact = useMediaQuery('(max-width: 1600px)')
 const narrow = useMediaQuery('(max-width: 1024px)')
 const drawerOpen = ref(false)
 const artifactPanel = useTemplateRef<InstanceType<typeof ArtifactPanel>>('artifactPanel')
@@ -303,7 +326,7 @@ function openFile(path: string) {
   filesOpen.value = true
   workbenchTab.value = 'files'
   workbench.value?.openFile(path)
-  if (narrow.value || compact.value) setSide(false)
+  if (!detailsFits.value) setSide(false)
 }
 function toggleFiles() {
   previewDismissed.value = false
@@ -323,11 +346,17 @@ const previewAvailable = computed(
       (!narrow.value && artifacts.value.length > 0)),
 )
 const showWorkbench = computed(() => previewAvailable.value && !previewDismissed.value)
+// Details docks only where the conversation keeps its room; otherwise it steps aside, whatever was chosen, and comes
+// back by itself when the room does. Reopening it by hand in a tight window shows it over the conversation.
 watch(
-  () => roomy.value && !(showWorkbench.value && compact.value) && !narrow.value,
-  fits => {
-    if (chosen === null) setSide(fits)
-  },
+  () => [roomy.value && !narrow.value, detailsFits.value] as const,
+  ([wanted, fits]) => setSide((chosen ?? wanted) && fits),
+  { immediate: true },
+)
+// The docked preview pane asks the app sidebar to fold when the window cannot hold both beside the conversation.
+watch(
+  () => showWorkbench.value && !narrow.value,
+  docked => setLayoutDemand(docked ? CHAT_MIN + PREVIEW_MIN : 0),
   { immediate: true },
 )
 const workbenchTab = ref<PreviewView | null>(null)
@@ -347,7 +376,7 @@ watch(
 // A card in the thread: select its tab; on a narrow window, open the drawer on it.
 function openArtifact(id: number, version: number) {
   previewDismissed.value = false
-  if (narrow.value || compact.value) setSide(false)
+  if (!detailsFits.value) setSide(false)
   if (!narrow.value) workbenchTab.value = 'artifacts'
   artifactPanel.value?.show(id, version)
   if (narrow.value && !drawerOpen.value) void openDrawer()
@@ -395,7 +424,7 @@ async function openSide() {
   asideOpen.value = true
   previewDismissed.value = false
   workbenchTab.value = 'side'
-  if (narrow.value || compact.value) setSide(false)
+  if (!detailsFits.value) setSide(false)
   if (narrow.value) {
     await nextTick()
     document.querySelector<HTMLElement>('.side-pane__heading')?.focus()
@@ -406,7 +435,7 @@ function onAside(s: Session) {
   side.apply(s)
   selectedSide.value = s.id
   // the pane opens on its own only where it doesn't cover the conversation or squeeze the open details panel
-  if (!narrow.value && !(compact.value && sideOpen.value)) {
+  if (!narrow.value) {
     asideOpen.value = true
     previewDismissed.value = false
     workbenchTab.value = 'side'
@@ -458,7 +487,11 @@ function onDeleted() {
 </script>
 
 <template>
-  <div class="session-screen" :class="{ 'session-screen--docked': showWorkbench && !narrow }">
+  <div
+    ref="screenEl"
+    class="session-screen"
+    :class="{ 'session-screen--docked': showWorkbench && !narrow }"
+  >
     <div class="session-screen__center">
       <div v-if="phase === 'loading'" class="session-screen__state" aria-busy="true">
         <IuSkeleton shape="row" :rows="1" />
@@ -627,7 +660,7 @@ function onDeleted() {
           <IuSidePanel
             v-model:open="sideOpen"
             :width="420"
-            :presentation="narrow || (showWorkbench && compact) ? 'overlay' : 'inline'"
+            :presentation="narrow || !detailsFits ? 'overlay' : 'inline'"
             variant="compact"
             title="Details"
             aria-label="Session details"
