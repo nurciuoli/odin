@@ -1,0 +1,1 @@
+- Each of your messages in a session now shows a checkpoint line with a Rewind… action. It opens a dialog to branch from that point in a new worktree, rewind the session (it moves to a new one and the original is archived), restore the files only (with Undo), or fork the conversation only, after listing the files that would change.
