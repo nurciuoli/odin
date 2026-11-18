@@ -81,7 +81,6 @@ const turns = computed(() =>
 )
 const at = computed(() => props.checkpoint?.turn ?? 0)
 const kept = computed(() => Math.max(0, at.value - 1))
-const dropped = computed(() => Math.max(0, turns.value.length - kept.value))
 /** Whether the conversation after the chosen point stays with the result of this mode. */
 const cutsConversation = computed(() => mode.value !== 'files')
 function dotState(turn: number): 'kept' | 'chosen' | 'later' {
@@ -109,28 +108,28 @@ const cards: { mode: Mode; icon: IconName; title: string; blurb: string; action:
   {
     mode: 'branch',
     icon: 'gitBranch',
-    title: 'Branch from here',
+    title: 'Branch',
     blurb: 'Try another way, keep this one',
     action: 'Branch',
   },
   {
     mode: 'rewind',
     icon: 'history',
-    title: 'Rewind this session',
+    title: 'Rewind',
     blurb: 'Undo the turns after this point',
     action: 'Rewind',
   },
   {
     mode: 'files',
     icon: 'file',
-    title: 'Restore files only',
+    title: 'Files only',
     blurb: 'Keep the chat, put the files back',
     action: 'Restore files',
   },
   {
     mode: 'fork',
     icon: 'message',
-    title: 'Fork the chat only',
+    title: 'Fork chat',
     blurb: 'Cut the chat here, leave files alone',
     action: 'Fork',
   },
@@ -209,10 +208,9 @@ async function confirm() {
   >
     <header class="rewind__top">
       <IuIcon name="history" :size="16" class="rewind__top-icon" />
-      <h2 class="rewind__title">Go back to before turn {{ at }}</h2>
+      <h2 class="rewind__title" :title="messageText">Go back to before turn {{ at }}</h2>
       <span class="rewind__hint">1–4 choose · Enter confirms · Esc cancels</span>
     </header>
-    <blockquote class="rewind__message">{{ messageText }}</blockquote>
     <div class="rewind__body">
       <figure class="rewind__timeline" :aria-label="`Turn ${at} of ${turns.length}`">
         <ol class="rewind__track">
@@ -230,13 +228,6 @@ async function confirm() {
             <span class="rewind__stop-label">{{ t.turn }}</span>
           </li>
         </ol>
-        <figcaption class="rewind__caption">
-          <template v-if="cutsConversation"
-            >Turns {{ at }}{{ dropped > 1 ? `–${turns.length}` : '' }} would be left
-            behind.</template
-          >
-          <template v-else>Only the files go back; every turn stays.</template>
-        </figcaption>
       </figure>
 
       <div class="rewind__cards" role="radiogroup" aria-label="What should happen?">
@@ -248,7 +239,7 @@ async function confirm() {
             'rewind__card--on': mode === c.mode,
             'rewind__card--off': !available[c.mode],
           }"
-          :title="available[c.mode] ? undefined : whyNot(c.mode)"
+          :title="available[c.mode] ? c.blurb : whyNot(c.mode)"
         >
           <input
             v-model="mode"
@@ -258,13 +249,10 @@ async function confirm() {
             :value="c.mode"
             :disabled="!available[c.mode]"
           />
-          <IuIcon :name="c.icon" :size="20" class="rewind__card-icon" />
+          <IuIcon :name="c.icon" :size="16" class="rewind__card-icon" />
           <span class="rewind__card-title">{{ c.title }}</span>
-          <span class="rewind__card-blurb">{{ available[c.mode] ? c.blurb : whyNot(c.mode) }}</span>
         </label>
       </div>
-
-      <p class="rewind__outcome" aria-live="polite">{{ outcome }}</p>
 
       <details v-if="restoresFiles" class="rewind__files">
         <summary>
@@ -290,6 +278,7 @@ async function confirm() {
       <IuCallout v-if="error" intent="danger" variant="inline" live>{{ error }}</IuCallout>
     </div>
     <footer class="rewind__foot">
+      <p class="rewind__outcome" aria-live="polite">{{ outcome }}</p>
       <IuButton variant="ghost" size="sm" :disabled="working" @click="emit('close')"
         >Cancel</IuButton
       >
@@ -311,9 +300,9 @@ async function confirm() {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   min-inline-size: 0;
-  padding: 12px 14px;
+  padding: 10px 12px;
   background: var(--iu-surface);
   border: 1px solid var(--iu-info-border);
   border-inline-start: 3px solid var(--iu-info);
@@ -351,8 +340,19 @@ async function confirm() {
 }
 .rewind__foot {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 8px;
+}
+.rewind__foot > :not(.rewind__outcome) {
+  flex: none;
+}
+.rewind__foot .rewind__outcome {
+  margin-inline-end: auto;
+  min-inline-size: 0;
+  flex: 1 1 0;
+  color: var(--iu-text-2);
+  font-size: var(--iu-font-size-12);
 }
 .rewind__message {
   margin: 0;
@@ -364,10 +364,6 @@ async function confirm() {
 }
 .rewind__timeline {
   margin: 0;
-  padding: 10px 14px 8px;
-  border: 1px solid var(--iu-border);
-  border-radius: var(--iu-radius-lg);
-  background: var(--iu-hover);
 }
 .rewind__track {
   margin: 0;
@@ -384,13 +380,13 @@ async function confirm() {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 0;
 }
 /* the line between dots; the first dot has none */
 .rewind__stop + .rewind__stop::before {
   content: '';
   position: absolute;
-  top: 6px;
+  top: 4px;
   inset-inline-end: 50%;
   inline-size: 100%;
   block-size: 2px;
@@ -402,8 +398,8 @@ async function confirm() {
 }
 .rewind__dot {
   position: relative;
-  inline-size: 14px;
-  block-size: 14px;
+  inline-size: 10px;
+  block-size: 10px;
   box-sizing: border-box;
   border-radius: 50%;
   border: 2px solid var(--iu-text-2);
@@ -419,12 +415,11 @@ async function confirm() {
   background: transparent;
 }
 .rewind__stop-label {
-  font-size: var(--iu-font-size-11, var(--iu-font-size-12));
-  color: var(--iu-text-muted);
-  font-variant-numeric: tabular-nums;
-}
-.rewind__stop--chosen .rewind__stop-label {
-  color: var(--iu-text);
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
 }
 .rewind__caption {
   margin-top: 6px;
@@ -432,18 +427,19 @@ async function confirm() {
   color: var(--iu-text-2);
 }
 .rewind__cards {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
   gap: 6px;
 }
 .rewind__card {
   position: relative;
+  flex: 1 1 0;
+  min-inline-size: 0;
   display: grid;
-  grid-template-columns: 20px 1fr;
-  column-gap: 8px;
-  row-gap: 2px;
+  grid-template-columns: 16px auto;
+  justify-content: center;
+  column-gap: 6px;
   align-items: center;
-  padding: 8px 12px;
+  padding: 5px 8px;
   border: 1px solid var(--iu-border);
   border-radius: var(--iu-radius-lg);
   cursor: pointer;
@@ -471,11 +467,13 @@ async function confirm() {
   clip: rect(0 0 0 0);
 }
 .rewind__card-icon {
-  grid-row: 1 / 3;
   color: var(--iu-text-2);
 }
 .rewind__card-title {
-  font-size: var(--iu-font-size-14);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--iu-font-size-13);
   font-weight: var(--iu-font-weight-semibold);
 }
 .rewind__card-blurb {
