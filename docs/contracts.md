@@ -673,6 +673,27 @@ Odin signs in to remote MCP servers that use OAuth, once, and sends the token to
   grant (it is not revoked at the server). 404 for an unknown library id, 400 when the server has no `oauth`.
 - `Deps.mcpFetch` carries all of this traffic; tests inject a fake.
 
+### Plugins
+
+A plugin is a library asset of kind `plugin`: a folder `<library>/plugins/<id>/` with a manifest and optional members of
+its own. Design: `docs/plans/plugins.md`. **Status: the format and parser exist (`PluginSpec`, `parseAsset("plugin", …)`);
+the kind is not yet in `ASSET_KINDS`, so core neither scans nor saves nor installs plugins until the install change
+lands.**
+
+- **Manifest** `plugin.json`: `name`, `description`, `version` (a label, ≤ 64 characters), `includes`
+  (`{ kind, id, version? }[]`, at most 64, no duplicates; `kind` is one of `PLUGIN_MEMBER_KINDS`: instruction, skill,
+  agent, mcp, settings, never plugin; `version` pins a library version hash) and `source`
+  (`{ type: "git", url, rev? }`, an https, ssh or `git@` address and a branch, tag or commit name that does not start
+  with `-`). Unknown fields are errors.
+- **Own members** are files in the plugin folder laid out like the library: `skills/<id>/…`, `agents/<id>.md`,
+  `mcp/<id>.json`, `settings/<id>.json`, `instructions/<id>/AGENTS.md`. Each must be a valid asset of its kind on its
+  own (`filesError` and `parseAsset`), and `README.md` at the root is allowed. Any other file is an error. An own member
+  and an included one must not share a kind and id.
+- **Parse result**: `name` and `description` from the manifest (name defaults to the id); `meta` is `PluginSpec` plus
+  `own: PluginOwnMember[]` (kind, id, name, description, error), sorted by kind then id; `error` joins every problem.
+  The parser cannot see the library, so whether included assets exist is checked when a plugin is installed.
+- Limits are the library's: 64 files per plugin, 1 MB per file.
+
 ## Notebooks and Python analysis
 
 A notebook is an ordinary `.ipynb` file in the project, addressed by a project-relative path (forward slashes, ends

@@ -42,6 +42,11 @@ export const KIND_INFO: Record<AssetKind, { label: string; plural: string; blurb
     plural: 'Settings profiles',
     blurb: 'Permission rules and hooks, merged into a project’s settings when installed.',
   },
+  plugin: {
+    label: 'Plugin',
+    plural: 'Plugins',
+    blurb: 'A bundle of skills, agents, commands, hooks and MCP servers installed together.',
+  },
 }
 
 /** A short second line for a table row, so look-alike assets can be told apart. */
@@ -285,6 +290,8 @@ export function starterFiles(
       }
     case 'settings':
       return { [file]: stringify({ name, description, permissions: { allow: [], deny: [] } }) }
+    case 'plugin':
+      return { [file]: stringify({ name, description, version: '0.1.0', includes: [] }) }
   }
 }
 
