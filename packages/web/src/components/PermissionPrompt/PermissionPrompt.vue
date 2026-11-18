@@ -106,6 +106,7 @@ const hasDetails = computed(
 
 // question answers come from the carousel: one string per question, several joined for multi-select
 const answers = ref<Record<string, string>>({})
+const hint = ref('')
 const questionKey = (q: PermissionPromptQuestion) => q.id ?? q.question
 const complete = computed(
   () =>
@@ -177,6 +178,9 @@ const denyLabel = computed(() => (props.request.kind === 'plan' ? 'Keep planning
             ? 'Question for you'
             : 'Permission needed'
       }}</IuEyebrow>
+      <span v-if="request.kind === 'question' && hint" class="iu-permission-prompt__hint">{{
+        hint
+      }}</span>
       <span v-if="request.defaultToDeny" class="iu-permission-prompt__risk">▲ Review first</span>
     </div>
 
@@ -212,6 +216,7 @@ const denyLabel = computed(() => (props.request.kind === 'plan' ? 'Keep planning
         :questions="request.questions ?? []"
         :busy="busy"
         @update:answers="answers = $event"
+        @hint="hint = $event"
         @submit="allow()"
       />
     </div>
@@ -329,6 +334,14 @@ const denyLabel = computed(() => (props.request.kind === 'plan' ? 'Keep planning
   font-family: var(--iu-font-mono);
   font-size: var(--iu-font-size-10-5);
   color: var(--iu-warning);
+  white-space: nowrap;
+}
+
+.iu-permission-prompt__hint {
+  margin-left: auto;
+  font-family: var(--iu-font-mono);
+  font-size: var(--iu-font-size-11);
+  color: var(--iu-text-muted);
   white-space: nowrap;
 }
 

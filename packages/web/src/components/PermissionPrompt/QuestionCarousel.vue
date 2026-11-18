@@ -13,7 +13,12 @@ const props = withDefaults(
   defineProps<{ questions: PermissionPromptQuestion[]; busy?: boolean }>(),
   { busy: false },
 )
-const emit = defineEmits<{ 'update:answers': [answers: Record<string, string>]; submit: [] }>()
+const emit = defineEmits<{
+  'update:answers': [answers: Record<string, string>]
+  /** The keyboard tips for the current step, shown by the card in its header. */
+  hint: [hint: string]
+  submit: []
+}>()
 
 // TEMP (design exploration): ?qv=centered|split|stacked|chips|inline
 const variant =
@@ -50,6 +55,15 @@ const lastStep = computed(() => (hasReview.value ? count.value : count.value - 1
 const step = ref(0)
 const onReview = computed(() => hasReview.value && step.value === count.value)
 const question = computed(() => props.questions[step.value])
+
+const hint = computed(() =>
+  onReview.value
+    ? '← → move · Enter submits'
+    : variant === 'chips'
+      ? '1–9 choose · Enter confirms'
+      : '← → move · 1–9 choose · Enter confirms',
+)
+watchEffect(() => emit('hint', hint.value))
 
 async function go(to: number, focusSlide = false) {
   step.value = Math.min(Math.max(to, 0), lastStep.value)
@@ -277,11 +291,6 @@ const stepLabel = (i: number) => {
             <IuIcon v-else name="chevronRight" :size="14" />
           </template>
         </IuButton>
-        <span class="iu-question-carousel__keys">
-          <template v-if="onReview">← → move · Enter submits</template>
-          <template v-else-if="variant === 'chips'">1–9 choose · Enter confirms</template>
-          <template v-else>← → move · 1–9 choose · Enter confirms</template>
-        </span>
       </div>
     </div>
   </div>
@@ -468,13 +477,6 @@ const stepLabel = (i: number) => {
   justify-content: center;
   gap: 8px;
 }
-.iu-question-carousel__keys {
-  flex-basis: 100%;
-  text-align: center;
-  font-family: var(--iu-font-mono);
-  font-size: var(--iu-font-size-11);
-  color: var(--iu-text-muted);
-}
 /* design exploration variants */
 .iu-question-carousel__bar {
   display: flex;
@@ -504,32 +506,14 @@ const stepLabel = (i: number) => {
   grid-column: 3;
   justify-self: end;
 }
-.iu-question-carousel__bar.is-inline .iu-question-carousel__keys {
-  grid-row: 2;
-  grid-column: 1 / -1;
-  text-align: center;
-}
 .iu-question-carousel__nav.is-split {
   flex-wrap: nowrap;
   justify-content: space-between;
-}
-.iu-question-carousel__nav.is-split .iu-question-carousel__keys {
-  flex: 1;
-  flex-basis: auto;
-  order: 1;
-}
-.iu-question-carousel__nav.is-split .iu-question-carousel__next {
-  order: 2;
 }
 .iu-question-carousel__nav.is-stacked .iu-question-carousel__next {
   order: -1;
   flex: 1 1 100%;
   justify-content: center;
-}
-.iu-question-carousel__nav.is-stacked .iu-question-carousel__keys {
-  flex: 1;
-  flex-basis: auto;
-  text-align: right;
 }
 .iu-question-carousel__nav.is-stacked {
   justify-content: flex-start;
