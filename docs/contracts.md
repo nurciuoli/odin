@@ -585,9 +585,12 @@ Status: contracts only; behaviour lands in later PRs (`docs/plans/checkpoints.md
   pushes" still holds. The session's `cwd` only: `additionalDirectories` are not snapshotted. Nested repositories,
   submodules and files over 5 MB are skipped; over 20,000 files or 10 s the checkpoint is `snapshot: "skipped"`.
   Ignored files (`.gitignore`) are neither captured nor deleted by a restore.
-- **Turn boundaries.** `capture("turn.start", messageId)` runs before the harness gets the message and records the
-  `before` tree; `capture("turn.end", …)` records the end tree and `files`. Captures run off the request path, never
-  throw and never delay a turn; each change is announced with `checkpoint.updated`.
+- **Turn boundaries.** The transcript id of a user message is only known once the harness announces it, but the
+  before-tree must be taken before the agent can act. So `capture("turn.prepare", null)` is awaited by sessions just
+  before the message is handed over (bounded by the budget above) and holds the tree as pending;
+  `capture("turn.start", messageId)` (on the user entry, not awaited) creates the checkpoint from it;
+  `capture("turn.end", null)` (not awaited) records the end tree and `files`. Captures never throw; each change is
+  announced with `checkpoint.updated`.
 - **Conversation** rewind is a fork cut before the message: optional `Harness.forkAt` / `StartOptions.forkAtMessageId`,
   declared by `capabilities.checkpoints.forkAt`. Odin keeps no transcript of its own, so a harness without it can only
   do files-only restores (`conversation: true` is a 400).
