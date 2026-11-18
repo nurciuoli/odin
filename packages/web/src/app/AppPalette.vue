@@ -239,11 +239,6 @@ const appCommands = computed<RunItem[]>(() => [
   { id: 'action:home', label: 'Go home', icon: 'board', run: go({ name: 'home' }) },
   { id: 'action:history', label: 'All sessions', icon: 'clock', run: go({ name: 'history' }) },
   { id: 'action:library', label: 'Open Library', icon: 'sparkle', run: go({ name: 'library' }) },
-  {
-    label: 'Compare sessions',
-    icon: 'gitPullRequest',
-    run: go({ name: 'compare' }),
-  },
   { id: 'action:settings', label: 'Open Settings', icon: 'gear', run: go({ name: 'settings' }) },
   ...commands.value.map(c => ({
     id: `command:${c.id}`,
