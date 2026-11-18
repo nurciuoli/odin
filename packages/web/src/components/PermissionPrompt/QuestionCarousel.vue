@@ -274,9 +274,9 @@ const stepLabel = (i: number) => {
 }
 .iu-question-carousel__steps {
   display: flex;
-  justify-content: center;
+  flex-direction: column-reverse;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
 }
 .iu-question-carousel__count {
   font-family: var(--iu-font-mono);
