@@ -16,6 +16,14 @@ export interface SecretStore {
   write(secrets: Record<string, StoredSecret>): void;
 }
 
+/** Writes JSON to a temp file with mode 600 and renames it over `file`, so a reader never sees half a file. */
+export function writeJson600(file: string, doc: unknown): void {
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = join(dirname(file), `.${randomBytes(6).toString("hex")}.tmp`);
+  writeFileSync(tmp, `${JSON.stringify(doc, null, 2)}\n`, { mode: 0o600 });
+  renameSync(tmp, file);
+}
+
 export function createFileSecretStore(file: string): SecretStore {
   return {
     read() {
@@ -40,10 +48,7 @@ export function createFileSecretStore(file: string): SecretStore {
       return out;
     },
     write(secrets) {
-      mkdirSync(dirname(file), { recursive: true });
-      const tmp = join(dirname(file), `.secrets-${randomBytes(6).toString("hex")}.tmp`);
-      writeFileSync(tmp, `${JSON.stringify({ version: 1, secrets }, null, 2)}\n`, { mode: 0o600 });
-      renameSync(tmp, file);
+      writeJson600(file, { version: 1, secrets });
     },
   };
 }

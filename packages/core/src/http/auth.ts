@@ -10,7 +10,7 @@ import { tokenOk } from "./util.ts";
 
 const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
-function allowed(name: string, extraHosts: readonly string[]): boolean {
+export function allowed(name: string, extraHosts: readonly string[]): boolean {
   const host = name.toLowerCase();
   return LOCAL_HOSTS.has(host) || extraHosts.includes(host);
 }

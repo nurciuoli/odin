@@ -27,6 +27,8 @@ export interface Deps {
   bus: EventBus;
   /** fetch for GitHub. Tests inject a fake; never the network in tests. */
   githubFetch: typeof fetch;
+  /** fetch for MCP OAuth discovery, registration and tokens. Tests inject a fake; never the network in tests. */
+  mcpFetch: typeof fetch;
   now: () => Date;
   /** Harness drivers by id. Production: Claude, Codex, Grok, OpenCode, and Antigravity. Tests pass fakeHarness(). */
   harnesses: Harnesses;
@@ -178,7 +180,7 @@ export interface LaunchPlan {
 
 export interface LaunchService {
   /** Resolve current library configuration for persisted MCP ids; never persist resolved secrets in sessions. */
-  resolveMcpServers(ids: string[]): Record<string, McpServerStart>;
+  resolveMcpServers(ids: string[]): Promise<Record<string, McpServerStart>>;
   /** 400 for a missing message, invalid settings or MCP, or obsolete primary-agent/template selections. */
   plan(req: StartSessionRequest, sessionId: string): Promise<LaunchPlan>;
 }
@@ -286,6 +288,19 @@ export interface SecretsService {
   fill(text: string, what: string): string;
 }
 
+export interface McpOAuthService {
+  /** 404 unknown server, 400 when it is not a remote server with `oauth`. */
+  status(id: string): import("@odin/shared/api").McpOAuthStatus;
+  /** Discovers, registers a client when needed, and returns the URL to open. `origin` must be this Odin's own address. */
+  start(id: string, origin: string): Promise<import("@odin/shared/api").StartMcpOAuthResponse>;
+  /** The authorization server's redirect: exchanges the code and stores the tokens. 400 for an unknown or expired state. */
+  complete(params: { state?: string; code?: string; error?: string }): Promise<{ id: string }>;
+  /** Forgets the grant (does not revoke it at the server). */
+  disconnect(id: string): void;
+  /** A usable access token for launch, refreshed when it is about to end. 400 when the server needs sign-in. */
+  accessToken(id: string): Promise<string>;
+}
+
 export interface SettingsService {
   get(): AppSettings;
   update(patch: Partial<AppSettings>): AppSettings;
@@ -330,10 +345,11 @@ export interface Services {
   metrics: MetricsService;
   settings: SettingsService;
   secrets: SecretsService;
+  mcpOAuth: McpOAuthService;
 }
 
 export type ServiceName = keyof Services;
-export const SERVICE_NAMES: ServiceName[] = ["coordination", "notebooks", "files", "projects", "sessions", "launch", "artifacts", "library", "sync", "ingest", "metrics", "settings", "secrets"];
+export const SERVICE_NAMES: ServiceName[] = ["coordination", "notebooks", "files", "projects", "sessions", "launch", "artifacts", "library", "sync", "ingest", "metrics", "settings", "secrets", "mcpOAuth"];
 
 export interface NotebooksService extends Closeable {
   widgetState(kernelId: string): import("@odin/shared/notebooks").NotebookComm[];

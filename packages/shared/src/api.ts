@@ -703,7 +703,42 @@ export interface TemplateSpec {
  */
 export type McpServerSpec =
   | { type: "stdio"; command: string; args?: string[]; env?: Record<string, string> }
-  | { type: "http" | "sse"; url: string; headers?: Record<string, string> };
+  | { type: "http" | "sse"; url: string; headers?: Record<string, string>; oauth?: McpOAuthConfig };
+
+/**
+ * A remote server that signs in with OAuth 2.1 (authorization code with PKCE). Odin discovers the endpoints, registers
+ * itself when the server allows it, keeps the tokens, and sends `Authorization: Bearer …` at launch. A spec with
+ * `oauth` must not set its own Authorization header.
+ */
+export interface McpOAuthConfig {
+  /** Space-separated scopes to ask for. Omitted: the server's default. */
+  scope?: string;
+  /** A client id registered by hand, for servers without dynamic client registration. Public client, no secret. */
+  clientId?: string;
+}
+
+export type McpOAuthState = "needs-sign-in" | "connected";
+
+/** GET /api/mcp/:id/oauth */
+export interface McpOAuthStatus {
+  id: string;
+  state: McpOAuthState;
+  /** The authorization server's issuer, once discovered. */
+  issuer: string | null;
+  scope: string | null;
+  /** When the current access token stops working; a refresh token may still keep the server connected. */
+  expiresAt: string | null;
+}
+
+/** POST /api/mcp/:id/oauth/start. `origin` is the browser's own origin (the sign-in returns to `<origin>/api/oauth/callback`). */
+export interface StartMcpOAuthRequest {
+  origin: string;
+}
+
+export interface StartMcpOAuthResponse {
+  /** Open this in the browser. */
+  authorizationUrl: string;
+}
 
 /** Permission rules and hooks, merged into .claude/settings.json on install. */
 export interface SettingsProfileSpec {
