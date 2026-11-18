@@ -104,12 +104,8 @@ export const routes: RouteRecordRaw[] = [
     props: true,
     component: () => import('@/screens/library/AssetScreen.vue'),
   },
-  {
-    path: '/mcp',
-    name: 'mcp',
-    meta: { crumb: 'MCP servers' },
-    component: () => import('@/screens/mcp/McpScreen.vue'),
-  },
+  // MCP servers live in the Library now; keep old links and bookmarks working.
+  { path: '/mcp', redirect: { name: 'library', query: { kind: 'mcp' } } },
   {
     path: '/compare',
     name: 'compare',

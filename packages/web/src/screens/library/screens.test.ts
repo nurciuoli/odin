@@ -42,7 +42,8 @@ describe('LibraryScreen', () => {
     expect(text).toContain('reviewer')
     expect(text).toContain('docs-writer')
     expect(wrapper.find('thead').text()).toContain('Used in')
-    expect(button(wrapper, 'Install…')).toBeTruthy()
+    expect(wrapper.find('button[aria-label^="More actions for"]').exists()).toBe(true)
+    expect(wrapper.find('thead').text()).toContain('Enabled')
     expect(wrapper.find('thead').text()).not.toContain('Version')
     expect(
       wrapper
@@ -51,6 +52,41 @@ describe('LibraryScreen', () => {
         .join(' '),
     ).toContain('MCP servers')
     expect(button(wrapper, 'New agent')).toBeTruthy()
+  })
+
+  it('switches an item off and on from its row', async () => {
+    const api = createMockApi()
+    const set = vi.spyOn(api, 'setAssetEnabled')
+    const { wrapper } = await mountScreen(LibraryScreen, '/library?kind=agent', api)
+    await flushPromises()
+    await wrapper.find('[role=switch]').trigger('click')
+    await flushPromises()
+    expect(set).toHaveBeenCalledWith('agent', expect.any(String), false)
+    expect(wrapper.text()).toContain('Disabled')
+    expect((await api.listLibrary('agent')).some(a => !a.enabled)).toBe(true)
+  })
+
+  it('deletes selected items after a confirmation that offers Disable instead', async () => {
+    const api = createMockApi()
+    const before = (await api.listLibrary('agent')).length
+    const { wrapper } = await mountScreen(LibraryScreen, '/library?kind=agent', api)
+    await flushPromises()
+    expect(wrapper.find('[role=toolbar]').exists()).toBe(false)
+    await wrapper.find('tbody input[type=checkbox]').setValue(true)
+    expect(wrapper.find('[role=toolbar]').text()).toContain('1 selected')
+    await button(wrapper, 'Delete…')!.trigger('click')
+    await flushPromises()
+    expect(button(wrapper, 'Disable instead')).toBeTruthy()
+    await button(wrapper, 'Delete')!.trigger('click')
+    await flushPromises()
+    expect((await api.listLibrary('agent')).length).toBe(before - 1)
+  })
+
+  it('shows MCP servers as a tab with their sign-in state', async () => {
+    const { wrapper } = await mountScreen(LibraryScreen, '/library?kind=mcp')
+    await flushPromises()
+    expect(wrapper.find('thead').text()).toContain('Sign-in')
+    expect(wrapper.text()).toContain('Secrets')
   })
 
   it('puts instructions, skills and subagents in the library without launch workflows', async () => {
