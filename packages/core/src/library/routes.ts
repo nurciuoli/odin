@@ -1,6 +1,6 @@
 // Library routes (docs/contracts.md#rest, owner 2f): the library itself and its installs into projects.
 import type { AssetKind } from "@odin/shared/api";
-import { ASSET_ID_PATTERN, ASSET_KINDS } from "@odin/shared/library";
+import { ASSET_ID_PATTERN, LIBRARY_KINDS } from "@odin/shared/library";
 import { HttpError, readBody, readJson, send } from "../http/util.ts";
 import type { RegisterRoutes } from "../services.ts";
 import { MAX_ASSET_FILE_BYTES, MAX_ASSET_FILES } from "./parse.ts";
@@ -9,7 +9,7 @@ import { MAX_ASSET_FILE_BYTES, MAX_ASSET_FILES } from "./parse.ts";
 const MAX_SAVE_BYTES = MAX_ASSET_FILES * MAX_ASSET_FILE_BYTES + 1024 * 1024;
 
 function kindOf(raw: string | undefined | null): AssetKind {
-  if (!raw || !(ASSET_KINDS as string[]).includes(raw)) throw new HttpError(400, `unknown asset kind ${JSON.stringify(raw)}`);
+  if (!raw || !(LIBRARY_KINDS as string[]).includes(raw)) throw new HttpError(400, `unknown asset kind ${JSON.stringify(raw)}`);
   return raw as AssetKind;
 }
 
@@ -71,7 +71,7 @@ export const registerLibraryRoutes: RegisterRoutes = (router, _deps, services) =
     kindOf(body.kind);
     idOf(body.id);
     if (body.force !== undefined && typeof body.force !== "boolean") throw new HttpError(400, "force must be true or false");
-    return services.library.install(params.name!, { kind: body.kind, id: body.id, action: body.action, force: body.force });
+    return services.library.install(params.name!, { kind: body.kind, id: body.id, action: body.action, force: body.force, confirm: body.confirm });
   });
 
   router.get("/api/projects/:name/library/:kind/:id/files", ({ params }) => {

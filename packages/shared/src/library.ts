@@ -3,6 +3,11 @@
 import type { AssetKind } from "./api.ts";
 
 export const ASSET_KINDS: AssetKind[] = ["instruction", "skill", "agent", "mcp", "settings"];
+/**
+ * Kinds core scans, saves and installs. Plugins are in here before they are in ASSET_KINDS (the kinds the web app
+ * lists), so the API can serve them before the UI shows them.
+ */
+export const LIBRARY_KINDS: AssetKind[] = [...ASSET_KINDS, "plugin"];
 /** Kinds a plugin can hold, in the order its page lists them. */
 export const PLUGIN_MEMBER_KINDS = ["instruction", "skill", "agent", "mcp", "settings"] as const satisfies readonly AssetKind[];
 export const PLUGIN_MAX_INCLUDES = 64;
@@ -58,12 +63,14 @@ export const LIBRARY_LAYOUT: Record<AssetKind, { dir: string; shape: "file" | "f
  * `<target>/<id>/…`. merge: the asset is merged into one JSON file under a key Odin owns (mcp: `mcpServers.<id>`;
  * settings: permission rules appended and hooks added, remembered so they can be removed or diffed).
  */
-export const INSTALL_TARGETS: Partial<Record<AssetKind, { mode: "copy" | "merge"; target: string }>> = {
+export const INSTALL_TARGETS: Partial<Record<AssetKind, { mode: "copy" | "merge" | "bundle"; target: string }>> = {
   instruction: { mode: "merge", target: "AGENTS.md" },
   agent: { mode: "copy", target: ".claude/agents" },
   skill: { mode: "copy", target: ".claude/skills" },
   mcp: { mode: "merge", target: ".mcp.json" },
   settings: { mode: "merge", target: ".claude/settings.json" },
+  /** A bundle installs its members one by one; it has no target of its own. */
+  plugin: { mode: "bundle", target: "" },
 };
 
 export function isInstallable(kind: AssetKind): boolean {

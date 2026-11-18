@@ -814,6 +814,7 @@ export type DriftState = "current" | "update-available" | "modified" | "conflict
 
 export interface Installation {
   project: string;
+  /** `plugin` for a bundle; its members are listed in `members`. */
   kind: AssetKind;
   id: string;
   /** Library version that was installed (or last updated / pushed). */
@@ -825,6 +826,48 @@ export interface Installation {
   /** Repo-relative paths written (for mcp/settings: the merged file). */
   paths: string[];
   installedAt: string;
+  /** Plugins only: each member and where it stands. `state` is the roll-up of these and the plugin's own version. */
+  members?: PluginMemberState[];
+}
+
+/** One member of an installed plugin. `origin` own: a file in the plugin folder; library: an included library asset. */
+export interface PluginMemberState {
+  kind: PluginMemberKind;
+  id: string;
+  origin: "own" | "library";
+  /** `not-installed`: the plugin lists it now but it was never installed (a newer manifest added it). */
+  state: DriftState | "not-installed";
+}
+
+/** What installing a plugin would run or add, for the person to read first. */
+export interface PluginRun {
+  /** hook: a settings hook; command: a local MCP command; remote: a remote MCP server (nothing runs locally). */
+  kind: "hook" | "command" | "remote";
+  /** `<kind>/<id>` of the member that brings it. */
+  member: string;
+  /** The exact command line, hook or URL. */
+  text: string;
+}
+
+/** POST …/library with action `preview` for a plugin. */
+export interface PluginPreview {
+  project: string;
+  plugin: string;
+  /** What `installedVersion` becomes. */
+  version: string;
+  members: { kind: PluginMemberKind; id: string; origin: "own" | "library"; version: string }[];
+  runs: PluginRun[];
+  /** Included assets the library does not have (installing is refused until they exist). */
+  missing: string[];
+  /** Secrets its MCP servers refer to, and whether each is set. */
+  secrets: { name: string; set: boolean }[];
+  /** Ids of members that sign in with OAuth. */
+  oauth: string[];
+  /**
+   * Send this back as `confirm` to install or update. Null when nothing needs confirming (no hooks and no local
+   * commands). It changes whenever the runs, the members or their versions change.
+   */
+  confirm: string | null;
 }
 
 /** POST /api/projects/:name/library: install, update, or push back. */
@@ -832,12 +875,16 @@ export interface InstallRequest {
   kind: AssetKind;
   id: string;
   /** install: copy library → project (refused over a modified file unless `force`). update: same, for an installed asset. push: project → library (new library version). forget: stop tracking, files stay. */
-  action: "install" | "update" | "push" | "forget";
+  action: "install" | "update" | "push" | "forget" | "preview";
   force?: boolean;
+  /** Plugins: the `confirm` of a `preview`, required when it is not null. */
+  confirm?: string;
 }
 
 export interface InstallResult {
   installation: Installation | null;
+  /** Set by action `preview` (plugins only); nothing was written. */
+  preview?: PluginPreview;
   /** Repo-relative files Odin changed. It never commits them. */
   changed: string[];
 }
