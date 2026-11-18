@@ -400,7 +400,7 @@ describe('SessionScreen', () => {
     const context = side.find('#side-context button')
     expect(context.element.children[0]?.textContent).toBe('Context')
     expect(context.element.children[1]?.tagName).toBe('svg')
-    for (const label of ['Outputs', 'Changes', 'Background tasks', 'Plan', 'Thread', 'Tags']) {
+    for (const label of ['Outputs', 'Changes', 'Background tasks', 'Plan']) {
       const summary = side
         .findAll('summary')
         .find(s => s.element.firstElementChild?.textContent === label)
@@ -533,7 +533,7 @@ describe('SessionScreen', () => {
     await toggle.trigger('click')
     expect(panel().classes()).not.toContain('is-closed')
     const workspace = panel().find('[aria-label="Session workspace"]')
-    expect(wrapper!.find('.session-side').element.firstElementChild).toBe(workspace.element)
+    expect(wrapper!.find('.session-side__top').element.firstElementChild).toBe(workspace.element)
     expect(workspace.find('a[href="/p/odin"]').exists()).toBe(true)
     expect(workspace.find('[aria-label="Branch"]').exists()).toBe(true)
     expect(workspace.text()).not.toContain('claude')
@@ -542,6 +542,19 @@ describe('SessionScreen', () => {
     expect(hide.attributes('aria-pressed')).toBe('true')
     // remembered for the next session page
     expect(window.localStorage.getItem('odin.session.details')).toBe('open')
+  })
+
+  it('keeps quick links, tags and the token mix at the top of the details, and no Thread section', async () => {
+    await mountSession(FIXTURE_SESSION_IDS.idle)
+    const side = wrapper!.find('.session-side')
+    const links = side.find('[aria-label="Quick links"]')
+    expect(links.find('[aria-label="Copy path"]').exists()).toBe(true)
+    expect(links.find('[aria-label="Copy branch name"]').exists()).toBe(true)
+    expect(side.find('.session-side__top [aria-label="Tags"]').exists()).toBe(true)
+    expect(side.find('[aria-label^="Token mix"]').exists()).toBe(true)
+    expect(side.text()).toContain('Cache hit')
+    expect(side.find('#side-thread').exists()).toBe(false)
+    expect(side.text()).not.toContain('Session thread')
   })
 
   it('announces a new prompt politely without moving focus', async () => {
