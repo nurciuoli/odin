@@ -15,8 +15,9 @@ import { isUnread, markAllSeen } from '@/app/seen'
 import { IuButton } from '@/components/Button'
 import { IuEmpty, IuErrorState, IuSkeleton } from '@/components/States'
 import { IuFlock } from '@/components/Spinner'
-import { buildPerch, type LaneSource, type Perch } from '@/screens/shared/lanes'
+import { buildPerch, perchParts, type LaneSource, type Perch } from '@/screens/shared/lanes'
 import { SESSION_DISPLAY, plural, relativeTime } from './format'
+import StatusWord from './StatusWord.vue'
 import { useQuickAnswer } from './useQuickAnswer'
 import { useResource, useServerEvents } from './useResource'
 import NewSessionForm from './NewSessionForm.vue'
@@ -268,12 +269,12 @@ const title = (s: Session) =>
               sessionFor(p.id) ? projectSummary(sessionFor(p.id)!) : ''
             }}</span>
             <div class="launchpad__perch-label">
+              <StatusWord class="launchpad__perch-word" v-bind="perchParts(p)" />
               <Transition name="launchpad-update" mode="out-in">
                 <span :key="p.activity" class="launchpad__perch-activity" :title="p.activity">{{
                   p.activity
                 }}</span>
               </Transition>
-              <span v-if="p.state !== 'running'" class="launchpad__perch-word">{{ p.word }}</span>
             </div>
             <div class="launchpad__perch-state">
               <span
@@ -328,8 +329,8 @@ const title = (s: Session) =>
             <span class="launchpad__perch-time">{{ relativeTime(s.updatedAt) }}</span>
             <span class="launchpad__perch-project">{{ projectSummary(s) }}</span>
             <div class="launchpad__perch-label">
-              <span class="launchpad__perch-activity">{{ finishedText(s) }}</span>
-              <span class="launchpad__perch-word">Not opened yet</span>
+              <StatusWord class="launchpad__perch-word" :word="finishedText(s)" />
+              <span class="launchpad__perch-activity">Not opened yet</span>
             </div>
             <div class="launchpad__perch-state" />
           </li>
@@ -540,15 +541,6 @@ const title = (s: Session) =>
   justify-content: flex-end;
   gap: 12px;
   min-width: 0;
-}
-.launchpad__perch-word {
-  color: var(--iu-text-2);
-  font-size: var(--iu-font-size-12-5);
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-.launchpad__perch[data-state='paused'] .launchpad__perch-word {
-  color: var(--iu-text);
 }
 .launchpad__perch-actions {
   display: inline-flex;

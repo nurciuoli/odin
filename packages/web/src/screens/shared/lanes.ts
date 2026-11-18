@@ -76,6 +76,12 @@ export function perchWord(input: PerchInput): string {
   return quiet === null ? running : `${running} · quiet ${shortDuration(quiet)}`
 }
 
+/** A perch's word split into the state label and what follows it ("Needs you" + "2m", "Running" + "quiet 4m"). */
+export function perchParts(p: Pick<Perch, 'word' | 'state'>): { word: string; since: string } {
+  const word = SESSION_DISPLAY[p.state === 'paused' ? 'waiting' : 'running'].label
+  return { word, since: p.word.slice(word.length).replace(/^\s*·?\s*/, '') }
+}
+
 const minutesText = (n: number) => `${n} minute${n === 1 ? '' : 's'}`
 
 /** The row's state in a sentence, for its accessible description. */

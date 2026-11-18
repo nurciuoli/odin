@@ -43,9 +43,9 @@ describe('SessionLaunchpad', () => {
     expect(rows[0]!.find('a.launchpad__perch-title').attributes('href')).toBe(
       `/s/${FIXTURE_SESSION_IDS.waiting}`,
     )
-    // the live activity leads the row; plain "Running" isn't repeated as a word
+    // every row says its state in the same word, then what it is doing
     expect(rows[1]!.find('.launchpad__perch-activity').exists()).toBe(true)
-    expect(rows[1]!.find('.launchpad__perch-word').exists()).toBe(false)
+    expect(rows[1]!.find('.launchpad__perch-word').text()).toBe('Running')
     expect(rows[1]!.find('.iu-flock').classes()).not.toContain('iu-flock--waiting')
     expect(wrapper.text()).toContain('2 sessions, 1 needs you')
     expect(wrapper.text()).not.toContain('Workspace statistics')
