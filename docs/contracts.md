@@ -402,6 +402,13 @@ AppSettings.defaultWorktree`.
   reusing the key for different original content is 409. Editing preserves the original receipt/key. Completed and
   cancelled records retain a content hash for deduplication, with their content/attachments removed from the outbox.
   Initial start/fork prompts keep their existing launch behavior and are not outbox messages.
+- **Shell commands (`!`)**: `POST /api/sessions/:id/shell` with `ShellRunRequest` runs one user-typed command in the
+  session's working directory (`/bin/sh -c`, `cmd.exe /c` on Windows) and returns `ShellRunResult` (`output` is stdout
+  and stderr combined, capped at 128 KiB with `truncated`; 120 s timeout kills the process tree, `timedOut`, `exitCode`
+  null). Odin runs it, so it works for every harness and needs no live handle. Nothing is persisted or added to the
+  transcript: the web shows the result and prefixes it to the user's next message. Odin's own token and secret
+  environment variables (`ODIN_*TOKEN|SECRET|KEY`, `GITHUB_TOKEN`, `GH_TOKEN`) are removed from the child's environment.
+  400 empty or oversized (8 KiB) command, 404 unknown session, 409 while another command runs in that session.
 - **Message queue**: `SessionDetail.messageQueue` and `GET /:id/queue` return `{ revision, paused, messages }`.
   `revision` is monotonic per session. `session.queue` SSE carries `{ sessionId, queue }`; clients merge by revision
   and refetch on reconnect. Each message has `{ id, message: UserMessage, state, createdAt, updatedAt }`, ordered by
