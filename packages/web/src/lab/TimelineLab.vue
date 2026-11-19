@@ -116,7 +116,7 @@ const title = 'Retry policy for the GitHub sync client'
 <template>
   <div class="lab" :data-v="variant">
     <nav class="lab-switch" aria-label="Variants">
-      <a v-for="v in ['rail', 'ladder', 'branch', 'film', 'crawl', 'margin']" :key="v" :href="`?v=${v}`" :aria-current="variant === v || undefined">{{ v }}</a>
+      <a v-for="v in ['rail', 'ladder', 'branch', 'film', 'crawl', 'margin', 'm1', 'm2', 'm3', 'm4']" :key="v" :href="`?v=${v}`" :aria-current="variant === v || undefined">{{ v }}</a>
     </nav>
     <div ref="frame" class="frame">
       <header class="bar">
@@ -302,6 +302,65 @@ const title = 'Retry policy for the GitHub sync client'
         <p class="margin__keys"><kbd>↑↓</kbd> move <kbd>esc</kbd> back</p>
       </nav>
 
+      <!-- m1 TICKS: always-on minimap of ticks in the gutter; ⌥T opens the labels -->
+      <nav v-if="variant === 'm1'" class="mg mg1" :class="{ open }" aria-label="Session timeline">
+        <ol>
+          <li v-for="(t, i) in all" :key="t.id" :class="{ on: open && sel === i }" :data-mark="mark(t)" :style="{ top: `calc(${(t.min / span) * 100}% )` }" @click="open ? (sel = i) : ((sel = i), show())">
+            <i class="mg1__tick" />
+            <span v-if="open" class="mg1__lab"><time>{{ clock(t.at) }}</time> {{ t.prompt }}</span>
+          </li>
+        </ol>
+        <div v-if="open" class="mg1__card">
+          <p>{{ cur.prompt }}</p>
+          <div class="margin__acts"><button @click="copy('prompt')">Copy prompt <kbd>c</kbd></button><button @click="copy('reply')">Copy reply <kbd>r</kbd></button><button @click="close(true)">Stay <kbd>↵</kbd></button></div>
+        </div>
+      </nav>
+
+      <!-- m2 LEDGER: dense one-line rows with a type-to-filter, for long sessions -->
+      <nav v-if="open && variant === 'm2'" class="mg mg2" aria-label="Session timeline">
+        <input v-model="query" class="mg2__q" placeholder="Filter steps…" autofocus />
+        <ol>
+          <li v-for="t in visible" :key="t.id" :class="{ on: sel === t.n - 1 }" :data-mark="mark(t)" @click="sel = t.n - 1" @dblclick="close(true)">
+            <b>{{ t.n }}</b><span class="mg2__t">{{ t.prompt }}</span><time>{{ clock(t.at) }}</time>
+            <div v-if="sel === t.n - 1" class="mg2__open">
+              <p>{{ strip(t.reply) }}</p>
+              <div class="margin__acts"><button @click.stop="copy('prompt')">Copy prompt <kbd>c</kbd></button><button @click.stop="copy('reply')">Copy reply <kbd>r</kbd></button><button @click.stop="close(true)">Stay <kbd>↵</kbd></button></div>
+            </div>
+          </li>
+        </ol>
+      </nav>
+
+      <!-- m3 TREE: the gutter carries the session's trunk, same glyphs as the Background tasks graph -->
+      <nav v-if="open && variant === 'm3'" class="mg mg3" aria-label="Session timeline">
+        <ol>
+          <li v-for="(t, i) in all" :key="t.id" :class="{ on: sel === i }" :data-mark="mark(t)" @click="sel = i" @dblclick="close(true)">
+            <svg width="44" height="46" viewBox="0 0 44 46" aria-hidden="true">
+              <line x1="8" x2="8" :y1="i === 0 ? 23 : 0" :y2="i === all.length - 1 ? 23 : 46" class="g__trunk" />
+              <path v-if="t.agents" d="M8 23 Q8 33 18 33 H32" class="g__fork g__fork--agent" /><circle v-if="t.agents" cx="34" cy="33" r="2.6" class="g__head--agent" />
+              <path v-if="t.failed" d="M8 23 Q8 13 18 13 H32" class="g__fork g__fork--bad" /><rect v-if="t.failed" x="31" y="10" width="6" height="6" class="g__head--bad" />
+              <circle cx="8" cy="23" :r="sel === i ? 5.5 : 4" class="g__node" />
+            </svg>
+            <div><p class="margin__q">{{ t.prompt }}</p><div v-if="sel === i" class="margin__acts"><button @click.stop="copy('prompt')">Copy prompt <kbd>c</kbd></button><button @click.stop="copy('reply')">Copy reply <kbd>r</kbd></button><button @click.stop="close(true)">Stay <kbd>↵</kbd></button></div></div>
+          </li>
+        </ol>
+        <p class="margin__keys"><kbd>↑↓</kbd> move <kbd>esc</kbd> back</p>
+      </nav>
+
+      <!-- m4 ANCHOR: a narrow numbered rail; the chosen step opens a card beside the thread with the full text to copy from -->
+      <nav v-if="open && variant === 'm4'" class="mg mg4" aria-label="Session timeline">
+        <ol>
+          <li v-for="(t, i) in all" :key="t.id" :class="{ on: sel === i }" :data-mark="mark(t)" @click="sel = i" @dblclick="close(true)"><b>{{ t.n }}</b><time>{{ clock(t.at) }}</time></li>
+        </ol>
+        <article class="mg4__card">
+          <div class="pre__k">You · {{ clock(cur.at) }}</div>
+          <p class="mg4__p">{{ cur.prompt }}</p>
+          <div class="pre__k">Claude</div>
+          <p class="mg4__r">{{ strip(cur.reply) }}</p>
+          <div v-if="cur.files.length" class="pre__files"><span v-for="f in cur.files" :key="f">{{ base(f) }}</span></div>
+          <div class="margin__acts"><button @click="copy('prompt')">Copy prompt <kbd>c</kbd></button><button @click="copy('reply')">Copy reply <kbd>r</kbd></button><button @click="close(true)">Stay <kbd>↵</kbd></button></div>
+        </article>
+      </nav>
+
       <div v-if="copied" class="lab-toast" role="status">{{ copied }}</div>
     </div>
   </div>
@@ -451,4 +510,37 @@ li.on .margin__q { color: var(--iu-text); -webkit-line-clamp: 4; }
 .margin__acts { display: flex; gap: 6px; margin-top: 7px; flex-wrap: wrap; }
 .margin__acts button { font-size: 11px; color: var(--iu-text-2); background: var(--iu-surface); border: 1px solid var(--iu-border); border-radius: 6px; padding: 2px 7px; cursor: pointer; }
 .margin__keys { position: absolute; bottom: 14px; left: 20px; margin: 0; font-size: 11px; color: var(--iu-text-muted); }
+
+/* margin family */
+.mg { position: absolute; top: 44px; bottom: 0; left: 0; z-index: 10; padding: 0 12px 0 20px; display: flex; flex-direction: column; justify-content: center; }
+.mg ol { list-style: none; margin: 0; padding: 0; }
+.mg .margin__q { margin: 0; font-size: 13px; line-height: 1.4; color: var(--iu-text-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } .mg li.on .margin__q { color: var(--iu-text); }
+.margin__acts { display: flex; gap: 6px; margin-top: 7px; flex-wrap: wrap; } .margin__acts button { font-size: 11px; color: var(--iu-text-2); background: var(--iu-surface); border: 1px solid var(--iu-border); border-radius: 6px; padding: 2px 7px; cursor: pointer; }
+/* m1 */
+.mg1 { width: 40px; padding: 24px 0 24px 18px; justify-content: stretch; transition: width 0.2s var(--iu-ease); } .mg1.open { width: 330px; background: linear-gradient(to right, var(--iu-ground) 60%, transparent); }
+.mg1 ol { position: relative; flex: 1; } .mg1 ol::before { content: ''; position: absolute; left: 3px; top: 0; bottom: 0; width: 1px; background: var(--iu-hairline); }
+.mg1 li { position: absolute; left: 0; display: flex; gap: 12px; align-items: center; cursor: pointer; white-space: nowrap; max-width: 300px; }
+.mg1__tick { width: 7px; height: 2px; border-radius: 1px; background: var(--iu-text-muted); opacity: 0.7; } .mg1 li:hover .mg1__tick { opacity: 1; width: 11px; }
+.mg1 li[data-mark='fail'] .mg1__tick { background: var(--iu-danger); } .mg1 li[data-mark='agent'] .mg1__tick { background: var(--iu-info); }
+.mg1 li.on .mg1__tick { background: var(--iu-text); width: 12px; height: 3px; opacity: 1; }
+.mg1__lab { font-size: 12px; color: var(--iu-text-muted); overflow: hidden; text-overflow: ellipsis; max-width: 260px; } .mg1 li.on .mg1__lab { color: var(--iu-text); } .mg1__lab time { margin-right: 6px; }
+.mg1__card { position: absolute; left: 20px; bottom: 16px; width: 290px; background: var(--iu-surface); border: 1px solid var(--iu-border); border-radius: 8px; padding: 8px 10px; box-shadow: var(--iu-shadow-popover); } .mg1__card p { margin: 0; font-size: 12px; line-height: 1.4; color: var(--iu-text-2); }
+/* m2 */
+.mg2 { width: 330px; background: linear-gradient(to right, var(--iu-ground) 60%, transparent); justify-content: flex-start; padding-top: 16px; }
+.mg2__q { background: transparent; border: 0; border-bottom: 1px solid var(--iu-hairline); color: var(--iu-text); font: inherit; font-size: 12px; padding: 6px 0; margin-bottom: 6px; outline: 0; }
+.mg2 ol { overflow: auto; }
+.mg2 li { display: grid; grid-template-columns: 16px 1fr auto; gap: 8px; align-items: baseline; padding: 5px 6px; margin-left: -6px; border-radius: 6px; font-size: 12px; cursor: pointer; color: var(--iu-text-muted); }
+.mg2 li b { font-weight: 400; text-align: right; font-size: 11px; } .mg2__t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mg2 li.on { background: var(--iu-surface); color: var(--iu-text); } .mg2 li[data-mark='fail'] b { color: var(--iu-danger); } .mg2 li[data-mark='agent'] b { color: var(--iu-info); }
+.mg2__open { grid-column: 1 / -1; } .mg2__open p { margin: 6px 0 0 24px; color: var(--iu-text-muted); line-height: 1.4; } .mg2__open .margin__acts { margin-left: 24px; }
+/* m3 */
+.mg3 { width: 330px; background: linear-gradient(to right, var(--iu-ground) 60%, transparent); }
+.mg3 li { display: flex; gap: 6px; align-items: center; min-height: 46px; cursor: pointer; opacity: 0.6; } .mg3 li.on, .mg3 li:hover { opacity: 1; } .mg3 svg { flex: none; margin-left: -8px; }
+/* m4 */
+.mg4 { width: auto; padding-left: 12px; flex-direction: row; align-items: center; gap: 12px; }
+.mg4 ol { display: flex; flex-direction: column; gap: 2px; }
+.mg4 li { display: flex; flex-direction: column; align-items: center; width: 40px; padding: 5px 0; border-radius: 6px; cursor: pointer; color: var(--iu-text-muted); } .mg4 li b { font-weight: 500; font-size: 13px; } .mg4 li time { font-size: 10px; }
+.mg4 li.on { background: var(--iu-raised); color: var(--iu-text); box-shadow: inset 2px 0 0 var(--iu-text-2); } .mg4 li[data-mark='fail'] b { color: var(--iu-danger); } .mg4 li[data-mark='agent'] b { color: var(--iu-info); }
+.mg4__card { width: 280px; align-self: center; background: var(--iu-surface); border: 1px solid var(--iu-border); border-radius: 10px; padding: 12px 14px; box-shadow: var(--iu-shadow-popover); }
+.mg4__p { margin: 0 0 12px; font-size: 13px; line-height: 1.45; color: var(--iu-text); user-select: text; } .mg4__r { margin: 0 0 10px; font-size: 12px; line-height: 1.45; color: var(--iu-text-muted); user-select: text; }
 </style>
