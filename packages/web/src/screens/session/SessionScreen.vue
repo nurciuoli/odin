@@ -53,6 +53,8 @@ import NativeControls from '@/screens/shared/NativeControls.vue'
 import SessionMessageQueue from './SessionMessageQueue.vue'
 import SessionHeader from './SessionHeader.vue'
 import SessionPrompts from './SessionPrompts.vue'
+import HandoffPrompt from './HandoffPrompt.vue'
+import { handoffCard } from './handoff'
 import { CHAT_MIN, PREVIEW_MIN, detailsFit, setLayoutDemand } from '@/app/layout'
 import SessionSide from './SessionSide.vue'
 import SessionThread from './SessionThread.vue'
@@ -745,8 +747,11 @@ function onDeleted() {
                 :slash-commands="view.detail.slashCommands"
                 :context="context"
                 :usage="{ costUsd: session.metrics.costUsd, tokens: session.metrics.tokens }"
-                :replaced="session.pending.length > 0 || rewindShown"
-                :replacement-key="session.pending[0]?.id ?? (rewindShown ? 'rewind' : null)"
+                :replaced="session.pending.length > 0 || rewindShown || handoffCard === session.id"
+                :replacement-key="
+                  session.pending[0]?.id ??
+                  (rewindShown ? 'rewind' : handoffCard === session.id ? 'handoff' : null)
+                "
                 :queued="session.messageQueue.messages.filter(m => m.state === 'queued').length"
                 :queue-blocked="session.messageQueue.messages.some(m => m.state === 'uncertain')"
                 @sent="setRecord"
@@ -764,6 +769,11 @@ function onDeleted() {
                     @close="rewindOpen = false"
                     @forked="onForked"
                     @restored="onRestored"
+                  />
+                  <HandoffPrompt
+                    v-else-if="!session.pending.length && handoffCard === session.id"
+                    :session-id="session.id"
+                    :harness="session.harness"
                   />
                   <SessionPrompts
                     v-else

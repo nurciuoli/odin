@@ -738,6 +738,16 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
     return s
   }
 
+  const harnessName = (id: string) => db.settings.harnesses.find(h => h.id === id)?.name ?? id
+
+  function handoffTarget(s: Session, harnessId: string) {
+    const target = db.settings.harnesses.find(h => h.id === harnessId)
+    if (!target) throw new ApiRequestError(400, `unknown harness ${harnessId}`)
+    if (harnessId === s.harness)
+      throw new ApiRequestError(400, "choose a different harness than the session's own")
+    return target
+  }
+
   // ── checkpoints: one per user message of the transcript, with made-up but stable file counts ──
   const undoCheckpoints = new Map<string, Checkpoint[]>()
   function checkpointsOf(id: string): Checkpoint[] {
@@ -1600,6 +1610,84 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
         emit({ type: 'session.updated', session: s })
         if (req.prompt) userTurn(s.id, req.prompt)
         return s
+      }),
+    handoffPreview: (id, harnessId) =>
+      respond(() => {
+        const s = sessionOf(id)
+        const target = handoffTarget(s, harnessId)
+        const task = firstPrompt(id) || s.title
+        const todos = db.todos[id] ?? []
+        const lines = [
+          `# Handoff from ${harnessName(s.harness)}`,
+          '',
+          `You are taking over a coding session that was started on ${harnessName(s.harness)}, and you are running on ${target.name}. You have none of its conversation history, only this briefing. The files in the working directory are the real, current state: check them before relying on anything below, then carry on with the task.`,
+          '',
+          '## Task',
+          '',
+          task,
+          ...(todos.length
+            ? [
+                '',
+                '## Plan',
+                '',
+                ...todos.map(
+                  t =>
+                    `- [${t.status === 'completed' ? 'x' : t.status === 'in_progress' ? '~' : ' '}] ${t.content}`,
+                ),
+              ]
+            : []),
+          '',
+          '## Working tree',
+          '',
+          s.branch ? `Branch: \`${s.branch}\`` : 'No branch.',
+          '',
+          '## Source',
+          '',
+          `Session "${s.title}" on ${harnessName(s.harness)}${s.model ? ` (${s.model})` : ''}, Odin session ${s.id}.`,
+        ]
+        return {
+          brief: lines.join('\n'),
+          truncated: false,
+          source: { harness: s.harness, model: s.model, title: s.title },
+          target: {
+            harness: target.id,
+            name: target.name,
+            available: target.available,
+            note: target.note,
+            models: db.models,
+          },
+          files: [],
+          branch: s.branch,
+        }
+      }),
+    handoffSession: (id, req) =>
+      respond(() => {
+        const parent = sessionOf(id)
+        const target = handoffTarget(parent, req.harness)
+        if (parent.state === 'running' || parent.state === 'waiting')
+          throw new ApiRequestError(409, 'stop the session before handing it off')
+        if (!target.available) throw new ApiRequestError(409, `${target.name} is not available`)
+        const brief = req.brief?.trim()
+        if (req.brief !== undefined && !brief)
+          throw new ApiRequestError(400, 'brief must be a non-empty string')
+        const s = newSession(projectOf(parent.project), {
+          title: req.title?.trim() || parent.title,
+          harness: target.id,
+          projects: [...parent.projects],
+          parentId: parent.id,
+          handoff: { from: parent.id, harness: parent.harness, at: nowIso() },
+          model: req.model ?? null,
+          permissionMode: req.permissionMode ?? parent.permissionMode,
+          tags: [...parent.tags],
+          workspace: parent.workspace,
+          cwd: parent.cwd,
+          branch: parent.branch,
+        })
+        emit({ type: 'session.updated', session: s })
+        userTurn(s.id, { text: brief || firstPrompt(id) })
+        if (req.endSource !== false)
+          harnessEvent(id, { type: 'exit', outcome: 'closed', error: null })
+        return sessionOf(s.id)
       }),
     getNativeCatalog: () =>
       respond(() => ({

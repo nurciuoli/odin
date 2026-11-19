@@ -485,6 +485,20 @@ AppSettings.defaultWorktree`.
   `filter.parentId` is given; `counts()` and project session counts leave them out. `session.updated` events still fire
   for them (clients filter on `aside`). Promote: `PATCH { aside: false }` (optionally with a `title`) turns it into an
   ordinary session; `aside: true` on a PATCH is a 400 (a session can't be demoted).
+- **Handoff** (`POST /:id/handoff`, `HandoffRequest`; `GET /:id/handoff?harness=` previews as `HandoffPreview`): a new
+  session on another harness that continues this one. The target must be a key of `Deps.harnesses`, different from
+  the source's, available (`check()`), and support the request's `permissionMode`, attachments and the session's
+  additional directories (400 otherwise; 409 when unavailable). Conversations are never converted between
+  harnesses: the new session is an ordinary `harness.start({ cwd, prompt })` whose first message is the briefing
+  (`HandoffRequest.brief`, else the generated one). The source must be `idle`, `ended` or `failed`: a `running` or
+  `waiting` source is 409, since both would share one checkout (the preview works in any state). The new session
+  gets a fresh id and the source's project, projects, cwd, workspace, branch, tags and saved MCP selection; model
+  and permission mode as the request says; `runtimeOptions` and effort are not copied (harness-specific). It sets
+  `parentId` and `Session.handoff = { from, harness, at }` (stored in `sessions.handoff`, JSON). `endSource` (default
+  true) ends the source after the new session is recorded. Failure to start leaves the source untouched and the new
+  record `failed`. The briefing is built by Odin from the source's stored transcript, todos and `git status` / `git
+  diff --stat`: no model call, 24 KiB cap, sections Task, Where it stands, Plan, Recent conversation, Working tree,
+  Source (docs/plans/harness-handoff.md). Metrics of the new session count only its own work.
 - **Delete**: closes, `harness.delete`, removes the record (cascade). A native deletion failure returns 502 and
   preserves the record for retry; drivers accept already-absent native sessions. Worktrees are kept (the branch may hold work).
 - **External sessions**: `discover(project)` imports `harness.list(path)` entries Odin has no record of
@@ -1119,6 +1133,8 @@ The main routes; each module's `routes.ts` has the full list. All JSON. Errors: 
 | POST `/api/sessions/:id/interrupt` | 204 |
 | POST `/api/sessions/:id/end` | `Session` |
 | POST `/api/sessions/:id/fork` (`ForkSessionRequest`) | `Session` (201) |
+| GET `/api/sessions/:id/handoff?harness=` | `HandoffPreview` |
+| POST `/api/sessions/:id/handoff` (`HandoffRequest`) | `Session` (201) |
 | GET `/api/sessions/:id/checkpoints` | `Checkpoint[]` (oldest first) |
 | GET `/api/sessions/:id/checkpoints/:cid/diff?against=turn\|current` | `CheckpointDiff` |
 | POST `/api/sessions/:id/checkpoints/:cid/restore` (`RestoreCheckpointRequest`) | `RestoreCheckpointResult` |

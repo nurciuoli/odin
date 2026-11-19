@@ -22,6 +22,8 @@ import type {
   InstallResult,
   LibraryAsset,
   McpOAuthStatus,
+  HandoffPreview,
+  HandoffRequest,
   MetricsQuery,
   MetricsRow,
   MessageQueue,
@@ -172,6 +174,10 @@ export interface Api {
   interruptSession(id: string): Promise<void>
   endSession(id: string): Promise<Session>
   forkSession(id: string, req: ForkSessionRequest): Promise<Session>
+  /** The briefing a handoff to `harness` would send, and whether the target can run. Starts nothing. */
+  handoffPreview(id: string, harness: string): Promise<HandoffPreview>
+  /** A new session on another harness, same checkout, started with a briefing. 409 while the source runs or waits. */
+  handoffSession(id: string, req: HandoffRequest): Promise<Session>
   // checkpoints (docs/contracts.md#checkpoints)
   listCheckpoints(id: string): Promise<import('@odin/shared/api').Checkpoint[]>
   checkpointDiff(

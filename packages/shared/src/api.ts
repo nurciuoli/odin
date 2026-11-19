@@ -422,6 +422,16 @@ export interface PullRef {
   merged: boolean;
 }
 
+/** Where a handed-off session came from. docs/contracts.md#sessions. */
+export interface SessionHandoff {
+  /** The source session's id. */
+  from: string;
+  /** The harness the source ran on. */
+  harness: HarnessId;
+  /** When the handoff was made (ISO). */
+  at: string;
+}
+
 export interface Session {
   /** Native runtime controls, persisted across resume and fork. */
   runtimeOptions?: RuntimeOptions;
@@ -456,8 +466,10 @@ export interface Session {
   agentVersion: string | null;
   /** Historical template attribution; null for new sessions. */
   templateId: string | null;
-  /** The session this one was forked from. */
+  /** The session this one was forked from. A handoff sets this too, so tree views show the link. */
   parentId: string | null;
+  /** Set when this session continues another one on a different harness. Absent or null otherwise. */
+  handoff?: SessionHandoff | null;
   /**
    * A side thread: a fork of `parentId` for a question asked during that session. Left out of session lists, counts,
    * Home and the sidebar unless asked for (`SessionFilter.aside` / `parentId`); shown beside its parent.
@@ -680,6 +692,34 @@ export interface RestoreCheckpointResult {
   archivedSessionId: string | null;
   /** The `pre-restore` checkpoint holding the files as they were before the restore. Null when files were not restored. */
   undoCheckpointId: string | null;
+}
+
+/** GET /api/sessions/:id/handoff?harness=: what a handoff to `harness` would send, without doing it. */
+export interface HandoffPreview {
+  /** The generated briefing (Markdown), at most 24 KiB. Built without a model call. */
+  brief: string;
+  /** True when a section was cut to fit. */
+  truncated: boolean;
+  source: { harness: HarnessId; model: string | null; title: string };
+  target: { harness: HarnessId; name: string; available: boolean; note: string | null; models: ModelInfo[] };
+  /** Paths from `git status` in the session's working directory (display only; empty outside git). */
+  files: string[];
+  branch: string | null;
+}
+
+/** POST /api/sessions/:id/handoff: a new session on `harness`, same cwd and branch, started with the briefing. */
+export interface HandoffRequest {
+  harness: HarnessId;
+  /** The first message of the new session. Default: the generated briefing (so a client can edit the preview). */
+  brief?: string;
+  /** Default: the target harness's default model. */
+  model?: string;
+  /** Default: the source's mode when the target supports it, else the target's default. */
+  permissionMode?: PermissionMode;
+  /** Default: the source's title. */
+  title?: string;
+  /** End the source session (default true). */
+  endSource?: boolean;
 }
 
 /** PATCH /api/sessions/:id */
