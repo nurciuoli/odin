@@ -33,13 +33,15 @@ export function createHttpApi(options: HttpApiOptions = {}): Api {
     }
     if (!res.ok) {
       let message = res.statusText || `Request failed (${res.status})`
+      let code: string | undefined
       try {
-        const parsed = (await res.json()) as Partial<ApiError>
+        const parsed = (await res.json()) as Partial<ApiError> & { code?: unknown }
         if (typeof parsed.error === 'string' && parsed.error) message = parsed.error
+        if (typeof parsed.code === 'string') code = parsed.code
       } catch {
         // not JSON: keep the status text
       }
-      throw new ApiRequestError(res.status, message)
+      throw new ApiRequestError(res.status, message, code)
     }
     if (res.status === 204) return undefined as T
     const text = await res.text()
@@ -56,6 +58,8 @@ export function createHttpApi(options: HttpApiOptions = {}): Api {
   const project = (name: string) => `/api/projects/${seg(name)}`
 
   const session = (id: string) => `/api/sessions/${seg(id)}`
+  const gitBase = (t: { kind: 'session' | 'project'; id: string }) =>
+    `${t.kind === 'session' ? session(t.id) : project(t.id)}/git`
   const asset = (kind: string, id: string) => `/api/library/${seg(kind)}/${seg(id)}`
   const flag = (v: boolean | undefined) => (v === undefined ? undefined : String(v))
 
@@ -159,6 +163,32 @@ export function createHttpApi(options: HttpApiOptions = {}): Api {
     forkSession: (id, req) => send('POST', `${session(id)}/fork`, req),
     handoffPreview: (id, harness) => get(`${session(id)}/handoff${query({ harness })}`),
     handoffSession: (id, req) => send('POST', `${session(id)}/handoff`, req),
+    gitStatus: t => get(`${gitBase(t)}/status`),
+    gitDiff: (t, path, staged) =>
+      get(`${gitBase(t)}/diff${query({ path, staged: staged ? '1' : undefined })}`),
+    gitStage: (t, req) => send('POST', `${gitBase(t)}/stage`, req),
+    gitUnstage: (t, req) => send('POST', `${gitBase(t)}/unstage`, req),
+    gitDiscard: (t, req) => send('POST', `${gitBase(t)}/discard`, req),
+    gitCommit: (t, req) => send('POST', `${gitBase(t)}/commit`, req),
+    gitLog: (t, opts = {}) =>
+      get(
+        `${gitBase(t)}/log${query({
+          path: opts.path,
+          ref: opts.ref,
+          limit: opts.limit === undefined ? undefined : String(opts.limit),
+          skip: opts.skip ? String(opts.skip) : undefined,
+        })}`,
+      ),
+    gitShow: (t, sha, path) => get(`${gitBase(t)}/show${query({ sha, path })}`),
+    gitBlame: (t, path, rev) => get(`${gitBase(t)}/blame${query({ path, rev })}`),
+    gitBranches: t => get(`${gitBase(t)}/branches`),
+    gitCheckout: (t, req) => send('POST', `${gitBase(t)}/checkout`, req),
+    gitFetch: t => send('POST', `${gitBase(t)}/fetch`),
+    gitPull: (t, req) => send('POST', `${gitBase(t)}/pull`, req),
+    gitPush: (t, req) => send('POST', `${gitBase(t)}/push`, req),
+    gitStashes: t => get(`${gitBase(t)}/stashes`),
+    gitStash: (t, req) => send('POST', `${gitBase(t)}/stash`, req),
+    gitStashAction: (t, action, ref) => send('POST', `${gitBase(t)}/stash/${action}`, { ref }),
     listCheckpoints: id => get(`${session(id)}/checkpoints`),
     checkpointDiff: (id, checkpointId, against) =>
       get(

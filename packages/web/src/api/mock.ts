@@ -50,6 +50,7 @@ import { MOCK_FILE_MAP, mockFileText } from './mock.filemap'
 import { createFixtures, fakeHash, fakeUuid, localDay, type Fixtures } from './fixtures'
 import { ApiRequestError } from './types'
 import { mockNotebooks } from './mock-notebooks'
+import { mockGit } from './mock-git'
 
 export interface MockApiOptions {
   /** Simulated round trip in ms. 0 resolves on the next microtask (tests). */
@@ -939,6 +940,7 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
   })
 
   const api: MockApi = {
+    ...mockGit({ emit, sessions: () => db.sessions }),
     ...mockNotebooks({
       project: projectOf,
       session: sessionOf,

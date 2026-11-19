@@ -36,6 +36,7 @@ import { createSettingsService } from "./settings/service.ts";
 import { getToolPathSource, setToolPathSource } from "./tools/resolve.ts";
 import { createFilesService } from "./files/service.ts";
 import { createCheckpointsService } from "./checkpoints/service.ts";
+import { createGitService } from "./git/service.ts";
 import { createNotebooksService } from "./notebooks/service.ts";
 
 export interface AppOptions {
@@ -108,6 +109,7 @@ export function createApp(options: AppOptions): App {
   services.ingest = createIngestService(deps, services);
   services.metrics = createMetricsService(deps, services);
   services.checkpoints = createCheckpointsService(deps, services);
+  services.git = createGitService(deps, services);
   services.sessions = createSessionsService(deps, services);
   services.files = createFilesService(deps, services);
   services.notebooks = createNotebooksService(deps, services);
@@ -141,7 +143,7 @@ export function createApp(options: AppOptions): App {
         res.destroy();
         return;
       }
-      if (err instanceof HttpError) return sendError(res, err.status, err.message);
+      if (err instanceof HttpError) return sendError(res, err.status, err.message, err.code);
       console.error(`${req.method} ${url.pathname} failed:`, err);
       sendError(res, 500, "internal error");
     }

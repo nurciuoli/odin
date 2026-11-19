@@ -340,7 +340,7 @@ Subagents (`invoke_subagent`) and background tasks map to Odin task activities. 
   `git worktree add -b <branch> <path> <base>` (base: `origin/<default>` when it exists, else `<default>`); an existing
   branch is checked out instead of created; an existing Odin worktree for the branch is reused. `resolveCwd` maps
   paths inside a project's repo or its Odin worktrees to the project. Odin never commits, resets, pushes or
-  checks out in the main clone.
+  checks out in the main clone on its own: only the [git routes](#git) do, and only when the user asks.
 - `dirtyFiles` = files reported through `noteWritten` that `git status --porcelain` still shows changed.
 - The route builds `ProjectSummary`/`ProjectDetail` from `projects.detail()` plus `sessions.counts(name)`,
   `sync.status` and `activity`.
@@ -616,7 +616,7 @@ only on harnesses that do (the fake, for now); the UI follows (`docs/plans/check
 - **Files** are snapshotted by core for every harness, in a bare git repository Odin owns at
   `<home>/checkpoints/<project>.git` (one per project, shared by its worktrees and sessions so a fork can use its
   parent's trees), driven as `git --git-dir=<store> --work-tree=<cwd>` with argv
-  (never a shell string). The user's own `.git`, index, refs and hooks are never touched, so "Odin never commits, resets,
+  (never a shell string). The user's own `.git`, index, refs and hooks are never touched by checkpoints, so "Odin never commits, resets,
   pushes" still holds. The session's `cwd` only: `additionalDirectories` are not snapshotted. Nested repositories,
   submodules and files over 5 MB are skipped; over 20,000 files or 10 s the checkpoint is `snapshot: "skipped"`.
   Ignored files (`.gitignore`) are neither captured nor deleted by a restore.
@@ -643,6 +643,40 @@ only on harnesses that do (the fake, for now); the UI follows (`docs/plans/check
   500 MB); the oldest are pruned. Deleting a session or project removes its checkpoints and unreferenced objects.
 - Checkpoints are keyed by Odin session id and transcript message id, not by harness, so a handoff to another harness
   can anchor on one.
+
+## Git
+
+Status: implemented in core (`src/git`) with the Changes panel in the session's preview. Types in
+`packages/shared/src/git.ts`.
+
+- **Targets.** Every route exists twice: `/api/sessions/:id/git/…` works on the session's `cwd` (its worktree), and
+  `/api/projects/:name/git/…` on the project's folder. `GitTarget` names one in the API client and in events.
+- **The git CLI** through `execFile` with argv (never a shell), `GIT_TERMINAL_PROMPT=0`, `GIT_OPTIONAL_LOCKS=0` and a
+  timeout (15 s, 120 s for network and commit). Paths from the client are repo-relative, may not be absolute, contain
+  `..` or start with `-`, and always follow `--`. Branch names follow `validBranchName`; shas are hex.
+- **Writes** (stage, unstage, discard, commit, checkout, fetch, pull, push, stash) are queued per checkout and each one
+  emits `git.changed { target }`. They happen only on an explicit user action; nothing here runs on its own.
+  The client also refetches status on the session's `checkpoint.updated` and `session.updated`, so agent edits show up.
+- **Status** is `git status --porcelain=v2 --branch` plus `--numstat` counts; a folder that isn't a repo answers
+  `repo: false` (other routes: 409 `not-a-repo`).
+- **Hunks** have ids built from their start lines and a hash of their lines. Stage, unstage and discard take whole
+  `paths`, or `hunks: [{ path, hunkId, lines? }]`; core re-reads the diff, finds the hunk (409 `conflict` when it
+  changed) and applies a one-hunk patch with `git apply --recount` (`--cached` to stage, `--cached --reverse` to
+  unstage, `--reverse` to discard). `lines` keeps only those changed lines of the hunk. Added, deleted and binary files
+  are staged whole.
+- **Discard** of whole files stashes them first (`odin-discard: …`, untracked files included), so the UI offers Undo
+  (pop `stash@{0}`). Discarding a hunk edits the file in place.
+- **Commit** uses the user's own git identity and hooks (no `--no-verify`). Messages drafted from a session end with
+  `Odin-Session: <id>` and `Odin-Turns: <n>[-<m>]` trailers, which log and blame read back as `sessionId` and `turns`.
+- **Checkout** refuses with 409 `dirty-tree` when tracked files are changed, unless `dirty` is `stash` (an auto-stash
+  `odin-autostash: <old branch>`, put back when you return to that branch with a clean tree) or `carry`. A remote
+  branch name checks out (or creates) its local tracking branch. A branch checked out in another worktree is 409
+  `checked-out-elsewhere`; `GET …/branches` names that worktree and its Odin session.
+- **Pull** takes `strategy` `ff-only` (default), `rebase` or `merge`, always with `--autostash`; a fast-forward that
+  can't happen is 409 `diverged`. **Push** sets the upstream to `origin/<branch>` when there is none and only ever
+  force-pushes with `--force-with-lease`. Network calls use the user's own credentials; failures to sign in are 409
+  `auth`.
+- **Errors** carry `code` next to `error` (`GitErrorCode`); other git failures are 400 with git's first line.
 
 ## Launch
 
@@ -1157,11 +1191,19 @@ is a client like a browser, holds no application state, and the web app never re
 
 ## REST
 
-The main routes; each module's `routes.ts` has the full list. All JSON. Errors: `{ error }` with a 4xx/5xx status. `204` for empty bodies.
+The main routes; each module's `routes.ts` has the full list. All JSON. Errors: `{ error }` with a 4xx/5xx status (plus `code` where a route documents one). `204` for empty bodies.
 
 | Route | Returns |
 |---|---|
 | GET `/api/health` | `{ ok: true, app: "odin", version, instance, now }` |
+| GET `/api/{sessions/:id,projects/:name}/git/status` | `GitStatus` |
+| GET `…/git/diff?path=&staged=1` | `GitFileDiff` |
+| POST `…/git/stage`, `…/git/unstage`, `…/git/discard` (`GitPatchRequest`) | `GitStatus` |
+| POST `…/git/commit` (`GitCommitRequest`) | `GitCommitResult` |
+| GET `…/git/log?path=&ref=&limit=&skip=` · `…/git/show?sha=&path=` · `…/git/blame?path=&rev=` | `GitLog` · `GitCommitDetail` · `GitBlame` |
+| GET `…/git/branches` · POST `…/git/checkout` (`GitCheckoutRequest`) | `GitBranches` · `GitCheckoutResult` |
+| POST `…/git/fetch`, `…/git/pull` (`GitPullRequest`), `…/git/push` (`GitPushRequest`) | `GitSyncResult` |
+| GET `…/git/stashes` · POST `…/git/stash` (`GitStashRequest`) · POST `…/git/stash/{apply,pop,drop}` (`{ ref }`) | `GitStash[]` · `GitStatus` |
 | GET `/api/projects` | `ProjectSummary[]` |
 | POST `/api/projects` (`CreateProjectRequest`) | `ProjectDetail` (201) |
 | GET `/api/projects/:name` | `ProjectDetail` |
@@ -1231,6 +1273,7 @@ The main routes; each module's `routes.ts` has the full list. All JSON. Errors: 
 - The client reconnects with backoff when nothing arrives for `STALE_MS`, and refetches REST state on reconnect.
 - `session.updated` carries the full record; `session.event` carries one `HarnessEvent` for live views;
   `project.updated` means "refetch this project". `checkpoint.updated` carries one `Checkpoint` (merge by `id`).
+  `git.changed { target }` means "refetch git status for that session or project".
 
 ## SQLite
 

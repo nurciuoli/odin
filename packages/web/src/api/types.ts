@@ -57,6 +57,7 @@ import type {
   UserMessage,
 } from '@odin/shared/api'
 import type { ServerEvent } from '@odin/shared/events'
+import type { GitTarget } from '@odin/shared/git'
 import type { TaskHistory } from '@odin/shared/harness'
 
 export interface Api {
@@ -182,6 +183,64 @@ export interface Api {
   handoffPreview(id: string, harness: string): Promise<HandoffPreview>
   /** A new session on another harness, same checkout, started with a briefing. 409 while the source runs or waits. */
   handoffSession(id: string, req: HandoffRequest): Promise<Session>
+  // git (docs/contracts.md#git): a session's worktree or a project's folder
+  gitStatus(t: GitTarget): Promise<import('@odin/shared/git').GitStatus>
+  gitDiff(
+    t: GitTarget,
+    path: string,
+    staged: boolean,
+  ): Promise<import('@odin/shared/git').GitFileDiff>
+  gitStage(
+    t: GitTarget,
+    req: import('@odin/shared/git').GitPatchRequest,
+  ): Promise<import('@odin/shared/git').GitStatus>
+  gitUnstage(
+    t: GitTarget,
+    req: import('@odin/shared/git').GitPatchRequest,
+  ): Promise<import('@odin/shared/git').GitStatus>
+  gitDiscard(
+    t: GitTarget,
+    req: import('@odin/shared/git').GitPatchRequest,
+  ): Promise<import('@odin/shared/git').GitStatus>
+  gitCommit(
+    t: GitTarget,
+    req: import('@odin/shared/git').GitCommitRequest,
+  ): Promise<import('@odin/shared/git').GitCommitResult>
+  gitLog(
+    t: GitTarget,
+    opts?: { path?: string; ref?: string; limit?: number; skip?: number },
+  ): Promise<import('@odin/shared/git').GitLog>
+  gitShow(
+    t: GitTarget,
+    sha: string,
+    path?: string,
+  ): Promise<import('@odin/shared/git').GitCommitDetail>
+  gitBlame(t: GitTarget, path: string, rev?: string): Promise<import('@odin/shared/git').GitBlame>
+  gitBranches(t: GitTarget): Promise<import('@odin/shared/git').GitBranches>
+  gitCheckout(
+    t: GitTarget,
+    req: import('@odin/shared/git').GitCheckoutRequest,
+  ): Promise<import('@odin/shared/git').GitCheckoutResult>
+  gitFetch(t: GitTarget): Promise<import('@odin/shared/git').GitSyncResult>
+  gitPull(
+    t: GitTarget,
+    req: import('@odin/shared/git').GitPullRequest,
+  ): Promise<import('@odin/shared/git').GitSyncResult>
+  gitPush(
+    t: GitTarget,
+    req: import('@odin/shared/git').GitPushRequest,
+  ): Promise<import('@odin/shared/git').GitSyncResult>
+  gitStashes(t: GitTarget): Promise<import('@odin/shared/git').GitStash[]>
+  gitStash(
+    t: GitTarget,
+    req: import('@odin/shared/git').GitStashRequest,
+  ): Promise<import('@odin/shared/git').GitStatus>
+  gitStashAction(
+    t: GitTarget,
+    action: 'apply' | 'pop' | 'drop',
+    ref: string,
+  ): Promise<import('@odin/shared/git').GitStatus>
+
   // checkpoints (docs/contracts.md#checkpoints)
   listCheckpoints(id: string): Promise<import('@odin/shared/api').Checkpoint[]>
   checkpointDiff(
@@ -272,8 +331,11 @@ export interface Api {
 
 export class ApiRequestError extends Error {
   readonly status: number
-  constructor(status: number, message: string) {
+  /** The server's machine-readable `code`, when it sent one (git routes: GitErrorCode). */
+  readonly code: string | undefined
+  constructor(status: number, message: string, code?: string) {
     super(message)
     this.status = status
+    this.code = code
   }
 }

@@ -35,6 +35,7 @@ const EVENT_TYPES: Record<ServerEventType, true> = {
   'session.event': true,
   'session.queue': true,
   'checkpoint.updated': true,
+  'git.changed': true,
   'artifact.updated': true,
   'library.updated': true,
   'install.updated': true,

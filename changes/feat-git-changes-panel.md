@@ -1,0 +1,1 @@
+- A Changes tab in the session's preview shows staged and unstaged files with their diffs. Stage, unstage or revert whole files, single hunks or picked lines, commit with a message drafted from the session, and group the changes by the turn that made them.

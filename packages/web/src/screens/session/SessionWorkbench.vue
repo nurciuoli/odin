@@ -6,6 +6,7 @@ import { IuButton } from '@/components/Button'
 import { IuIcon } from '@/components/Icon'
 import { IuTabs } from '@/components/Tabs'
 import SessionEnvironment from './SessionEnvironment.vue'
+import ChangesPanel from '@/screens/git/ChangesPanel.vue'
 import type SessionFilesType from './SessionFiles.vue'
 import type { PreviewView } from './workbench'
 import type { CellRef } from './fileActivity'
@@ -16,11 +17,18 @@ const props = withDefaults(
 )
 const emit = defineEmits<{ close: []; 'update:width': [width: number] }>()
 const tab = defineModel<PreviewView>('tab', { required: true })
-const filesTab = ref<'files' | 'environment'>('files')
+const filesTab = ref<'files' | 'changes' | 'environment'>('files')
 const filesTabs = [
   { id: 'files', label: 'Files' },
+  { id: 'changes', label: 'Changes' },
   { id: 'environment', label: 'Environment' },
 ]
+const gitTarget = computed(() => ({ kind: 'session' as const, id: props.session.id }))
+/** Opens the Changes tab (the header's changed-files count). */
+function openChanges() {
+  tab.value = 'files'
+  filesTab.value = 'changes'
+}
 const filePanel = ref<InstanceType<typeof SessionFilesType>>()
 const pendingPath = ref<string | null>(null)
 const pendingCell = ref<CellRef | null>(null)
@@ -141,7 +149,7 @@ watch(
   },
 )
 onBeforeUnmount(stopDrag)
-defineExpose({ openFile, openCell })
+defineExpose({ openFile, openCell, openChanges })
 </script>
 <template>
   <div
@@ -203,6 +211,24 @@ defineExpose({ openFile, openCell })
               :session="session"
               @hide="emit('close')"
               @open-environment="filesTab = 'environment'"
+            />
+          </div>
+          <div
+            v-if="filesTab === 'changes'"
+            id="session-files-tabs-panel-changes"
+            class="session-workbench__file-tab"
+            role="tabpanel"
+            aria-labelledby="session-files-tabs-tab-changes"
+          >
+            <ChangesPanel
+              :target="gitTarget"
+              :session="session"
+              @open="
+                path => {
+                  filesTab = 'files'
+                  openFile(path)
+                }
+              "
             />
           </div>
           <div

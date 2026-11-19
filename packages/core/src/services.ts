@@ -326,6 +326,7 @@ export interface SettingsService {
 
 export interface Services {
   checkpoints: CheckpointsService;
+  git: GitService;
   notebooks: NotebooksService;
   files: FilesService;
   projects: ProjectsService;
@@ -343,7 +344,33 @@ export interface Services {
 }
 
 export type ServiceName = keyof Services;
-export const SERVICE_NAMES: ServiceName[] = ["checkpoints", "notebooks", "files", "projects", "sessions", "launch", "artifacts", "library", "agentContext", "sync", "ingest", "metrics", "settings", "secrets", "mcpOAuth"];
+export const SERVICE_NAMES: ServiceName[] = ["checkpoints", "git", "notebooks", "files", "projects", "sessions", "launch", "artifacts", "library", "agentContext", "sync", "ingest", "metrics", "settings", "secrets", "mcpOAuth"];
+
+// ── git (src/git) ───────────────────────────────────────────────────────────
+
+type GitT = import("@odin/shared/git").GitTarget;
+/** Local git on a session's worktree or a project's folder. Writes are queued per checkout and emit `git.changed`. */
+export interface GitService {
+  /** Never throws for a folder that isn't a repo: answers `repo: false`. */
+  status(t: GitT): Promise<import("@odin/shared/git").GitStatus>;
+  diff(t: GitT, path: string, staged: boolean): Promise<import("@odin/shared/git").GitFileDiff>;
+  stage(t: GitT, req: import("@odin/shared/git").GitPatchRequest): Promise<import("@odin/shared/git").GitStatus>;
+  unstage(t: GitT, req: import("@odin/shared/git").GitPatchRequest): Promise<import("@odin/shared/git").GitStatus>;
+  /** Whole files go to a stash first (`odin-discard: …`), so a discard can be undone. */
+  discard(t: GitT, req: import("@odin/shared/git").GitPatchRequest): Promise<import("@odin/shared/git").GitStatus>;
+  commit(t: GitT, req: import("@odin/shared/git").GitCommitRequest): Promise<import("@odin/shared/git").GitCommitResult>;
+  log(t: GitT, opts: { path?: string; ref?: string; limit?: number; skip?: number }): Promise<import("@odin/shared/git").GitLog>;
+  show(t: GitT, sha: string, path?: string): Promise<import("@odin/shared/git").GitCommitDetail>;
+  blame(t: GitT, path: string, rev?: string): Promise<import("@odin/shared/git").GitBlame>;
+  branches(t: GitT): Promise<import("@odin/shared/git").GitBranches>;
+  checkout(t: GitT, req: import("@odin/shared/git").GitCheckoutRequest): Promise<import("@odin/shared/git").GitCheckoutResult>;
+  fetch(t: GitT): Promise<import("@odin/shared/git").GitSyncResult>;
+  pull(t: GitT, req: import("@odin/shared/git").GitPullRequest): Promise<import("@odin/shared/git").GitSyncResult>;
+  push(t: GitT, req: import("@odin/shared/git").GitPushRequest): Promise<import("@odin/shared/git").GitSyncResult>;
+  stashes(t: GitT): Promise<import("@odin/shared/git").GitStash[]>;
+  stash(t: GitT, req: import("@odin/shared/git").GitStashRequest): Promise<import("@odin/shared/git").GitStatus>;
+  stashAction(t: GitT, action: "apply" | "pop" | "drop", ref: string): Promise<import("@odin/shared/git").GitStatus>;
+}
 
 // ── checkpoints (src/checkpoints) ──────────────────────────────────────────
 
