@@ -5,7 +5,7 @@
 // built to that contract.
 import { computed } from 'vue'
 import { IuIcon } from '@/components/Icon'
-import { IuRuneMark } from '@/components/RuneMark'
+import type { IconName } from '@/components/Icon'
 
 const props = withDefaults(
   defineProps<{
@@ -14,22 +14,16 @@ const props = withDefaults(
     title: string
     /** one sentence; use the default slot instead for richer (e.g. mixed-mono) copy */
     body?: string
-    /** the quiet Norse line under the title; a stable pick per kind by default, or your own, or false for none */
-    proverb?: string | false
     /** show the small kind label under the content; turn off where it only adds noise */
     eyebrow?: boolean
   }>(),
-  { kind: 'first-run', eyebrow: true, proverb: undefined },
+  { kind: 'first-run', eyebrow: true },
 )
 
-// Paraphrased from the Hávamál. One is picked per title, so a given screen always shows the same line.
-const PROVERBS: Record<typeof props.kind, string[]> = {
-  'first-run': [
-    'Fire is best for the sons of men. Start one.',
-    'Moderately wise should each man be. Begin small.',
-  ],
-  filtered: ['Ask well and you will be answered well.', 'The wise man asks, then looks again.'],
-  cleared: ['Deeds live on after the doer. Well done.', 'Praise the day at evening.'],
+const ICON: Record<typeof props.kind, IconName> = {
+  'first-run': 'terminal',
+  filtered: 'filter',
+  cleared: 'check',
 }
 
 const EYEBROW: Record<typeof props.kind, string> = {
@@ -38,24 +32,14 @@ const EYEBROW: Record<typeof props.kind, string> = {
   cleared: 'cleared · a good outcome',
 }
 
-const proverbText = computed(() => {
-  if (props.proverb !== undefined) return props.proverb || ''
-  const list = PROVERBS[props.kind]
-  let h = 0
-  for (const ch of props.title) h = (h * 31 + ch.charCodeAt(0)) >>> 0
-  return list[h % list.length]
-})
+const icon = computed(() => ICON[props.kind])
 const eyebrowText = computed(() => EYEBROW[props.kind])
 </script>
 
 <template>
   <div class="iu-empty" :class="`iu-empty--${kind}`">
-    <div class="iu-empty__icon">
-      <IuIcon v-if="kind === 'cleared'" name="check" :size="20" />
-      <IuRuneMark v-else :size="22" />
-    </div>
+    <div class="iu-empty__icon"><IuIcon :name="icon" :size="20" /></div>
     <div class="iu-empty__title">{{ title }}</div>
-    <div v-if="proverbText" class="iu-empty__proverb">{{ proverbText }}</div>
     <div v-if="body || $slots.default" class="iu-empty__body">
       <slot>{{ body }}</slot>
     </div>
@@ -100,14 +84,6 @@ const eyebrowText = computed(() => EYEBROW[props.kind])
   font-size: 15px;
   font-weight: var(--iu-font-weight-semibold);
   color: var(--iu-text);
-}
-
-.iu-empty__proverb {
-  font-family: var(--iu-font-serif);
-  font-style: italic;
-  font-size: var(--iu-font-size-13-5);
-  color: var(--iu-text-muted);
-  margin-top: -6px;
 }
 
 .iu-empty__body {
