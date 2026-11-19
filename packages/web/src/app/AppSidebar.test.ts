@@ -12,13 +12,21 @@ import { markAllSeen, markSeen, resetSeen } from './seen'
 
 const SIDEBAR_KEY = 'odin.sidebar.collapsed'
 
-it('puts a collapsible Sessions group after Projects with global navigation and conversations', async () => {
+it('puts view links under Home and Library, then collapsible project and session groups', async () => {
   const { wrapper, projects, sessions } = await mountScreen(AppSidebar, '/sessions')
   await flushPromises()
   const groups = wrapper.findAllComponents(IuNavGroup)
   expect(groups.map(g => g.props('label'))).toEqual(['Projects', 'Sessions'])
+  const inGroup = (href: string) => groups.some(group => group.find(`a[href="${href}"]`).exists())
+  expect(inGroup('/projects')).toBe(false)
+  expect(inGroup('/sessions')).toBe(false)
+  const topLabels = wrapper
+    .findAll('.iu-nav-item')
+    .filter(item => !groups.some(group => group.element.contains(item.element)))
+    .map(item => item.text())
+  expect(topLabels).toEqual(['Home', 'Library', 'Projects', 'Sessions', 'New chat', 'Settings'])
   const group = groups[1]!
-  expect(group.text()).toContain('All sessions')
+  expect(group.text()).not.toContain('New chat')
   expect(group.findAll('a[href^="/s/"]').length).toBeGreaterThan(0)
   const toggle = group.find('button[aria-expanded]')
   await toggle.trigger('click')
@@ -167,7 +175,7 @@ it('perches the waiting count on the Sessions icon of the collapsed rail only wh
   const all = () => wrapper.find('a[href="/sessions"]')
   const words = `${n} ${n === 1 ? 'session needs' : 'sessions need'} you`
   expect(wrapper.find('.app-nav-slot__count').text()).toBe(String(n))
-  expect(all().attributes('aria-label')).toBe(`All sessions, ${words}`)
+  expect(all().attributes('aria-label')).toBe(`Sessions, ${words}`)
 
   // expanded: the rows themselves show who waits
   await wrapper.find('button[aria-label="Expand sidebar"]').trigger('click')

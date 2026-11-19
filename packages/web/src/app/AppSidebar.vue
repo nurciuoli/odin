@@ -204,6 +204,20 @@ onBeforeUnmount(() => {
       to="/library"
       :active="route.name === 'library' || route.name === 'library-asset'"
     />
+    <IuNavItem label="Projects" icon="folder" to="/projects" :active="route.name === 'projects'" />
+    <div class="app-nav-slot">
+      <IuNavItem
+        label="Sessions"
+        icon="clock"
+        to="/sessions"
+        :active="route.name === 'history'"
+        :aria-label="waitingLabel ? `Sessions, ${waitingLabel}` : undefined"
+      />
+      <span v-if="collapsed && waitingLabel" class="app-nav-slot__count" aria-hidden="true">{{
+        sessions.waiting.value.length
+      }}</span>
+    </div>
+    <IuNavItem label="New chat" icon="plus" to="/?launch=1" />
 
     <IuNavGroup label="Projects">
       <template #actions>
@@ -218,12 +232,6 @@ onBeforeUnmount(() => {
           <template #icon><IuIcon name="plus" :size="14" /></template>
         </IuButton>
       </template>
-      <IuNavItem
-        label="All projects"
-        icon="folder"
-        to="/projects"
-        :active="route.name === 'projects'"
-      />
       <IuSkeleton v-if="store.loading.value" shape="row" :rows="2" />
       <IuNavItem
         v-else-if="store.error.value"
@@ -257,19 +265,6 @@ onBeforeUnmount(() => {
     </IuNavGroup>
 
     <IuNavGroup label="Sessions">
-      <div class="app-nav-slot">
-        <IuNavItem
-          label="All sessions"
-          icon="clock"
-          to="/sessions"
-          :active="route.name === 'history'"
-          :aria-label="waitingLabel ? `All sessions, ${waitingLabel}` : undefined"
-        />
-        <span v-if="collapsed && waitingLabel" class="app-nav-slot__count" aria-hidden="true">{{
-          sessions.waiting.value.length
-        }}</span>
-      </div>
-      <IuNavItem label="New chat" icon="plus" to="/?launch=1" />
       <IuSkeleton v-if="recentPhase === 'loading'" shape="row" :rows="2" />
       <IuNavItem
         v-else-if="recentPhase === 'error'"
@@ -465,7 +460,7 @@ onBeforeUnmount(() => {
 .app-session-row__flock {
   justify-self: end;
 }
-/* Session context-menu wrapper; waiting count overlays the collapsed All sessions icon. */
+/* Session context-menu wrapper; waiting count overlays the collapsed Sessions icon. */
 .app-nav-slot {
   position: relative;
 }
