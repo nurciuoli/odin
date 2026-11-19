@@ -18,6 +18,7 @@ import { SESSION_DISPLAY, needYouCount } from '@/screens/shared/format'
 import { plural, projectStatus, relativeTime } from '@/screens/shared/format'
 import { useSessionPerches } from '@/screens/shared/useSessionPerches'
 import { layoutDemand, sidebarCrowded } from './layout'
+import { openNewProject } from './newProject'
 import { useProjects } from './projects'
 import { useSessions } from './sessions'
 import ProjectHoverCard from './hovercards/ProjectHoverCard.vue'
@@ -207,13 +208,12 @@ onBeforeUnmount(() => {
     <IuNavGroup label="Projects">
       <template #actions>
         <IuButton
-          as="RouterLink"
-          to="/projects/new"
           variant="ghost"
           size="sm"
           icon-only
-          aria-label="Add project"
-          title="Add project"
+          aria-label="New project"
+          title="New project"
+          @click="openNewProject()"
         >
           <template #icon><IuIcon name="plus" :size="14" /></template>
         </IuButton>

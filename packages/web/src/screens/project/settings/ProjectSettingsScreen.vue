@@ -1,31 +1,26 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   parseProjectSources,
   type ClaudeCodeTrackingStatus,
   type ProjectOrigin,
+  type UpdateProjectSettingsRequest,
 } from '@odin/shared/api'
 import { useApi } from '@/api'
 import { useProjects } from '@/app/projects'
 import { IuButton } from '@/components/Button'
 import { IuCallout } from '@/components/Callout'
-import { IuField, IuSwitch, IuTextarea } from '@/components/Fields'
+import { IuSwitch } from '@/components/Fields'
 import { IuIcon } from '@/components/Icon'
 import { IuDialog } from '@/components/Modal'
-import { IuPropertyList } from '@/components/PropertyList'
 import { useToast } from '@/components/Toast'
-import FormSection from '@/screens/shared/FormSection.vue'
 import SyncBadge from '@/screens/shared/SyncBadge.vue'
 import { relativeTime, shortHash } from '@/screens/shared/format'
+import { useCopy } from '@/composables/useCopy'
 import { useProject } from '../useProject'
-import {
-  formFromProject,
-  RESET_REQUEST,
-  settingsChanges,
-  validateSettings,
-  type SettingsForm,
-} from './settingsForm'
+import SettingRow from './SettingRow.vue'
+import { RESET_REQUEST, validateSetting } from './settingsForm'
 
 const api = useApi()
 const router = useRouter()
@@ -34,163 +29,100 @@ const { toast } = useToast()
 const { detail, setDetail } = useProject()
 
 const name = computed(() => detail.value.name)
-
-// ── settings form ───────────────────────────────────────────────────────────
-const saved = computed(() => formFromProject(detail.value))
-const form = reactive<SettingsForm>({ ...saved.value })
-
-// A change that arrives from outside (another save, PROJECT.md edited) updates the fields the user hasn't touched.
-watch(saved, (next, prev) => {
-  for (const key of Object.keys(next) as (keyof SettingsForm)[]) {
-    if (form[key] === prev[key]) form[key] = next[key]
-  }
-})
-
-const attempted = ref(false)
-const allErrors = computed(() => validateSettings(form))
-// An error shows once the user has changed that field, or tried to save.
-const errors = computed(() =>
-  Object.fromEntries(
-    Object.entries(allErrors.value).filter(
-      ([key]) =>
-        attempted.value ||
-        form[key as keyof SettingsForm] !== saved.value[key as keyof SettingsForm],
-    ),
-  ),
-)
-const changes = computed(() => settingsChanges(form, detail.value))
-const saving = ref(false)
-const saveError = ref<string | null>(null)
-
-async function save() {
-  attempted.value = true
-  if (Object.keys(allErrors.value).length) return
-  const req = changes.value
-  if (!req) return
-  saving.value = true
-  saveError.value = null
-  try {
-    setDetail(await api.updateProjectSettings(name.value, req))
-    attempted.value = false
-    toast({ title: 'Settings saved', intent: 'success' })
-  } catch (e) {
-    saveError.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    saving.value = false
-  }
-}
-
-function discard() {
-  Object.assign(form, saved.value)
-  attempted.value = false
-  saveError.value = null
-}
+const settings = computed(() => detail.value.settings)
+const provenance = computed(() => detail.value.context.provenance)
 
 function originText(origin: ProjectOrigin | undefined): string {
   if (!origin) return ''
-  if (origin.kind === 'default') return 'Default'
-  if (origin.kind === 'override') return 'Saved in Odin'
-  if (origin.kind === 'manifest') return 'From PROJECT.md'
-  if (origin.kind === 'document') return `From ${origin.path}`
-  if (origin.kind === 'package') return 'From package.json'
-  if (origin.kind === 'git') return 'From the git remote'
-  return 'Default'
+  if (origin.kind === 'override') return 'Odin'
+  if (origin.kind === 'manifest') return 'PROJECT.md'
+  if (origin.kind === 'document') return origin.path
+  if (origin.kind === 'package') return 'package.json'
+  if (origin.kind === 'git') return 'git remote'
+  return 'default'
 }
-const provenance = computed(() => detail.value.context.provenance)
+
+// ── one field at a time: each row saves itself ──
+async function patch(req: UpdateProjectSettingsRequest) {
+  setDetail(await api.updateProjectSettings(name.value, req))
+}
+const saveTitle = (v: string) => patch({ title: v })
+const saveDescription = (v: string) => patch({ description: v })
+const saveRepo = (v: string) => patch({ repo: v || null })
+const saveBranch = (v: string) => patch({ defaultBranch: v })
+function saveCommand(key: 'install' | 'check' | 'build') {
+  return (v: string) => {
+    const next = { ...settings.value.commands, [key]: v }
+    if (!v) delete next[key]
+    return patch({ commands: next })
+  }
+}
+
+// ── context sources ──
+const sources = computed(() => detail.value.context.sources)
 const discovered = computed(() => detail.value.context.discovered)
-const sourceForm = reactive({
-  overview: detail.value.context.sources.overview ?? '',
-  status: detail.value.context.sources.status.join('\n'),
-  planning: detail.value.context.sources.planning.join('\n'),
-})
-watch(
-  () => detail.value.updatedAt,
-  () => {
-    sourceForm.overview = detail.value.context.sources.overview ?? ''
-    sourceForm.status = detail.value.context.sources.status.join('\n')
-    sourceForm.planning = detail.value.context.sources.planning.join('\n')
-  },
+const lines = (v: string) =>
+  v
+    .split(',')
+    .map(x => x.trim())
+    .filter(Boolean)
+const sourcesAreDiscovered = computed(
+  () => JSON.stringify(sources.value) === JSON.stringify(discovered.value),
 )
-const savingSources = ref(false)
-const sourceError = ref<string | null>(null)
-
-function sourceSelection() {
-  return {
-    overview: sourceForm.overview.trim() || null,
-    status: sourceForm.status
-      .split('\n')
-      .map(line => line.trim())
-      .filter(Boolean),
-    planning: sourceForm.planning
-      .split('\n')
-      .map(line => line.trim())
-      .filter(Boolean),
-  }
+async function saveSources(
+  change: Partial<{ overview: string | null; status: string[]; planning: string[] }>,
+) {
+  const parsed = parseProjectSources({
+    overview: sources.value.overview,
+    status: sources.value.status,
+    planning: sources.value.planning,
+    ...change,
+  })
+  if (!parsed.ok) throw new Error(parsed.error)
+  setDetail(await api.updateProjectSources(name.value, parsed.selection))
 }
-
-async function saveSources() {
-  const parsed = parseProjectSources(sourceSelection())
-  if (!parsed.ok) {
-    sourceError.value = parsed.error
-    return
-  }
-  savingSources.value = true
-  sourceError.value = null
-  try {
-    setDetail(await api.updateProjectSources(name.value, parsed.selection))
-    toast({ title: 'Sources saved', intent: 'success' })
-  } catch (e) {
-    sourceError.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    savingSources.value = false
-  }
-}
-
 async function useDiscoveredSources() {
-  savingSources.value = true
-  sourceError.value = null
   try {
     setDetail(await api.updateProjectSources(name.value, null))
     toast({ title: 'Using discovered sources', intent: 'success' })
   } catch (e) {
-    sourceError.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    savingSources.value = false
+    toast({
+      title: "Couldn't reset sources",
+      description: e instanceof Error ? e.message : String(e),
+      intent: 'danger',
+    })
   }
 }
+const sourceOrigin = computed(() => (sourcesAreDiscovered.value ? 'discovered' : 'chosen'))
 
 const resetting = ref(false)
 async function resetToManifest() {
   resetting.value = true
-  saveError.value = null
   try {
-    const next = await api.updateProjectSettings(name.value, RESET_REQUEST)
-    setDetail(next)
-    Object.assign(form, formFromProject(next))
-    attempted.value = false
+    setDetail(await api.updateProjectSettings(name.value, RESET_REQUEST))
     toast({ title: 'Back to PROJECT.md', intent: 'success' })
   } catch (e) {
-    saveError.value = e instanceof Error ? e.message : String(e)
+    toast({
+      title: "Couldn't reset",
+      description: e instanceof Error ? e.message : String(e),
+      intent: 'danger',
+    })
   } finally {
     resetting.value = false
   }
 }
 
-// ── git state ───────────────────────────────────────────────────────────────
-const gitItems = computed(() => {
+// ── read-only facts ──
+const git = computed(() => {
   const g = detail.value.git
   return [
-    { label: 'Branch', value: g.branch ?? 'detached', mono: true },
-    { label: 'Commit', value: g.headSha ? shortHash(g.headSha) : 'none yet', mono: true },
-    {
-      label: 'Working tree',
-      value: g.dirty ? 'Has uncommitted changes' : 'Clean',
-    },
-    ...(g.ahead || g.behind
-      ? [{ label: 'Upstream', value: `${g.ahead} ahead, ${g.behind} behind` }]
-      : []),
-  ]
+    g.branch ?? 'detached',
+    g.headSha ? shortHash(g.headSha) : 'no commits yet',
+    g.dirty ? 'uncommitted changes' : 'clean',
+    ...(g.ahead || g.behind ? [`${g.ahead} ahead, ${g.behind} behind`] : []),
+  ].join(' · ')
 })
+const { copy, copied } = useCopy()
 
 // ── Claude Code tracking ────────────────────────────────────────────────────
 const tracking = ref<ClaudeCodeTrackingStatus | null>(null)
@@ -278,237 +210,213 @@ async function remove() {
 </script>
 
 <template>
-  <div class="project-settings">
+  <div class="settings-sheet">
     <IuCallout
       v-if="detail.manifestError"
       intent="warning"
       title="PROJECT.md has problems"
-      class="project-settings__notice"
+      class="settings-sheet__notice"
     >
       {{ detail.manifestError }} Defaults are used where a field was invalid.
     </IuCallout>
-
     <IuCallout
       v-if="detail.dirtyFiles.length"
       intent="info"
       title="Odin changed these files; commit them when ready"
-      class="project-settings__notice"
+      class="settings-sheet__notice"
     >
-      <ul class="project-settings__files">
+      <ul class="settings-sheet__files">
         <li v-for="f in detail.dirtyFiles" :key="f">{{ f }}</li>
       </ul>
     </IuCallout>
 
-    <form class="project-settings__form" novalidate @submit.prevent="save">
-      <FormSection
-        title="Project"
-        description="Saved in Odin. Your values win over PROJECT.md, then the selected overview, package scripts and git remote."
-      >
-        <div class="form-grid">
-          <IuField
-            v-model="form.title"
-            label="Title"
-            :error="errors.title"
-            :hint="errors.title ? undefined : originText(provenance.title)"
-            class="form-span"
-          />
-          <IuTextarea
-            v-model="form.description"
-            label="Description"
-            :rows="2"
-            :hint="originText(provenance.description)"
-            class="form-span"
-          />
-          <IuField
-            v-model="form.repo"
-            label="GitHub repo"
-            placeholder="owner/name"
-            mono
-            :error="errors.repo"
-            :hint="
-              errors.repo
-                ? undefined
-                : `${originText(provenance.repo)}. Leave empty for a local-only project.`
-            "
-          />
-          <IuField
-            v-model="form.defaultBranch"
-            label="Default branch"
-            mono
-            :error="errors.defaultBranch"
-          />
-        </div>
-      </FormSection>
+    <p class="settings-sheet__hint">
+      Click a value to edit it. Enter saves, Esc cancels. Your values win over PROJECT.md, then
+      package scripts and the git remote.
+    </p>
 
-      <FormSection title="Commands" description="Run in the project or a session's worktree.">
-        <div class="form-grid">
-          <IuField
-            v-model="form.install"
-            label="Install"
-            mono
-            placeholder="npm ci"
-            :hint="originText(provenance.commands.install)"
-          />
-          <IuField
-            v-model="form.check"
-            label="Check"
-            mono
-            placeholder="npm run typecheck && npm test"
-            :hint="originText(provenance.commands.check)"
-          />
-          <IuField
-            v-model="form.build"
-            label="Build"
-            mono
-            placeholder="npm run build"
-            :hint="originText(provenance.commands.build)"
-          />
-        </div>
-      </FormSection>
-
-      <FormSection
-        title="Sources"
-        description="Overview, status and planning files stay in the repo. Odin only remembers which ones you picked."
-      >
-        <IuCallout
-          v-if="detail.context.missing.length"
-          intent="warning"
-          title="Some saved sources are missing"
-          class="project-settings__notice"
-        >
-          {{ detail.context.missing.join(', ') }}
-        </IuCallout>
-        <div class="form-grid">
-          <IuField
-            v-model="sourceForm.overview"
-            label="Overview document"
-            mono
-            class="form-span"
-            :hint="`Discovered: ${discovered.overview ?? 'none'}`"
-          />
-          <IuTextarea
-            v-model="sourceForm.status"
-            label="Status documents"
-            :rows="3"
-            mono
-            class="form-span"
-            :hint="`One path per line. Discovered: ${discovered.status.join(', ') || 'none'}`"
-          />
-          <IuTextarea
-            v-model="sourceForm.planning"
-            label="Planning folders"
-            :rows="3"
-            mono
-            class="form-span"
-            :hint="`One path per line. Discovered: ${discovered.planning.join(', ') || 'none'}`"
-          />
-        </div>
-        <p v-if="sourceError" class="project-settings__state" role="status">{{ sourceError }}</p>
-        <div class="project-settings__actions">
-          <IuButton
-            type="button"
-            variant="ghost"
-            :loading="savingSources"
-            @click="useDiscoveredSources"
-          >
-            Use discovered sources
-          </IuButton>
-          <IuButton type="button" variant="primary" :loading="savingSources" @click="saveSources">
-            Save sources
-          </IuButton>
-        </div>
-      </FormSection>
-
-      <div class="project-settings__actions" :data-dirty="changes ? '' : undefined">
-        <p class="project-settings__state" role="status">
-          <template v-if="saveError"><IuIcon name="alert" :size="14" /> {{ saveError }}</template>
-          <template v-else-if="changes">Unsaved changes</template>
-          <template v-else>All changes saved</template>
-        </p>
-        <IuButton type="button" variant="ghost" :loading="resetting" @click="resetToManifest">
-          Reset to PROJECT.md
-        </IuButton>
-        <IuButton type="button" variant="ghost" :disabled="!changes || saving" @click="discard">
-          Discard
-        </IuButton>
-        <IuButton type="submit" variant="primary" :loading="saving" :disabled="!changes">
-          Save changes
-        </IuButton>
-      </div>
-    </form>
-
-    <FormSection title="Git" description="Read from the checkout.">
-      <IuPropertyList :items="gitItems" label-width="120px" density="compact" />
-    </FormSection>
-
-    <FormSection title="GitHub sync" description="Optional: links sessions to their pull requests.">
-      <template #aside><SyncBadge :sync="sync" /></template>
-      <IuSwitch
-        :model-value="detail.settings.githubEnabled ?? false"
-        :disabled="syncBusy"
-        label="Enable GitHub integration"
-        @update:model-value="setGithub"
+    <section aria-labelledby="sheet-project">
+      <h2 id="sheet-project" class="settings-sheet__heading">Project</h2>
+      <SettingRow
+        label="Title"
+        :value="settings.title"
+        :origin="originText(provenance.title)"
+        :validate="v => validateSetting('title', v)"
+        :save="saveTitle"
       />
-      <div class="project-settings__row">
-        <p class="project-settings__meta">
-          <template v-if="!detail.repo">Add a GitHub repo above to sync this project.</template>
-          <template v-else-if="sync.state === 'error' && sync.error">{{ sync.error }}</template>
-          <template v-else-if="sync.lastSyncAt"
-            >Last synced {{ relativeTime(sync.lastSyncAt) }}.</template
-          >
-          <template v-else>Not synced yet.</template>
-        </p>
-        <IuButton
-          :disabled="!detail.settings.githubEnabled || !detail.repo || syncing"
-          :loading="syncing"
-          @click="syncNow"
-        >
-          <template #icon><IuIcon name="retry" :size="14" /></template>
-          Sync now
-        </IuButton>
-      </div>
-    </FormSection>
+      <SettingRow
+        label="Description"
+        multiline
+        :value="settings.description"
+        placeholder="Not set. Click to add."
+        :origin="originText(provenance.description)"
+        :save="saveDescription"
+      />
+      <SettingRow label="Folder" mono readonly :value="detail.path">
+        <template #side>
+          <IuButton size="sm" variant="ghost" @click="copy(detail.path)">
+            {{ copied ? 'Copied' : 'Copy' }}
+          </IuButton>
+        </template>
+      </SettingRow>
+      <SettingRow label="Git" readonly :value="git" origin="read from the checkout" />
+      <SettingRow
+        label="GitHub repo"
+        mono
+        :value="settings.repo ?? ''"
+        placeholder="Local only. Click to add owner/name."
+        :origin="originText(provenance.repo)"
+        :validate="v => validateSetting('repo', v)"
+        :save="saveRepo"
+      />
+      <SettingRow
+        label="Default branch"
+        mono
+        :value="settings.defaultBranch"
+        :validate="v => validateSetting('defaultBranch', v)"
+        :save="saveBranch"
+      />
+    </section>
 
-    <FormSection
-      title="Claude Code tracking"
-      description="Hooks that report Claude Code sessions you run in this repo's terminal."
-    >
-      <div class="project-settings__row">
-        <p class="project-settings__meta">
-          Installed in
-          <code class="project-settings__code">{{
-            tracking?.settingsPath ?? '.claude/settings.local.json'
-          }}</code
-          >, which isn't committed.
-        </p>
-        <IuSwitch
-          :model-value="tracking?.enabled ?? false"
-          :disabled="!tracking || trackingBusy"
-          label="Track sessions"
-          @update:model-value="setTracking"
-        />
+    <section aria-labelledby="sheet-commands">
+      <h2 id="sheet-commands" class="settings-sheet__heading">Commands</h2>
+      <SettingRow
+        v-for="c in [
+          ['install', 'Install', 'npm ci'],
+          ['check', 'Check', 'npm run typecheck && npm test'],
+          ['build', 'Build', 'npm run build'],
+        ] as const"
+        :key="c[0]"
+        :label="c[1]"
+        mono
+        :value="settings.commands[c[0]] ?? ''"
+        :placeholder="`Not set. Click to add, e.g. ${c[2]}`"
+        :origin="originText(provenance.commands[c[0]])"
+        :save="saveCommand(c[0])"
+      />
+    </section>
+
+    <section aria-labelledby="sheet-context">
+      <h2 id="sheet-context" class="settings-sheet__heading">
+        Context Odin reads
+        <IuButton
+          v-if="!sourcesAreDiscovered"
+          size="sm"
+          variant="ghost"
+          @click="useDiscoveredSources"
+        >
+          Use discovered
+        </IuButton>
+      </h2>
+      <IuCallout
+        v-if="detail.context.missing.length"
+        intent="warning"
+        title="Some saved sources are missing"
+        class="settings-sheet__notice"
+      >
+        {{ detail.context.missing.join(', ') }}
+      </IuCallout>
+      <SettingRow
+        label="Overview"
+        mono
+        :value="sources.overview ?? ''"
+        placeholder="None found. Click to add a path."
+        :origin="sourceOrigin"
+        :save="v => saveSources({ overview: v || null })"
+      />
+      <SettingRow
+        label="Status"
+        mono
+        :value="sources.status.join(', ')"
+        placeholder="None found. Click to add paths, separated by commas."
+        :origin="sourceOrigin"
+        :save="v => saveSources({ status: lines(v) })"
+      />
+      <SettingRow
+        label="Planning"
+        mono
+        :value="sources.planning.join(', ')"
+        placeholder="None found. Click to add folders, separated by commas."
+        :origin="sourceOrigin"
+        :save="v => saveSources({ planning: lines(v) })"
+      />
+    </section>
+
+    <section aria-labelledby="sheet-integrations">
+      <h2 id="sheet-integrations" class="settings-sheet__heading">Integrations</h2>
+      <div class="sheet-row">
+        <span class="sheet-row__label">GitHub sync</span>
+        <div class="settings-sheet__switch">
+          <IuSwitch
+            :model-value="detail.settings.githubEnabled ?? false"
+            :disabled="syncBusy"
+            size="sm"
+            label="Enable GitHub integration"
+            @update:model-value="setGithub"
+          />
+          <span class="settings-sheet__meta">
+            <template v-if="!detail.repo">Add a GitHub repo above to sync.</template>
+            <template v-else-if="sync.state === 'error' && sync.error">{{ sync.error }}</template>
+            <template v-else-if="sync.lastSyncAt"
+              >Synced {{ relativeTime(sync.lastSyncAt) }}.</template
+            >
+            <template v-else>Links sessions to their pull requests.</template>
+          </span>
+        </div>
+        <div class="sheet-row__side">
+          <SyncBadge :sync="sync" />
+          <IuButton
+            size="sm"
+            variant="ghost"
+            :disabled="!detail.settings.githubEnabled || !detail.repo || syncing"
+            :loading="syncing"
+            @click="syncNow"
+          >
+            <template #icon><IuIcon name="retry" :size="14" /></template>
+            Sync now
+          </IuButton>
+        </div>
+      </div>
+      <div class="sheet-row">
+        <span class="sheet-row__label">Claude Code</span>
+        <div class="settings-sheet__switch">
+          <IuSwitch
+            :model-value="tracking?.enabled ?? false"
+            :disabled="!tracking || trackingBusy"
+            size="sm"
+            label="Track sessions"
+            @update:model-value="setTracking"
+          />
+          <span class="settings-sheet__meta">
+            Hooks in
+            <code class="settings-sheet__code">{{
+              tracking?.settingsPath ?? '.claude/settings.local.json'
+            }}</code
+            >, not committed.
+          </span>
+        </div>
+        <div class="sheet-row__side" />
       </div>
       <IuCallout v-if="trackingError" intent="danger" variant="inline" live>{{
         trackingError
       }}</IuCallout>
-    </FormSection>
+    </section>
 
-    <FormSection
-      title="Remove project"
-      description="Forgets the project in Odin. The folder, its worktrees and Claude's own history stay."
-    >
-      <div>
-        <IuButton variant="danger" @click="confirmRemove = true">Remove project…</IuButton>
-      </div>
-    </FormSection>
+    <footer class="settings-sheet__foot">
+      <IuButton variant="ghost" size="sm" :loading="resetting" @click="resetToManifest">
+        Reset to PROJECT.md
+      </IuButton>
+      <span class="settings-sheet__spacer" />
+      <IuButton variant="danger" size="sm" @click="confirmRemove = true">Remove project…</IuButton>
+    </footer>
 
     <IuDialog v-model:open="confirmRemove" size="sm">
       <template #header>
-        <h2 class="project-settings__dialog-title">Remove {{ detail.title }}?</h2>
+        <h2 class="settings-sheet__dialog-title">Remove {{ detail.title }}?</h2>
       </template>
-      <p class="project-settings__meta">
-        Odin stops tracking this project. Projects configured in sessions must be kept until those
-        sessions are removed. Nothing on disk is deleted.
+      <p class="settings-sheet__meta">
+        Odin forgets the project. The folder, its worktrees and Claude's own history stay; nothing
+        on disk is deleted. Projects used by sessions must be kept until those sessions are removed.
       </p>
       <template #footer>
         <IuButton variant="ghost" @click="confirmRemove = false">Cancel</IuButton>
@@ -519,73 +427,59 @@ async function remove() {
 </template>
 
 <style>
-.project-settings {
+.settings-sheet {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  max-width: 800px;
-  padding-top: 16px;
+  gap: 18px;
+  max-width: 860px;
+  padding: 16px 0;
 }
-.project-settings__form {
+.settings-sheet__hint,
+.settings-sheet__meta {
+  margin: 0;
+  font-size: var(--iu-font-size-12-5);
+  color: var(--iu-text-muted);
+}
+.settings-sheet__heading {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 4px;
+  font-family: var(--iu-font-mono);
+  font-size: var(--iu-font-size-10-5);
+  font-weight: var(--iu-font-weight-medium);
+  letter-spacing: var(--iu-tracking-caps);
+  text-transform: uppercase;
+  color: var(--iu-text-muted);
 }
-.project-settings__files {
+.settings-sheet__files {
   margin: 0;
   padding-left: 18px;
   font-family: var(--iu-font-mono);
   font-size: var(--iu-font-size-12);
 }
-.project-settings__row {
+.settings-sheet__switch {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
+  min-height: 30px;
 }
-.project-settings__meta {
-  margin: 0;
-  min-width: 0;
-  font-size: var(--iu-font-size-13);
-  color: var(--iu-text-2);
-}
-.project-settings__code {
+.settings-sheet__code {
   font-family: var(--iu-font-mono);
-  font-size: var(--iu-font-size-12);
 }
-.project-settings__dialog-title {
+.settings-sheet__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--iu-hairline);
+}
+.settings-sheet__spacer {
+  flex: 1;
+}
+.settings-sheet__dialog-title {
   margin: 0;
   font-size: var(--iu-font-size-16);
   font-weight: var(--iu-font-weight-semibold);
-}
-.project-settings__actions {
-  position: sticky;
-  bottom: 0;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 12px 0;
-  background: var(--iu-ground);
-  border-top: 1px solid var(--iu-hairline);
-}
-.project-settings__state {
-  flex: 1;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--iu-font-size-12-5);
-  color: var(--iu-text-muted);
-}
-.project-settings__actions[data-dirty] .project-settings__state {
-  color: var(--iu-text);
-}
-@media (max-width: 640px) {
-  .project-settings__row {
-    flex-direction: column;
-    align-items: flex-start;
-  }
 }
 </style>

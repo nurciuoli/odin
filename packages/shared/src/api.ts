@@ -328,14 +328,23 @@ export function emptyProjectContext(): ProjectContext {
   };
 }
 
-/** POST /api/projects: register an existing directory. Odin never moves or deletes it. */
+/**
+ * POST /api/projects: register a directory. By default it must already exist and Odin never moves or deletes it.
+ * `mkdir` and `clone` make the folder first; either needs `path` to be missing or an empty directory.
+ */
 export interface CreateProjectRequest {
-  /** Absolute path to a directory (git is optional). */
+  /** Absolute path to a directory (git is optional). With `mkdir` or `clone`, where the new folder goes. */
   path: string;
   /** Defaults to the folder name, lowercased and slugged (must match PROJECT_NAME_PATTERN, unique). */
   name?: string;
   /** Optionally initialise git when the directory has no repository (no commit). */
   init?: boolean;
+  /** Create `path` (and missing parents) first. Not with `clone`. */
+  mkdir?: boolean;
+  /** With `mkdir`: write a one-line README.md. No commit. */
+  readme?: boolean;
+  /** Clone into `path`: `owner/name` (GitHub), an https:// or ssh:// URL, or `git@host:path`. Not with `mkdir`/`init`/`readme`. */
+  clone?: string;
 }
 
 /** PATCH /api/projects/:name/settings. Every field optional; stored in Odin's DB. `null` clears an override. */

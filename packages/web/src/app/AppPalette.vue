@@ -11,6 +11,7 @@ import { useApi } from '@/api'
 import { IuCommandPalette, type CommandItem, type CommandSource } from '@/components/CommandPalette'
 import { harnessLabel, relativeTime, SESSION_DISPLAY } from '@/screens/shared/format'
 import { useCommands } from './commands'
+import { openNewProject } from './newProject'
 import { useDrafts } from './drafts'
 import { fuzzyFilter } from './fuzzy'
 import { loadRecents, pushRecent, type RecentEntry } from './paletteRecents'
@@ -239,6 +240,25 @@ const appCommands = computed<RunItem[]>(() => [
         },
       ]
     : []),
+  {
+    id: 'action:new-project',
+    label: 'New project…',
+    icon: 'plus',
+    hint: keyLabel('Mod+Alt+N'),
+    run: () => openNewProject(),
+  },
+  {
+    id: 'action:add-folder',
+    label: 'Add existing folder…',
+    icon: 'folder',
+    run: () => openNewProject('existing'),
+  },
+  {
+    id: 'action:clone',
+    label: 'Clone a repository…',
+    icon: 'gitBranch',
+    run: () => openNewProject('clone'),
+  },
   { id: 'action:home', label: 'Go home', icon: 'board', run: go({ name: 'home' }) },
   { id: 'action:history', label: 'All sessions', icon: 'clock', run: go({ name: 'history' }) },
   { id: 'action:library', label: 'Open Library', icon: 'sparkle', run: go({ name: 'library' }) },

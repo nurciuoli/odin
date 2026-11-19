@@ -8,6 +8,7 @@ import type { GitState } from "@odin/shared/api";
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const PUSH_TIMEOUT_MS = 120_000;
+const CLONE_TIMEOUT_MS = 600_000;
 
 export class GitError extends Error {
   readonly code: number | string | null;
@@ -119,6 +120,11 @@ export async function originRepo(path: string): Promise<string | null> {
 
 export async function initRepo(path: string, branch: string): Promise<void> {
   await git(path, ["init", "--quiet", `--initial-branch=${branch}`]);
+}
+
+/** `git clone <url> <dest>` from `cwd` (an existing folder). `url` must not start with "-"; callers validate it. */
+export async function cloneRepo(cwd: string, url: string, dest: string): Promise<void> {
+  await git(cwd, ["clone", "--quiet", "--", url, dest], CLONE_TIMEOUT_MS);
 }
 
 /** Stages everything and commits. A missing git identity falls back to Odin's so the scaffold commit can't fail on it. */

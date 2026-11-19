@@ -1,0 +1,1 @@
+- The project Settings tab is now a sheet of rows: click a value to edit it and Enter saves just that field, with where each value came from shown beside it.

@@ -7,6 +7,7 @@ import { IuShell } from '@/components/AppShell'
 import { IuToaster } from '@/components/Toast'
 import AppHeader from '@/app/AppHeader.vue'
 import AppPalette from '@/app/AppPalette.vue'
+import NewProjectDialog from '@/app/NewProjectDialog.vue'
 import AppSidebar from '@/app/AppSidebar.vue'
 import QuickLaunch from '@/app/QuickLaunch.vue'
 import ShortcutsHelp from '@/app/ShortcutsHelp.vue'
@@ -70,6 +71,7 @@ onBeforeUnmount(() => {
   </IuShell>
   <AppPalette v-model:open="paletteOpen" @quick-launch="launchWith" @next-waiting="goNextWaiting" />
   <QuickLaunch v-model:open="quickLaunchOpen" :harness="quickLaunchHarness" />
+  <NewProjectDialog />
   <ShortcutsHelp v-model:open="helpOpen" />
   <IuToaster />
 </template>

@@ -4,6 +4,7 @@ import { onBeforeUnmount, onMounted, type Ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from '@/components/Toast'
 import type { SessionsStore } from './sessions'
+import { openNewProject } from './newProject'
 import { installShortcuts, nextWaiting, registerShortcut, stepSession } from './shortcuts'
 
 export interface ShellDialogs {
@@ -61,6 +62,14 @@ export function useAppShortcuts(dialogs: ShellDialogs, sessions: SessionsStore) 
         group: 'General',
         whileTyping: true,
         run: () => (dialogs.quickLaunch.value = true),
+      }),
+      registerShortcut({
+        id: 'new-project',
+        keys: 'Mod+Alt+N',
+        label: 'New project',
+        group: 'General',
+        whileTyping: true,
+        run: () => openNewProject(),
       }),
       registerShortcut({
         id: 'help',

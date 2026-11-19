@@ -3,6 +3,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { Session } from '@odin/shared/api'
 import { useApi } from '@/api'
+import { openNewProject } from '@/app/newProject'
 import { useProjects } from '@/app/projects'
 import { useSessions } from '@/app/sessions'
 import { IuBadge } from '@/components/Badge'
@@ -45,9 +46,7 @@ const cards = computed(() =>
   <div class="projects">
     <IuPageHeader title="Projects" icon="folder">
       <template #actions>
-        <IuButton as="RouterLink" to="/projects/new" variant="secondary" size="sm"
-          >Add project</IuButton
-        >
+        <IuButton variant="secondary" size="sm" @click="openNewProject()">New project</IuButton>
       </template>
     </IuPageHeader>
 
