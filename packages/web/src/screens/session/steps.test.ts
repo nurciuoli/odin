@@ -253,6 +253,14 @@ describe('runFlock', () => {
     expect(runBusy(run(out, true))).toBe(false)
     expect(runningAgents(rowsOf([...two, agent('one', 'completed')], true))).toBe(0)
     expect(runningAgents(rowsOf(two, true))).toBe(0)
+    const spawned = tool('spawn', 2, {
+      name: 'spawn_subagent',
+      input: { description: 'Review one', prompt: 'Look' },
+      result: { ok: true, text: 'Subagent started in background.', truncated: false },
+    })
+    const running = agent('one', 'running')
+    if (running.kind === 'task') running.task.toolUseId = 'spawn'
+    expect(runningAgents(rowsOf([...two, spawned, running], true))).toBe(1)
     // a step of the session's own that is running says so itself
     expect(runBusy(run([...two, tool('r', 2, { result: undefined })], true))).toBe(true)
   })

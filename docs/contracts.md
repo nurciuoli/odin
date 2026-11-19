@@ -102,7 +102,7 @@ optional dependency, `@anthropic-ai/claude-agent-sdk-<os>-<arch>`):
 | Capability | Claude | Codex / WSL | Grok | OpenCode | Antigravity |
 |---|---|---|---|---|---|
 | Additional repositories | Supported | Supported | Rejected | Supported | Supported |
-| Supplemental instructions | Supported | Supported | Warning, unsupported | Supported | Supported |
+| Supplemental instructions | Supported | Supported | Supported | Supported | Supported |
 | Attachments | Images/text | Images/text | Images/text | Supported | Supported |
 | Fork at a message (`checkpoints.forkAt`) | Supported (not before the first message) | Planned | Not supported | Planned | Not supported |
 
@@ -272,13 +272,23 @@ Resume is `session/load`. All six permission modes are `session/set_mode` mode i
 A JSON-RPC error includes the message and data, not only the code. `session/prompt` returns `stopReason` and
 `_meta.usage`; `costUsd` is `costUsdTicks / 1e9`. Reasoning tokens are
 included in output. Context used is left null. Host tools are a loopback-bridged stdio MCP server named `odin`.
-Caller MCP servers are passed through. Subagent definitions and extra instructions are reported with a notice.
+Caller MCP servers are passed through. Supplemental instructions are `_meta.rules` on `session/new` and
+`session/load` (appended to the native prompt, including the load before a fork). The same rules text on load
+does not duplicate. `systemPromptOverride` is not used. Odin subagent definitions are included in those rules
+and listed on `init`; Grok does not register them as native `subagent_type`s. Native subagents and background
+commands arrive as ACP updates (`subagent_spawned`, `subagent_finished`, `task_backgrounded`, `background_tasks`,
+`task_completed`). The turn stays open while that work is running or `will_wake` expects another model turn.
+Usage model ids such as `grok-4.7-build` map back to the catalog id (`grok-4.7`); an exact catalog id such as
+`grok-4.7-build-fast` stays itself.
 Images (png, jpeg, gif, webp) go as ACP image blocks after a name tag; other files go as embedded resources.
 A file Grok would drop is left out and reported with a notice. History reads the stored image, file and
 dropped-image notes back into the user entry.
-History is `~/.grok/sessions/<encodeURIComponent(cwd)>/<id>/` (`summary.json`, `chat_history.jsonl`); system lines
-are skipped. `session/fork` needs `cwd`. Delete is `grok sessions delete`. There is no rename RPC. No new dependency.
-Verified against the installed CLI 1.0.77. Tests use a fake transport and do not spawn `grok`.
+History is `~/.grok/sessions/<encodeURIComponent(cwd)>/<id>/` (`summary.json`, `chat_history.jsonl`, `updates.jsonl`);
+system lines are skipped. The session title is `generated_title`, then `session_summary`, then the first user line.
+Subagent directories (`session_kind: subagent`) are not imported as sessions. `session/fork` needs `cwd`.
+Delete is `grok sessions delete`. Rename is `x.ai/session/rename` with `sessionId` and `title`. A title Odin derived
+from the first prompt is not sent, so Grok can keep generating one. No new dependency.
+Verified against the installed CLI 1.0.89. Tests use a fake transport and do not spawn `grok`.
 
 Antigravity is the `antigravity` runtime. It spawns `agy acp --stdio` and speaks Agent Client Protocol JSON-RPC
 on stdin/stdout. Auth uses the existing user login; Odin never reads or stores Google credentials.

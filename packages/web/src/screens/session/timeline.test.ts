@@ -73,8 +73,9 @@ describe('buildTimeline', () => {
       tool('t4', 'Write', { file_path: 'b.ts', content: '' }, { ok: true }),
       tool('t5', 'Bash', { command: 'yarn test' }, { ok: false }),
       tool('t6', 'Agent', { description: 'look', subagent_type: 'Explore' }, { ok: true }),
+      tool('t7', 'spawn_subagent', { description: 'look', prompt: 'go' }, { ok: true }),
     ])
-    expect(s).toMatchObject({ tools: 6, files: 2, failed: 1, agents: 1 })
+    expect(s).toMatchObject({ tools: 7, files: 2, failed: 1, agents: 2 })
   })
 
   it('does not count a denied or stopped call as a failure, or nested calls at all', () => {

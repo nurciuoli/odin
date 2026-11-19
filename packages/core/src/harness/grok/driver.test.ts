@@ -199,13 +199,32 @@ test("check reports availability without reading credentials", async () => {
   assert.equal((await missing.check()).available, false);
 });
 
-test("subagent definitions are reported instead of dropped", async () => {
+test("instructions and subagent guidance are sent as rules, and an explicit title is renamed", async () => {
   const { connections, harness } = setup();
-  const handle = harness.start({ cwd: "C:\\repo", sessionId: "odin-3", agents: { reviewer: { description: "Reviews", prompt: "Look" } }, instructions: "Be brief" });
-  const events = await take(handle.events, (event) => event.type === "notice" || event.type === "exit");
-  assert.equal(events.some((event) => event.type === "notice" && /subagent definitions/.test(event.text)), true);
-  assert.equal(connections[0]!.calls.some((call) => call.method === "session/new"), true);
+  const handle = harness.start({
+    cwd: "C:\\repo",
+    sessionId: "odin-3",
+    title: "My Task",
+    agents: { reviewer: { description: "Reviews", prompt: "Look" } },
+    instructions: "Be brief",
+    prompt: { text: "hi" },
+  });
+  const events = await take(handle.events, (event) => event.type === "turn.end");
+  assert.equal(events.some((event) => event.type === "notice"), false);
+  const init = events.find((event) => event.type === "init");
+  assert.deepEqual(init?.type === "init" ? init.agents : [], ["reviewer"]);
+  const created = connections[0]!.calls.find((call) => call.method === "session/new");
+  assert.match(String(created?.params._meta?.rules), /Be brief/);
+  assert.match(String(created?.params._meta?.rules), /## reviewer/);
+  assert.equal(connections[0]!.calls.some((call) => call.method === "x.ai/session/rename" && call.params.title === "My Task"), true);
   await handle.close();
+
+  const resumed = harness.start({ cwd: "C:\\repo", resume: "existing", instructions: "Be brief", prompt: { text: "Explain the build" }, title: "Explain the build" });
+  await take(resumed.events, (event) => event.type === "turn.end");
+  const loaded = connections[1]!.calls.find((call) => call.method === "session/load");
+  assert.match(String(loaded?.params._meta?.rules), /Be brief/);
+  assert.equal(connections[1]!.calls.some((call) => call.method === "x.ai/session/rename"), false);
+  await resumed.close();
 });
 
 test("resume ignores replay, separates text around tools and uses fresh streaming ids", async () => {
@@ -269,18 +288,31 @@ test("an unknown stored model does not fail resume, and a rejected model or mode
     if (method === "session/load") {
       rpc.onMessage({ method: "_x.ai/session_notification", params: { update: { sessionUpdate: "model_changed", model_id: "grok-4.7" } } });
     }
+    if (method === "session/prompt") {
+      rpc.calls.push({ method, params });
+      return { stopReason: "end_turn", _meta: { usage: { apiDurationMs: 1, modelUsage: { "grok-4.7-build": { inputTokens: 1, outputTokens: 1, reasoningTokens: 0, cachedReadTokens: 0, cacheCreationTokens: 0, costUsdTicks: 0 } } } } };
+    }
     return original(method, params);
   };
   const events = await take(resumed.events, (event) => event.type === "turn.end");
   assert.equal(events[0]?.type, "init");
   if (events[0]?.type === "init") assert.equal(events[0].model, "grok-4.7");
-  assert.equal(events.some((event) => event.type === "notice" && event.text.includes("grok-4.7-build")), true);
+  assert.equal(events.some((event) => event.type === "notice" && event.text.includes("grok-4.7-build")), false);
   assert.equal(rpc.calls.some((call) => call.method === "session/set_model"), false);
+  const usage = events.find((event) => event.type === "usage");
+  assert.equal(usage?.type === "usage" && usage.model, "grok-4.7");
+  assert.equal(events.some((event) => event.type === "model"), false);
   assert.equal(events.at(-1)?.type, "turn.end");
   await resumed.close();
 
+  const unknown = harness.start({ cwd: "C:\\repo", sessionId: "odin-unknown-model", model: "gpt-4", prompt: { text: "go" } });
+  const unknownEvents = await take(unknown.events, (event) => event.type === "turn.end");
+  assert.equal(unknownEvents.some((event) => event.type === "notice" && event.text.includes("gpt-4")), true);
+  assert.equal(connections[1]!.calls.some((call) => call.method === "session/set_model"), false);
+  await unknown.close();
+
   const started = harness.start({ cwd: "C:\\repo", sessionId: "odin-model", model: "grok-4.7", permissionMode: "plan", prompt: { text: "go" } });
-  const second = connections[1]!;
+  const second = connections[2]!;
   const secondOriginal = second.request.bind(second);
   second.request = async (method, params = {}) => {
     if (method === "session/set_model" || method === "session/set_mode") throw new Error("Invalid params: unknown model id (-32602)");
@@ -377,4 +409,76 @@ test("Grok effort uses model metadata independently of permission modes", async 
     assert.equal(last.params._meta.reasoningEffort, "medium");
     assert.equal(rpc.calls.some(c => c.method === "session/set_mode"), false);
   } finally { await handle?.close(); s.db.close(); }
+});
+
+test("a background subagent holds the turn until it finishes and the wake turn completes", async () => {
+  const { connections, harness } = setup();
+  const handle = harness.start({ cwd: "C:\\repo", sessionId: "odin-sub", prompt: { text: "delegate" } });
+  const rpc = connections[0]!;
+  const original = rpc.request.bind(rpc);
+  let prompts = 0;
+  rpc.request = async (method, params = {}) => {
+    if (method === "session/prompt") {
+      prompts += 1;
+      rpc.calls.push({ method, params });
+      if (prompts === 1) {
+        rpc.onMessage({ method: "session/update", params: { update: { sessionUpdate: "tool_call", toolCallId: "spawn-1", name: "spawn_subagent", status: "completed", rawInput: { description: "Review" }, content: [{ type: "text", text: "started" }] } } });
+        rpc.onMessage({ method: "session/update", params: { update: { sessionUpdate: "subagent_spawned", subagent_id: "child-1", attempt_id: "a1", description: "Review", child_session_id: "child-1" } } });
+        setTimeout(() => {
+          rpc.onMessage({ method: "_x.ai/session/update", params: { update: { sessionUpdate: "subagent_finished", subagent_id: "child-1", attempt_id: "a1", description: "Review", status: "completed", output: "done", will_wake: true } } });
+          setTimeout(() => {
+            rpc.onMessage({ method: "session/update", params: { update: { sessionUpdate: "turn_completed" } } });
+          }, 30);
+        }, 30);
+      }
+      return { stopReason: "end_turn", _meta: { usage: { apiDurationMs: 5, modelUsage: { "grok-4.7-build": { inputTokens: 1, outputTokens: 1, reasoningTokens: 0, cachedReadTokens: 0, cacheCreationTokens: 0, costUsdTicks: 0 } } } } };
+    }
+    return original(method, params);
+  };
+  const events: HarnessEvent[] = [];
+  let sawRunning = false;
+  for await (const event of handle.events) {
+    events.push(event);
+    if (event.type === "task" && event.task.state === "running") {
+      sawRunning = true;
+      assert.equal(event.task.toolUseId, "spawn-1");
+      assert.equal(prompts, 1);
+      handle.send({ text: "next" });
+      assert.equal(rpc.calls.filter((call) => call.method === "session/prompt").length, 1);
+    }
+    if (events.filter((item) => item.type === "turn.end").length === 2) break;
+  }
+  assert.equal(sawRunning, true);
+  assert.equal(prompts, 2);
+  const usage = events.find((event) => event.type === "usage");
+  assert.equal(usage?.type === "usage" && usage.model, "grok-4.7");
+  const ends = events.filter((event) => event.type === "turn.end");
+  assert.ok(events.findIndex((event) => event.type === "task" && event.task.state === "completed") < events.indexOf(ends[0]!));
+  await handle.close();
+});
+
+test("rename uses the live session and a background command holds the turn", async () => {
+  const { connections, harness } = setup();
+  const handle = harness.start({ cwd: "C:\\repo", sessionId: "odin-bg", prompt: { text: "run" } });
+  const rpc = connections[0]!;
+  const original = rpc.request.bind(rpc);
+  rpc.request = async (method, params = {}) => {
+    if (method === "session/prompt") {
+      rpc.calls.push({ method, params });
+      rpc.onMessage({ method: "session/update", params: { update: { sessionUpdate: "task_backgrounded", task_id: "bash-1", tool_call_id: "call-1", command: "yarn test" } } });
+      setTimeout(() => {
+        rpc.onMessage({ method: "session/update", params: { update: { sessionUpdate: "task_completed", will_wake: false, task_snapshot: { task_id: "bash-1", command: "yarn test", exit_code: 0, output: "ok" } } } });
+      }, 20);
+      return { stopReason: "end_turn" };
+    }
+    return original(method, params);
+  };
+  const started = take(handle.events, (event) => event.type === "init");
+  await started;
+  await harness.rename(handle.sessionId, "Renamed title");
+  assert.equal(rpc.calls.some((call) => call.method === "x.ai/session/rename" && call.params.title === "Renamed title"), true);
+  const events = await take(handle.events, (event) => event.type === "turn.end");
+  assert.equal(events.some((event) => event.type === "task" && event.task.kind === "command" && event.task.state === "completed"), true);
+  assert.equal(events.at(-1)?.type, "turn.end");
+  await handle.close();
 });

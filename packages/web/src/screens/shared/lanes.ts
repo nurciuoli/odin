@@ -113,7 +113,11 @@ export function runningAgents(entries: TranscriptEntry[]): number {
     if (e.task.state === 'running') n++
   }
   for (const e of entries)
-    if (e.kind === 'tool' && (e.name === 'Agent' || e.name === 'Task') && !e.result)
+    if (
+      e.kind === 'tool' &&
+      (e.name === 'Agent' || e.name === 'Task' || e.name === 'spawn_subagent') &&
+      !e.result
+    )
       if (!spoken.has(e.id)) n++
   return n
 }
@@ -190,6 +194,7 @@ function toolActivity(e: Extract<TranscriptEntry, { kind: 'tool' }>): string {
       return 'Updating the plan'
     case 'Task':
     case 'Agent':
+    case 'spawn_subagent':
       return typeof i.description === 'string'
         ? `Delegating: ${oneLine(i.description)}`
         : 'Delegating'

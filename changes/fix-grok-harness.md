@@ -1,0 +1,2 @@
+- Grok sessions receive Odin's extra instructions, and a Grok session title is kept when the runtime has one.
+- Grok model names stay on the catalog id, and background subagents and commands keep the turn open until they finish.
