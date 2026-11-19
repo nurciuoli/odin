@@ -59,8 +59,8 @@ details[open] > .injected-notice__summary::after {
   transform: rotate(90deg);
 }
 .injected-notice__summary:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .injected-notice__body {
   margin-top: 6px;

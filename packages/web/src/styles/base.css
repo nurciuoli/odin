@@ -38,8 +38,8 @@ select {
 }
 
 ::selection {
-  background: var(--iu-accent-wash);
-  color: var(--iu-text);
+  background: var(--iu-selection);
+  color: inherit;
 }
 
 /* pinned to its containing block's origin: left at its static position, a span

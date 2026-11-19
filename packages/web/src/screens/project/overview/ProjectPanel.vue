@@ -146,8 +146,8 @@ async function copy(label: string, cmd: string) {
 }
 .ov-project__link:focus-visible,
 .ov-project__chip:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .ov-project__chips {
   display: flex;

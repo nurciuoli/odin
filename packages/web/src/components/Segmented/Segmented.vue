@@ -98,7 +98,7 @@ function onKeydown(e: KeyboardEvent) {
   cursor: not-allowed;
 }
 .iu-segmented__option:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 1px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 </style>

@@ -881,8 +881,8 @@ const changed = computed(() => {
   box-shadow: inset 0 0 0 2px var(--iu-accent);
 }
 .files__row:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: -2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: calc(var(--iu-focus-offset) * -1);
 }
 .files__row-name {
   flex: 1;
@@ -945,8 +945,8 @@ const changed = computed(() => {
 .files__open:focus-visible,
 .files__cell--leaf:focus-visible,
 .files__crumb:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: -2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: calc(var(--iu-focus-offset) * -1);
 }
 .files__name {
   width: 100%;

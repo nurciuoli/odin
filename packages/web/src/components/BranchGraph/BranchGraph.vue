@@ -150,8 +150,8 @@ const lanes = computed(() =>
   border-radius: var(--iu-radius-sm);
 }
 .iu-branch-graph__scroll:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .iu-branch-graph__canvas {
   position: relative;
@@ -214,8 +214,8 @@ a.iu-branch-graph__mark {
   cursor: pointer;
 }
 .iu-branch-graph__mark:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .iu-branch-graph__glyph {
   font-size: var(--iu-font-size-10-5);

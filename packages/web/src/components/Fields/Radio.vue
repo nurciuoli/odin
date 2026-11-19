@@ -90,10 +90,8 @@ function select() {
 }
 
 .iu-radio__input:focus-visible + .iu-radio__dot {
-  outline: none;
-  box-shadow:
-    0 0 0 2px var(--iu-ground),
-    0 0 0 4px var(--iu-accent);
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 
 .iu-radio--disabled {

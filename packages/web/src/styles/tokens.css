@@ -90,6 +90,11 @@
   --iu-diff-remove-gutter: #211412;
   --iu-diff-remove-ink: #e7b4aa;
 
+  /* focus: one crisp ring everywhere (2px ember, 2px gap; inset rows use the negative offset) and one selection colour */
+  --iu-focus-ring: 2px solid var(--iu-accent);
+  --iu-focus-offset: 2px;
+  --iu-selection: rgb(224 123 74 / 0.34);
+
   /* motion */
   --iu-ease: cubic-bezier(0.2, 0, 0, 1);
   --iu-dur-fast: 80ms;

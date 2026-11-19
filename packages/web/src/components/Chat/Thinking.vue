@@ -74,8 +74,8 @@ const label = computed(() => {
 }
 
 .iu-thinking__head:focus-visible {
-  outline: 1px solid var(--iu-accent);
-  outline-offset: 1px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 
 .iu-thinking__icon {

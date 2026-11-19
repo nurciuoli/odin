@@ -170,8 +170,8 @@ async function install(force = false) {
   border-color: var(--iu-accent);
 }
 .install-lib__option:has(input:focus-visible) {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 1px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .install-lib__main {
   display: flex;

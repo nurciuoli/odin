@@ -188,8 +188,8 @@ const rows = computed<Row[]>(() =>
 }
 .ov-sessions__more:focus-visible,
 .ov-sessions__link:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .ov-sessions__list {
   display: flex;

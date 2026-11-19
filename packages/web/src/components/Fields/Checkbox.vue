@@ -134,8 +134,8 @@ function toggle(e: Event) {
 }
 
 .iu-checkbox__input:focus-visible + .iu-checkbox__box {
-  outline: 1px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 
 .iu-checkbox--disabled {

@@ -814,8 +814,8 @@ function goTo(id: string) {
 }
 .app-settings__link:focus-visible,
 .app-settings__chevron:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
   border-radius: var(--iu-radius-sm);
 }
 .app-settings__status {

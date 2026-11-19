@@ -648,8 +648,8 @@ details[open] > .session-side__summary .session-side__caret {
   display: none;
 }
 .session-side__summary:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .session-side__summary-value {
   margin-left: auto;
@@ -728,8 +728,8 @@ details[open] > .session-side__summary .session-side__caret {
   color: var(--iu-text);
 }
 .session-side__plan:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .session-side__goal {
   align-items: flex-start;
@@ -797,8 +797,8 @@ details[open] > .session-side__summary .session-side__caret {
 .session-side__toggle:focus-visible,
 .session-side__open:focus-visible,
 .session-side__pr:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
   border-radius: var(--iu-radius-sm);
 }
 .session-side__pct {
@@ -923,8 +923,8 @@ details[open] > .session-side__summary .session-side__caret {
   text-underline-offset: 3px;
 }
 .session-side__link:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
   border-radius: var(--iu-radius-sm);
 }
 .session-side__mono {
@@ -1043,7 +1043,7 @@ details[open] > .session-side__summary .session-side__caret {
   color: var(--iu-text);
 }
 .session-side__tag-input:focus-visible {
-  outline: 2px solid var(--iu-accent);
+  outline: var(--iu-focus-ring);
 }
 </style>
 

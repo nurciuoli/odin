@@ -412,8 +412,8 @@ onBeforeUnmount(() => {
   color: var(--iu-text);
 }
 .app-wordmark__link:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .app-wordmark__mark {
   flex: none;

@@ -241,8 +241,8 @@ function Body() {
 }
 
 .iu-md__link:focus-visible {
-  outline: 1px solid var(--iu-accent);
-  outline-offset: 1px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
   border-radius: var(--iu-radius-sm);
 }
 

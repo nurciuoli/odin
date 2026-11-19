@@ -477,8 +477,8 @@ const span$ = (n: number) => ({ '--ov-span': String(n) })
   overflow-wrap: anywhere;
 }
 .overview__link:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .overview__more {
   font-size: var(--iu-font-size-12);

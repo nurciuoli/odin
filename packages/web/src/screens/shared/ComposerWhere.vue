@@ -237,8 +237,8 @@ const options = [
 .composer-where__option:focus-visible,
 .composer-where__suggestion:focus-visible,
 .composer-where__input:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: -2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: calc(var(--iu-focus-offset) * -1);
 }
 .composer-where__mark {
   color: var(--iu-text-2);
