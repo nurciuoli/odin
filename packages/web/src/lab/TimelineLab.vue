@@ -19,6 +19,39 @@ const query = ref(params.get('q') ?? '')
 const copied = ref('')
 const frame = ref<HTMLElement | null>(null)
 let saved = 0
+// morph: 'off' | 'in' (rows placed over their prompts, no transition) | 'on' | 'out'
+const mState = ref<'off' | 'in' | 'on' | 'out'>('off')
+const offs = ref<number[]>([])
+const liEls = () => [...(frame.value?.querySelectorAll<HTMLElement>('.morph__li') ?? [])]
+function measure() {
+  const lis = liEls()
+  offs.value = userEls().map((el, i) => Math.max(-700, Math.min(900, el.getBoundingClientRect().top - (lis[i]?.getBoundingClientRect().top ?? 0))))
+}
+async function morphOpen() {
+  mState.value = 'in'
+  offs.value = []
+  await nextTick()
+  measure()
+  await nextTick()
+  void frame.value?.offsetHeight
+  requestAnimationFrame(() => requestAnimationFrame(() => (mState.value = 'on')))
+}
+function morphClose(keep: boolean) {
+  const sc = scroller()
+  if (keep) peek(sel.value)
+  else if (sc) sc.scrollTop = saved
+  measure()
+  mState.value = 'out'
+  setTimeout(() => {
+    mState.value = 'off'
+    userEls().forEach(e => e.classList.remove('lab-peek'))
+  }, 620)
+  if (keep) {
+    const el = userEls()[sel.value]
+    setTimeout(() => el?.classList.add('lab-peek'), 500)
+    setTimeout(() => el?.classList.remove('lab-peek'), 1700)
+  }
+}
 
 const scroller = () => frame.value?.querySelector<HTMLElement>('.iu-msglist__scroller') ?? null
 const userEls = () => [...(frame.value?.querySelectorAll<HTMLElement>('article[data-role="user"]') ?? [])]
@@ -40,10 +73,12 @@ function show() {
   const sc = scroller()
   saved = sc?.scrollTop ?? 0
   open.value = true
+  if (variant.value === 'morph') return void morphOpen()
   nextTick(() => peek(sel.value))
 }
 function close(keep: boolean) {
   open.value = false
+  if (variant.value === 'morph') return morphClose(keep)
   userEls().forEach(e => e.classList.remove('lab-peek'))
   const sc = scroller()
   if (!keep && sc) sc.scrollTop = saved
@@ -70,7 +105,7 @@ async function copy(what: 'prompt' | 'reply', t = cur.value) {
   copied.value = `Copied ${what} of step ${t.n}`
   setTimeout(() => (copied.value = ''), 1600)
 }
-watch(sel, i => open.value && peek(i))
+watch(sel, i => open.value && variant.value !== 'morph' && peek(i))
 watch(query, () => {
   if (visible.value.length && !visible.value.some(t => t.n - 1 === sel.value)) sel.value = visible.value[0]!.n - 1
 })
@@ -116,7 +151,7 @@ const title = 'Retry policy for the GitHub sync client'
 <template>
   <div class="lab" :data-v="variant">
     <nav class="lab-switch" aria-label="Variants">
-      <a v-for="v in ['rail', 'ladder', 'branch', 'film', 'crawl', 'margin', 'm1', 'm2', 'm3', 'm4']" :key="v" :href="`?v=${v}`" :aria-current="variant === v || undefined">{{ v }}</a>
+      <a v-for="v in ['rail', 'ladder', 'branch', 'film', 'crawl', 'margin', 'm1', 'm2', 'm3', 'm4', 'morph']" :key="v" :href="`?v=${v}`" :aria-current="variant === v || undefined">{{ v }}</a>
     </nav>
     <div ref="frame" class="frame">
       <header class="bar">
@@ -127,7 +162,7 @@ const title = 'Retry policy for the GitHub sync client'
           <IuIcon name="clock" :size="14" /> Timeline <kbd>⌥T</kbd>
         </button>
       </header>
-      <div class="thread">
+      <div class="thread" :class="{ 'thread--morph': mState === 'on' }">
         <SessionThread :rows="rows" :entries="transcript" :working="false" harness="claude-code" root="/work/odin" />
       </div>
       <div class="dock"><div class="composer"><span>Message Claude…</span><span class="composer__r">Opus 5.5 · 44%</span></div></div>
@@ -361,6 +396,29 @@ const title = 'Retry policy for the GitHub sync client'
         </article>
       </nav>
 
+      <!-- morph: the thread's turns collapse in place; each prompt glides into a row, Claude's work folds into its sub-line -->
+      <section v-if="variant === 'morph' && mState !== 'off'" class="morph" :class="`morph--${mState}`" aria-label="Session timeline">
+        <div class="morph__col">
+          <div class="morph__head"><span>Timeline</span><span class="dim">{{ all.length }} steps · 1h 25m</span></div>
+          <ol>
+            <li v-for="(t, i) in all" :key="t.id" class="morph__li" :class="{ on: sel === i }" :data-mark="mark(t)" :style="{ transform: mState === 'on' ? 'none' : `translateY(${offs[i] ?? 0}px)`, transitionDelay: mState === 'on' || mState === 'out' ? `${Math.abs(i - sel) * 18}ms` : '0ms' }" @click="sel = i" @dblclick="close(true)">
+              <b>{{ t.n }}</b>
+              <div class="morph__main">
+                <div class="morph__row"><span class="morph__q">{{ t.prompt }}</span><time>{{ clock(t.at) }}</time></div>
+                <div class="morph__sub">Claude worked {{ dur(i) }} · {{ t.steps }} steps<template v-if="t.files.length"> · {{ t.files.length }} file{{ t.files.length > 1 ? 's' : '' }}</template><template v-if="t.agents"> · agent</template><template v-if="t.failed"> · <span class="bad">{{ t.failed }} failed</span></template></div>
+                <div class="morph__open" :data-open="sel === i">
+                  <div>
+                    <p class="morph__reply">{{ strip(t.reply) }}</p>
+                    <div class="margin__acts"><button tabindex="-1" @click.stop="copy('prompt')">Copy prompt <kbd>c</kbd></button><button tabindex="-1" @click.stop="copy('reply')">Copy reply <kbd>r</kbd></button><button tabindex="-1" @click.stop="close(true)">Open in thread <kbd>↵</kbd></button></div>
+                  </div>
+                </div>
+              </div>
+            </li>
+          </ol>
+          <p class="morph__keys"><kbd>↑↓</kbd> move <kbd>↵</kbd> open in thread <kbd>esc</kbd> back where I was</p>
+        </div>
+      </section>
+
       <div v-if="copied" class="lab-toast" role="status">{{ copied }}</div>
     </div>
   </div>
@@ -543,4 +601,28 @@ li.on .margin__q { color: var(--iu-text); -webkit-line-clamp: 4; }
 .mg4 li.on { background: var(--iu-raised); color: var(--iu-text); box-shadow: inset 2px 0 0 var(--iu-text-2); } .mg4 li[data-mark='fail'] b { color: var(--iu-danger); } .mg4 li[data-mark='agent'] b { color: var(--iu-info); }
 .mg4__card { width: 280px; align-self: center; background: var(--iu-surface); border: 1px solid var(--iu-border); border-radius: 10px; padding: 12px 14px; box-shadow: var(--iu-shadow-popover); }
 .mg4__p { margin: 0 0 12px; font-size: 13px; line-height: 1.45; color: var(--iu-text); user-select: text; } .mg4__r { margin: 0 0 10px; font-size: 12px; line-height: 1.45; color: var(--iu-text-muted); user-select: text; }
+
+/* morph */
+.thread { transition: opacity 0.3s var(--iu-ease), transform 0.4s var(--iu-ease), filter 0.4s; }
+.thread--morph { opacity: 0; transform: scale(0.985); filter: blur(2px); pointer-events: none; }
+.morph { position: absolute; top: 44px; bottom: 0; left: 0; right: 0; z-index: 10; overflow: auto; }
+.morph__col { width: 734px; max-width: 100%; margin: 0 auto; padding: 24px 0 56px; box-sizing: border-box; position: relative; min-height: 100%; }
+.morph__head { display: flex; justify-content: space-between; padding: 0 12px 10px 40px; font-size: 13px; font-weight: 500; opacity: 0; transition: opacity 0.35s 0.15s; }
+.morph--on .morph__head { opacity: 1; }
+.morph ol { list-style: none; margin: 0; padding: 0; position: relative; }
+.morph ol::before { content: ''; position: absolute; left: 14px; top: 8px; bottom: 8px; width: 1px; background: var(--iu-border); opacity: 0; transition: opacity 0.4s 0.2s; } .morph--on ol::before { opacity: 1; }
+.morph__li { position: relative; display: flex; gap: 14px; align-items: flex-start; padding: 8px 12px 8px 4px; border-radius: 8px; cursor: pointer; transition: transform 0.5s var(--iu-ease), background 0.2s, opacity 0.25s; opacity: 0; }
+.morph--on .morph__li, .morph--out .morph__li { opacity: 1; } .morph--in .morph__li { opacity: 0.001; }
+.morph--out .morph__li { opacity: 0; transition: transform 0.5s var(--iu-ease), opacity 0.3s 0.25s; }
+.morph__li b { flex: none; width: 20px; height: 20px; margin-top: 1px; display: grid; place-items: center; font-size: 11px; font-weight: 500; color: var(--iu-text-muted); background: var(--iu-ground); border: 1.5px solid var(--iu-text-muted); border-radius: 50%; box-sizing: border-box; position: relative; z-index: 1; }
+.morph__li[data-mark='fail'] b { border-color: var(--iu-danger); } .morph__li[data-mark='agent'] b { border-color: var(--iu-info); border-style: dashed; }
+.morph__li.on b { background: var(--iu-text); border-color: var(--iu-text); color: var(--iu-ground); }
+.morph__li.on { background: var(--iu-surface); }
+.morph__main { min-width: 0; flex: 1; }
+.morph__row { display: flex; gap: 12px; align-items: baseline; }
+.morph__q { flex: 1; font-size: 15px; color: var(--iu-text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .morph__li.on .morph__q { color: var(--iu-text); white-space: normal; }
+.morph__sub { font-size: 12px; color: var(--iu-text-muted); margin-top: 2px; }
+.morph__open { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.3s var(--iu-ease); } .morph__open[data-open='true'] { grid-template-rows: 1fr; } .morph__open > div { overflow: hidden; }
+.morph__reply { margin: 8px 0 0; font-size: 13px; line-height: 1.5; color: var(--iu-text-muted); }
+.morph__keys { margin: 18px 0 0 40px; font-size: 11px; color: var(--iu-text-muted); opacity: 0; transition: opacity 0.3s 0.3s; } .morph--on .morph__keys { opacity: 1; }
 </style>
