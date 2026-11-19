@@ -375,10 +375,10 @@ const title = 'Retry policy for the GitHub sync client'
               <path v-if="t.failed" d="M8 23 Q8 13 18 13 H32" class="g__fork g__fork--bad" /><rect v-if="t.failed" x="31" y="10" width="6" height="6" class="g__head--bad" />
               <circle cx="8" cy="23" :r="sel === i ? 5.5 : 4" class="g__node" />
             </svg>
-            <div><p class="margin__q">{{ t.prompt }}</p><div v-if="sel === i" class="margin__acts"><button @click.stop="copy('prompt')">Copy prompt <kbd>c</kbd></button><button @click.stop="copy('reply')">Copy reply <kbd>r</kbd></button><button @click.stop="close(true)">Stay <kbd>↵</kbd></button></div></div>
+            <div><p class="margin__q">{{ t.prompt }}</p><div v-if="sel === i" class="mg3__acts"><button title="Copy your prompt (c)" @click.stop="copy('prompt')"><IuIcon name="copy" :size="11" />you<kbd>c</kbd></button><button title="Copy Claude's reply (r)" @click.stop="copy('reply')"><IuIcon name="copy" :size="11" />Claude<kbd>r</kbd></button><button title="Stay here (Enter)" @click.stop="close(true)">↵</button></div></div>
           </li>
         </ol>
-        <p class="margin__keys"><kbd>↑↓</kbd> move <kbd>esc</kbd> back</p>
+        <p class="mg3__keys">↑↓ · ↵ · esc</p>
       </nav>
 
       <!-- m4 ANCHOR: a narrow numbered rail; the chosen step opens a card beside the thread with the full text to copy from -->
@@ -625,4 +625,10 @@ li.on .margin__q { color: var(--iu-text); -webkit-line-clamp: 4; }
 .morph__open { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.3s var(--iu-ease); } .morph__open[data-open='true'] { grid-template-rows: 1fr; } .morph__open > div { overflow: hidden; }
 .morph__reply { margin: 8px 0 0; font-size: 13px; line-height: 1.5; color: var(--iu-text-muted); }
 .morph__keys { margin: 18px 0 0 40px; font-size: 11px; color: var(--iu-text-muted); opacity: 0; transition: opacity 0.3s 0.3s; } .morph--on .morph__keys { opacity: 1; }
+
+.mg3__acts { display: flex; gap: 4px; margin-top: 5px; }
+.mg3__acts button { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; line-height: 16px; color: var(--iu-text-muted); background: transparent; border: 1px solid var(--iu-hairline); border-radius: 5px; padding: 0 5px; cursor: pointer; }
+.mg3__acts button:hover { color: var(--iu-text); border-color: var(--iu-border); }
+.mg3__acts kbd { margin: 0; padding: 0; border: 0; background: none; font-size: 10px; color: var(--iu-text-disabled); }
+.mg3__keys { position: absolute; bottom: 14px; left: 20px; margin: 0; font: 10px var(--iu-font-mono, monospace); color: var(--iu-text-disabled); }
 </style>
