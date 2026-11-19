@@ -1,0 +1,1 @@
+- Dialogs, menus, dropdowns, toasts and new session rows now arrive with a quick 120ms fade and 4px rise, and rows glide when the list reorders.
