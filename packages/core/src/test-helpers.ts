@@ -78,9 +78,24 @@ export async function startApp(options: { config?: Partial<Config>; githubFetch?
     },
     async close() {
       await app.close();
-      rmSync(join(config.home, ".."), { recursive: true, force: true });
+      removeTempDir(join(config.home, ".."));
     },
   };
+}
+
+/**
+ * Removes a test's temp folder. On Windows a just-closed SQLite file or git child can still hold a lock for a moment,
+ * so `rm` retries; if the lock outlasts the retries the folder is left in the OS temp dir (harmless) rather than
+ * failing a test that has already passed. Elsewhere any error still throws.
+ */
+export function removeTempDir(path: string): void {
+  try {
+    rmSync(path, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (process.platform === "win32" && (code === "EPERM" || code === "EBUSY" || code === "ENOTEMPTY")) return;
+    throw err;
+  }
 }
 
 /** Reads SSE frames from /api/events until `until` returns true or the timeout passes. */
