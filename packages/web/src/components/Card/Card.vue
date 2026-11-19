@@ -74,12 +74,15 @@ const dotStatus = computed(() => (props.intent ? INTENT_STATUS[props.intent] : n
 }
 .iu-card--raised {
   background: var(--iu-surface);
-  border-color: var(--iu-border);
+  border-color: var(--iu-hairline);
+  border-top-color: var(--iu-lip-edge);
+  box-shadow: var(--iu-lip);
 }
 .iu-card--floating {
   background: var(--iu-raised);
-  border-color: var(--iu-border-strong);
-  box-shadow: var(--iu-shadow-raised);
+  border-color: var(--iu-border);
+  border-top-color: var(--iu-lip-edge);
+  box-shadow: var(--iu-lip), var(--iu-shadow-raised);
 }
 .iu-card--well {
   background: var(--iu-well);

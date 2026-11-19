@@ -95,6 +95,10 @@
   --iu-focus-offset: 2px;
   --iu-selection: rgb(224 123 74 / 0.34);
 
+  /* depth by light: a raised surface catches light on its top edge instead of casting a shadow */
+  --iu-lip-edge: rgb(255 255 255 / 0.085); /* the top border of a raised surface */
+  --iu-lip: inset 0 1px 0 rgb(255 255 255 / 0.04);
+
   /* motion */
   --iu-ease: cubic-bezier(0.2, 0, 0, 1);
   --iu-dur-fast: 80ms;
