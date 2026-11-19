@@ -476,8 +476,8 @@ const title = (s: Session) =>
   color: var(--iu-accent);
 }
 .launchpad__perch-title:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: -2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: calc(var(--iu-focus-offset) * -1);
 }
 .launchpad__perch-activity {
   color: var(--iu-text-muted);
@@ -567,8 +567,8 @@ const title = (s: Session) =>
   color: var(--iu-accent);
 }
 .launchpad__session:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 3px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .launchpad__session-title {
   flex: 1;

@@ -397,8 +397,8 @@ const bodyStyle = computed(() => (props.maxHeight ? { maxHeight: props.maxHeight
   color: var(--iu-text);
 }
 .iu-table__sort:focus-visible {
-  outline: 1px solid var(--iu-accent);
-  outline-offset: -2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: calc(var(--iu-focus-offset) * -1);
 }
 .iu-table th[aria-sort='ascending'] .iu-table__sort,
 .iu-table th[aria-sort='descending'] .iu-table__sort {

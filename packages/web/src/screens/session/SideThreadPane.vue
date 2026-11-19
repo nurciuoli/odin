@@ -132,8 +132,8 @@ function onPromoted(s: Session) {
   color: var(--iu-text-2);
 }
 .side-pane__heading:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .side-pane__hint {
   font-size: var(--iu-font-size-11);
@@ -180,8 +180,8 @@ function onPromoted(s: Session) {
   box-shadow: inset 2px 0 0 var(--iu-accent);
 }
 .side-pane__item:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: -2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: calc(var(--iu-focus-offset) * -1);
 }
 .side-pane__item-title {
   flex: 1;

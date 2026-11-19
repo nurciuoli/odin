@@ -119,8 +119,8 @@ function onKeydown(e: KeyboardEvent, i: number) {
   background: var(--iu-effort-color);
 }
 .iu-effort__segment:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 3px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .iu-effort__segment:disabled {
   cursor: not-allowed;

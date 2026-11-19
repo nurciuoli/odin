@@ -197,8 +197,8 @@ watch(
 }
 
 .iu-trace--scroll:focus-visible {
-  outline: 1px solid var(--iu-accent);
-  outline-offset: 1px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 
 .iu-trace--comfortable {
@@ -279,8 +279,8 @@ watch(
 }
 
 .iu-trace__head:focus-visible {
-  outline: 1px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
   border-radius: 2px;
 }
 

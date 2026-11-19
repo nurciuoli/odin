@@ -109,8 +109,8 @@ onBeforeUnmount(() => view?.destroy())
   outline: none;
 }
 .iu-code-editor:focus-within {
-  outline: 1px solid var(--iu-accent);
-  outline-offset: -1px;
+  outline: var(--iu-focus-ring);
+  outline-offset: calc(var(--iu-focus-offset) * -1);
 }
 .iu-code-editor .cm-content:focus-visible {
   outline: none;

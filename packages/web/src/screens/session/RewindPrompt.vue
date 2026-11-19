@@ -309,8 +309,8 @@ async function confirm() {
   border-radius: var(--iu-radius-lg);
 }
 .rewind:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .rewind__top {
   display: flex;
@@ -452,8 +452,8 @@ async function confirm() {
   background: var(--iu-accent-wash);
 }
 .rewind__card:has(.rewind__radio:focus-visible) {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .rewind__card--off {
   opacity: 0.55;

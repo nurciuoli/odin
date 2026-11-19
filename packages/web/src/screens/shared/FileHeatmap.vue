@@ -156,8 +156,8 @@ function background(i: HeatItem): string | undefined {
   box-shadow: inset 0 0 0 2px var(--iu-accent);
 }
 .file-heatmap__cell:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: -2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: calc(var(--iu-focus-offset) * -1);
 }
 .file-heatmap__name {
   width: 100%;

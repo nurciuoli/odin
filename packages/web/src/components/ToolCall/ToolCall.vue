@@ -254,8 +254,8 @@ const children = computed(() => props.call.children ?? [])
 .iu-tool-call__actions button:focus-visible,
 .iu-tool-call__output-toggle:focus-visible,
 .iu-tool-call__command:focus-visible {
-  outline: 1px solid var(--iu-accent);
-  outline-offset: 1px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .iu-tool-call__lines {
   flex: none;
@@ -345,8 +345,8 @@ const children = computed(() => props.call.children ?? [])
 
 .iu-tool-call__head:focus-visible,
 .iu-tool-call__toggle:focus-visible {
-  outline: 1px solid var(--iu-accent);
-  outline-offset: 1px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 
 .iu-tool-call__name {

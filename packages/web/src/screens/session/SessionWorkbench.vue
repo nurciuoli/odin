@@ -296,8 +296,8 @@ defineExpose({ openFile, openCell })
   background: var(--iu-border-quiet);
 }
 .session-workbench__splitter:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .session-workbench__drag-shield {
   position: absolute;

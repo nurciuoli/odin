@@ -1,0 +1,1 @@
+- Focus rings are one crisp 2px ember ring with a 2px gap everywhere, and selected text gets a soft ember wash.

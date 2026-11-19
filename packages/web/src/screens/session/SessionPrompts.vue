@@ -128,8 +128,8 @@ async function cancel() {
   gap: 6px;
 }
 .session-prompts:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
   border-radius: var(--iu-radius-lg);
 }
 .session-prompts__count {

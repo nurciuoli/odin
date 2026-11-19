@@ -163,8 +163,8 @@ defineExpose({ scrollToBottom, isAtBottom })
   scrollbar-color: var(--iu-border) transparent;
 }
 .iu-msglist__scroller:focus-visible {
-  outline: 1px solid var(--iu-accent);
-  outline-offset: 1px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 
 .iu-msglist__column {

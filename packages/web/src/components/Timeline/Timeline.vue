@@ -179,8 +179,8 @@ function toggle(row: Row) {
 }
 
 .iu-timeline__fold-button:focus-visible {
-  outline: 1px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 
 .iu-timeline__fold-time {

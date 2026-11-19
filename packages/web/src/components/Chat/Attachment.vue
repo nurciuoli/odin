@@ -181,8 +181,8 @@ const progressPct = computed(() =>
   background: var(--iu-surface);
 }
 .iu-attachment__remove:focus-visible {
-  outline: 1px solid var(--iu-accent);
-  outline-offset: 1px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 
 .iu-attachment__progress {

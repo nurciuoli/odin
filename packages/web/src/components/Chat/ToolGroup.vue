@@ -134,8 +134,8 @@ const overflow = computed(() => Math.max(0, props.steps.length - STRIP_MAX))
 }
 
 .iu-tool-group__head:focus-visible {
-  outline: 1px solid var(--iu-accent);
-  outline-offset: 1px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 
 .iu-tool-group__chevron {

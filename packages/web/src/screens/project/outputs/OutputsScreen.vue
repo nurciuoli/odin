@@ -179,8 +179,8 @@ const PULL_DISPLAY = {
 }
 .outputs__title:focus-visible,
 .outputs__meta a:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .outputs__meta {
   display: flex;

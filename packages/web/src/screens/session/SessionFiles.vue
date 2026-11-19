@@ -879,8 +879,8 @@ defineExpose({ open, openCell })
   color: var(--iu-text);
 }
 .session-files__sidebar-toggle:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .session-files__sidebar-content {
   flex: 1;
@@ -945,8 +945,8 @@ defineExpose({ open, openCell })
   color: var(--iu-accent);
 }
 .session-files__entry:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: -2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: calc(var(--iu-focus-offset) * -1);
 }
 .session-files__entry-icon {
   flex: none;
@@ -1044,8 +1044,8 @@ defineExpose({ open, openCell })
 }
 .session-files__tab-select:focus-visible,
 .session-files__tab-close:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: -2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: calc(var(--iu-focus-offset) * -1);
 }
 .session-files__tab-name {
   max-width: 120px;
