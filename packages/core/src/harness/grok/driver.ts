@@ -23,8 +23,10 @@ import {
   canonicalModel,
   claimSpawn,
   grokActivity,
+  grokPermission,
   grokRules,
   isMode,
+  type GrokPermissionWire,
   mergeModels,
   modelsFrom,
   optionFor,
@@ -71,6 +73,13 @@ function withRules(body: Wire, opts: StartOptions): Wire {
   const rules = grokRules(opts.instructions, opts.agents);
   if (!rules) return body;
   return { ...body, _meta: { ...(body._meta ?? {}), rules } };
+}
+
+function withPermission(body: Wire, opts: StartOptions, permission: PermissionMode | null): { body: Wire; wire: GrokPermissionWire | null } {
+  const next = withRules(body, opts);
+  if (!permission) return { body: next, wire: null };
+  const wire = grokPermission(permission);
+  return { body: { ...next, _meta: { ...(next._meta ?? {}), autoMode: wire.autoMode, yoloMode: wire.yoloMode } }, wire };
 }
 
 export function createGrokHarness(options: GrokOptions): Harness {
@@ -146,6 +155,9 @@ export function createGrokHarness(options: GrokOptions): Harness {
     let pumping = false;
     let mode: PermissionMode | null = opts.permissionMode ?? null;
     let requestedMode: PermissionMode | null = mode;
+    let sentPermission: GrokPermissionWire | null = null;
+    let ignoreTranscript = false;
+    let attachedMcp: Wire[] = [];
     let model = opts.model ?? null;
     let effort = opts.effort;
     let allowImages = true;
@@ -184,6 +196,22 @@ export function createGrokHarness(options: GrokOptions): Harness {
     }
 
     // Grok's ACP extension uses set_model metadata, independent of permission mode.
+    async function applyPermission(value: PermissionMode, live: boolean) {
+      const wire = grokPermission(value);
+      const flagsChanged = !sentPermission || sentPermission.autoMode !== wire.autoMode || sentPermission.yoloMode !== wire.yoloMode;
+      if (live && flagsChanged && native) {
+        ignoreTranscript = true;
+        try {
+          const loaded = withPermission({ sessionId: native, cwd: opts.cwd, mcpServers: attachedMcp }, opts, value);
+          await rpc.request("session/load", loaded.body, TURN_TIMEOUT_MS);
+          sentPermission = loaded.wire;
+        } finally {
+          ignoreTranscript = false;
+        }
+      }
+      if (wire.modeId && native) await rpc.request("session/set_mode", { sessionId: native, modeId: wire.modeId });
+      mode = value;
+    }
     async function applyEffort(value: import("@odin/shared/api").Effort | null) {
       const selected = catalog.find(m => m.value === model) ?? (!model ? catalog[0] : undefined);
       const level = value ?? selected?.defaultEffort;
@@ -229,6 +257,7 @@ export function createGrokHarness(options: GrokOptions): Harness {
       rpc.close();
     }
     function noteUpdate(params: Wire) {
+      if (ignoreTranscript) return;
       const update = params.update ?? {};
       const kind = update.sessionUpdate;
       if (kind === "available_commands_update") {
@@ -381,11 +410,14 @@ export function createGrokHarness(options: GrokOptions): Harness {
         allowImages = imagePromptsAccepted(init);
         const mcp = await mcpServers(opts);
         bridge = mcp.bridge;
+        attachedMcp = mcp.servers;
         if (closed) { await bridge?.close(); return; }
         if (opts.resume && !opts.fork) {
           native = nativeOf(opts.resume);
           nativeSlot.id = native;
-          await rpc.request("session/load", withRules({ sessionId: native, cwd: opts.cwd, mcpServers: mcp.servers }, opts), TURN_TIMEOUT_MS);
+          const loaded = withPermission({ sessionId: native, cwd: opts.cwd, mcpServers: mcp.servers }, opts, requestedMode);
+          sentPermission = loaded.wire;
+          await rpc.request("session/load", loaded.body, TURN_TIMEOUT_MS);
         } else if (opts.resume && opts.fork) {
           const parent = nativeOf(opts.resume);
           await rpc.request("session/load", withRules({ sessionId: parent, cwd: opts.cwd, mcpServers: mcp.servers }, opts), TURN_TIMEOUT_MS);
@@ -397,7 +429,9 @@ export function createGrokHarness(options: GrokOptions): Harness {
           nativeSlot.id = native;
           bind(odinId, native);
         } else {
-          const created = await rpc.request("session/new", withRules({ cwd: opts.cwd, mcpServers: mcp.servers }, opts));
+          const createdBody = withPermission({ cwd: opts.cwd, mcpServers: mcp.servers }, opts, requestedMode);
+          sentPermission = createdBody.wire;
+          const created = await rpc.request("session/new", createdBody.body);
           if (closed) return;
           native = typeof created.sessionId === "string" ? created.sessionId : "";
           if (!native) throw new Error("Grok did not return a session id");
@@ -439,14 +473,15 @@ export function createGrokHarness(options: GrokOptions): Harness {
         }
         if (requestedMode && native) {
           try {
-            const initialMode = requestedMode;
-            await rpc.request("session/set_mode", { sessionId: native, modeId: initialMode });
-            mode = initialMode;
-            while (requestedMode !== mode) {
-              const nextMode: PermissionMode | null = requestedMode;
-              await rpc.request("session/set_mode", { sessionId: native, modeId: nextMode });
-              mode = nextMode;
-            }
+            let applied: PermissionMode | null = null;
+            do {
+              const next: PermissionMode | null = requestedMode;
+              if (!next) break;
+              const wire = grokPermission(next);
+              const reload = sentPermission?.autoMode !== wire.autoMode || sentPermission?.yoloMode !== wire.yoloMode;
+              await applyPermission(next, reload);
+              applied = next;
+            } while (requestedMode !== applied);
           } catch (error) {
             const text = error instanceof Error ? error.message : "Grok rejected the permission mode";
             emit({ type: "notice", level: "warning", text: `Grok kept its current permission mode. ${text}` });
@@ -528,8 +563,7 @@ export function createGrokHarness(options: GrokOptions): Harness {
         if (!isMode(value)) throw new Error(`Grok does not support permission mode ${value}`);
         requestedMode = value;
         if (!initialized) return;
-        if (native) await rpc.request("session/set_mode", { sessionId: native, modeId: value });
-        mode = value;
+        await applyPermission(value, true);
         emit({ type: "permission.mode", mode: value });
       },
       async close() {

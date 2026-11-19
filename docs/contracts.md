@@ -266,7 +266,12 @@ Grok Build is the `grok` runtime. It spawns `grok --no-auto-update agent --no-le
 Agent Client Protocol JSON-RPC on stdin/stdout. Auth is `authenticate` with `cached_token` after `grok login`.
 An interactive-only method (`grok.com`) fails the start with a login error. Odin does not read `XAI_API_KEY`
 or `~/.grok/auth.json`. `session/new` assigns Grok's session id; `harness_session_links` maps it to the Odin id.
-Resume is `session/load`. All six permission modes are `session/set_mode` mode ids. Scopes are once and session.
+Resume is `session/load`. Scopes are once and session. Permission modes are not all `session/set_mode` ids.
+Verified on CLI 1.0.89, `session/set_mode` accepts `default`, `plan`, `agent` and `ask`, and rejects `auto`,
+`acceptEdits`, `dontAsk` and `bypassPermissions` with `unknown mode id`. Odin maps them as: `default` and
+`dontAsk` → `default`; `plan` → `plan`; `auto` and `acceptEdits` → `agent` plus `_meta.autoMode: true`;
+`bypassPermissions` → `agent` plus `_meta.yoloMode: true`. `autoMode` and `yoloMode` go on `session/new` and
+`session/load` (including a later load when the mode changes). `false` turns that flag off.
 `session/set_model` runs only when the id is in the live catalog. An unknown or rejected model, and a rejected
 `session/set_mode`, are reported with a notice and the session continues on the model and mode Grok already has.
 A JSON-RPC error includes the message and data, not only the code. `session/prompt` returns `stopReason` and

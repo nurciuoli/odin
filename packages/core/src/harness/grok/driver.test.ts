@@ -103,6 +103,28 @@ test("a new Grok session links the native id and streams a turn", async () => {
   await handle.close();
 });
 
+test("auto review is a session flag, not a set_mode id", async () => {
+  const { connections, harness } = setup();
+  const handle = harness.start({ cwd: "C:\\repo", sessionId: "odin-auto", permissionMode: "auto", prompt: { text: "hi" } });
+  try {
+    const events = await take(handle.events, (event) => event.type === "turn.end");
+    const created = connections[0]!.calls.find((call) => call.method === "session/new");
+    assert.equal(created?.params._meta?.autoMode, true);
+    assert.equal(created?.params._meta?.yoloMode, false);
+    assert.deepEqual(connections[0]!.calls.filter((call) => call.method === "session/set_mode").map((call) => call.params.modeId), ["agent"]);
+    assert.equal(events.some((event) => event.type === "notice"), false);
+    const init = events.find((event) => event.type === "init");
+    assert.equal(init?.type === "init" && init.permissionMode, "auto");
+    await handle.setPermissionMode("bypassPermissions");
+    const loaded = connections[0]!.calls.filter((call) => call.method === "session/load").at(-1);
+    assert.equal(loaded?.params._meta?.yoloMode, true);
+    assert.equal(loaded?.params._meta?.autoMode, false);
+    assert.equal(connections[0]!.calls.filter((call) => call.method === "session/set_mode").at(-1)?.params.modeId, "agent");
+  } finally {
+    await handle.close();
+  }
+});
+
 test("a mode change during startup replaces the initial mode", async () => {
   const { db, connections, harness } = setup();
   const handle = harness.start({ cwd: "C:\\repo", sessionId: "mode-race", permissionMode: "plan", prompt: { text: "hi" } });

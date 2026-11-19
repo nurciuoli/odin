@@ -1,0 +1,1 @@
+- Grok sessions apply Auto and always-approve through Grok's permission flags, so starting in Auto no longer warns that `auto` is an unknown mode.

@@ -7,6 +7,35 @@ import type { Wire } from "./transport.ts";
 
 export const GROK_MODES: PermissionMode[] = ["default", "acceptEdits", "plan", "dontAsk", "bypassPermissions", "auto"];
 
+/**
+ * Wire shape for one Odin permission mode on Grok CLI 1.0.89.
+ * `session/set_mode` accepts `default`, `plan`, `agent` and `ask`. It rejects
+ * `auto`, `acceptEdits`, `dontAsk` and `bypassPermissions` (`unknown mode id`).
+ * Auto review is `_meta.autoMode` and always-approve is `_meta.yoloMode` on
+ * `session/new` and `session/load`.
+ */
+export interface GrokPermissionWire {
+  modeId: "default" | "plan" | "agent" | "ask" | null;
+  autoMode: boolean;
+  yoloMode: boolean;
+}
+
+export function grokPermission(mode: PermissionMode): GrokPermissionWire {
+  switch (mode) {
+    case "plan":
+      return { modeId: "plan", autoMode: false, yoloMode: false };
+    case "bypassPermissions":
+      return { modeId: "agent", autoMode: false, yoloMode: true };
+    case "auto":
+    case "acceptEdits":
+      // acceptEdits has no ACP mode. Auto review is the closest permission Grok applies per session.
+      return { modeId: "agent", autoMode: true, yoloMode: false };
+    case "dontAsk":
+    case "default":
+      return { modeId: "default", autoMode: false, yoloMode: false };
+  }
+}
+
 export const TURN_TIMEOUT_MS = 30 * 60 * 1000;
 
 /** costUsdTicks / 1e9 matched a short live turn (116586000 ticks ≈ $0.12). */

@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { acpMcpServers, authMethod, canonicalModel, costUsd, grokRules, historyEntries, mergeModels, modelsFrom, optionFor, permissionRequest, slashCommands, tasksFromUpdates, textOf, toolCallInput, toolCallName, usageFrom } from "./map.ts";
+import { acpMcpServers, authMethod, canonicalModel, costUsd, grokPermission, grokRules, historyEntries, mergeModels, modelsFrom, optionFor, permissionRequest, slashCommands, tasksFromUpdates, textOf, toolCallInput, toolCallName, usageFrom } from "./map.ts";
+
+test("permission modes use Grok session ids and auto or always-approve flags", () => {
+  assert.deepEqual(grokPermission("default"), { modeId: "default", autoMode: false, yoloMode: false });
+  assert.deepEqual(grokPermission("dontAsk"), { modeId: "default", autoMode: false, yoloMode: false });
+  assert.deepEqual(grokPermission("plan"), { modeId: "plan", autoMode: false, yoloMode: false });
+  assert.deepEqual(grokPermission("auto"), { modeId: "agent", autoMode: true, yoloMode: false });
+  assert.deepEqual(grokPermission("acceptEdits"), { modeId: "agent", autoMode: true, yoloMode: false });
+  assert.deepEqual(grokPermission("bypassPermissions"), { modeId: "agent", autoMode: false, yoloMode: true });
+});
 
 test("auth prefers a cached login and refuses an interactive-only method", () => {
   assert.equal(authMethod({ authMethods: [{ id: "grok.com" }, { id: "cached_token" }] }), "cached_token");
