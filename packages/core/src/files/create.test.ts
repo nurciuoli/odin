@@ -2,19 +2,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Session, SessionTextFile } from "@odin/shared/api";
 import { fakeHarness } from "../harness/fake.ts";
-import { startApp, testDeps, stubServices } from "../test-helpers.ts";
+import { removeTempDir, startApp, testDeps, stubServices } from "../test-helpers.ts";
 import { createFilesService, MAX_FILE_BYTES } from "./service.ts";
 
 function workspace(t: { after(fn: () => void): void }) {
   const deps = testDeps();
   const root = join(deps.config.home, "workspace");
   mkdirSync(root, { recursive: true });
-  t.after(() => { deps.db.close(); rmSync(join(deps.config.home, ".."), { recursive: true, force: true }); });
+  t.after(() => { deps.db.close(); removeTempDir(join(deps.config.home, "..")); });
   const services = stubServices({});
   services.sessions = { get: (id: string) => (id === "known" ? { cwd: root, project: "test" } : null) } as unknown as typeof services.sessions;
   services.projects = { get: () => null, noteWritten: () => {} } as unknown as typeof services.projects;
@@ -66,7 +66,7 @@ test("create never writes through a symbolic link", (t) => {
   mkdirSync(outside, { recursive: true });
   try { symlinkSync(outside, join(root, "escape"), "junction"); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "EPERM") throw error; return; }
-  t.after(() => rmSync(outside, { recursive: true, force: true }));
+  t.after(() => removeTempDir(outside));
   assert.throws(() => files.create("known", "escape/new.md", "x"), { status: 403 });
   assert.equal(existsSync(join(outside, "new.md")), false);
 });
@@ -80,7 +80,7 @@ test("POST /api/sessions/:id/files creates files in the session folder over HTTP
   execFileSync("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", "add", "."], { cwd: repo });
   execFileSync("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-qm", "init"], { cwd: repo });
   const app = await startApp({ harnesses: { claude: fakeHarness() } });
-  t.after(async () => { await app.close(); rmSync(root, { recursive: true, force: true }); });
+  t.after(async () => { await app.close(); removeTempDir(root); });
   const post = (path: string, body: unknown) => app.api(path, { method: "POST", body: JSON.stringify(body) });
   assert.equal((await post("/api/projects", { path: repo })).status, 201);
   const started = await post("/api/sessions", { project: "demo", prompt: { text: "hello" } });

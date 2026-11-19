@@ -1,9 +1,12 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
+import { statusLabel } from '@/styles/status'
 import {
   formatCost,
   formatTokens,
   harnessLabel,
+  needsYouText,
+  needYouCount,
   plural,
   projectStatus,
   relativeTime,
@@ -47,8 +50,21 @@ describe('format', () => {
   })
 
   it('SESSION_DISPLAY maps waiting to awaiting, never colour-only', () => {
-    expect(SESSION_DISPLAY.waiting).toEqual({ status: 'awaiting', label: 'Needs you' })
-    expect(SESSION_DISPLAY.ended.status).toBe('ok')
+    expect(SESSION_DISPLAY.waiting).toMatchObject({ status: 'awaiting', label: 'Needs you' })
+    expect(SESSION_DISPLAY.ended).toMatchObject({ status: 'ok', label: 'Done' })
+  })
+
+  it('SESSION_DISPLAY words come from statusLabel, so a state is named once', () => {
+    for (const d of Object.values(SESSION_DISPLAY))
+      expect(d.label.toLowerCase()).toBe(statusLabel[d.status])
+  })
+
+  it('needsYouText and needYouCount speak the same words', () => {
+    expect(needsYouText('permission')).toBe('Needs you · permission')
+    expect(needsYouText('question')).toBe('Needs you · answer')
+    expect(needsYouText(null)).toBe('Needs you')
+    expect(needYouCount(1)).toBe('1 session needs you')
+    expect(needYouCount(3)).toBe('3 sessions need you')
   })
 
   it('harnessLabel names Codex by prefix, Grok exactly, and Claude otherwise', () => {

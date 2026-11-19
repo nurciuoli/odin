@@ -13,7 +13,7 @@ import { IuDialog } from '@/components/Modal'
 import { IuField } from '@/components/Fields'
 import { IuIcon } from '@/components/Icon'
 import { IuMenu, type MenuItem } from '@/components/Menu'
-import { IuFlock, type FlockState } from '@/components/Spinner'
+import { IuFlock } from '@/components/Spinner'
 import { IuTable, type Column } from '@/components/Table'
 import { useToast } from '@/components/Toast'
 import { statusIntent } from '@/styles/status'
@@ -54,7 +54,6 @@ type Row = {
 }
 
 // In-progress rows show the flock where the others show the badge's dot. The label beside it says the state.
-const FLOCK: Partial<Record<SessionState, FlockState>> = { running: 'working', waiting: 'waiting' }
 
 const titleOf = (name: string) => projects.projects.value.find(p => p.name === name)?.title ?? name
 
@@ -250,9 +249,12 @@ async function confirm() {
         </span>
       </template>
       <template #cell:state="{ row }">
-        <IuBadge v-if="FLOCK[row.state]" :intent="statusIntent[SESSION_DISPLAY[row.state].status]">
+        <IuBadge
+          v-if="SESSION_DISPLAY[row.state].flock"
+          :intent="statusIntent[SESSION_DISPLAY[row.state].status]"
+        >
           <span class="sessions-table__glyph" aria-hidden="true">
-            <IuFlock :state="FLOCK[row.state]" size="sm" tone="neutral" />
+            <IuFlock :state="SESSION_DISPLAY[row.state].flock" size="sm" tone="neutral" />
           </span>
           {{ SESSION_DISPLAY[row.state].label }}
         </IuBadge>

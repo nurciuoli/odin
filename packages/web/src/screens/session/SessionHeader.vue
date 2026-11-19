@@ -19,14 +19,14 @@ import { IuField } from '@/components/Fields'
 import { IuIcon } from '@/components/Icon'
 import { IuMenu, type MenuItem } from '@/components/Menu'
 import { IuDialog } from '@/components/Modal'
-import { IuFlock } from '@/components/Spinner'
 import { useToast } from '@/components/Toast'
 import { statusIntent } from '@/styles/status'
-import { plural, SESSION_DISPLAY } from '@/screens/shared/format'
+import { needYouCount, SESSION_DISPLAY } from '@/screens/shared/format'
 import { useQuickAnswer } from '@/screens/shared/useQuickAnswer'
 import SaveToLibraryModal from '@/screens/library/SaveToLibraryModal.vue'
 import ForkModal from './ForkModal.vue'
 import { openHandoff } from './handoff'
+import SessionStatusBand from './SessionStatusBand.vue'
 
 const props = defineProps<{
   session: SessionDetail
@@ -49,6 +49,8 @@ const display = computed(
       props.working && props.session.state === 'idle' ? 'running' : props.session.state
     ],
 )
+// running, needs you and failed say their state in the band under the title; the chip is for idle and done
+const hasBand = computed(() => ['running', 'awaiting', 'failed'].includes(display.value.status))
 const isFinal = computed(() => props.session.state === 'ended' || props.session.state === 'failed')
 const worktree = computed(() =>
   props.session.workspace.kind === 'worktree' ? props.session.workspace : null,
@@ -195,9 +197,7 @@ function waitsFor(s: Session): string {
   return 'Needs your permission'
 }
 const waitingSummary = computed(() =>
-  othersWaiting.value.length
-    ? `${plural(othersWaiting.value.length, 'other session')} waiting for you`
-    : '',
+  othersWaiting.value.length ? needYouCount(othersWaiting.value.length, 'other session') : '',
 )
 // Flat on purpose: a submenu has no room beside its parent in a narrow window and opens over it, where the click
 // meant for the row would land on Deny. Each session is an Open row, with Allow/Deny under it for a tool prompt.
@@ -288,16 +288,8 @@ async function confirmDelete() {
             @focusout="stopRename(true)"
           />
           <h1 v-else class="session-header__title" :title="session.title">{{ session.title }}</h1>
-          <span
-            v-if="display.status === 'running'"
-            class="session-header__status"
-            role="img"
-            :aria-label="display.label"
-            :title="display.label"
-            ><IuFlock state="working" size="md" tone="neutral"
-          /></span>
           <IuBadge
-            v-else
+            v-if="!hasBand"
             class="session-header__status"
             :intent="statusIntent[display.status]"
             :tempo="display.status"
@@ -346,6 +338,8 @@ async function confirmDelete() {
         </IuMenu>
       </template>
     </IuHeader>
+
+    <SessionStatusBand :session="session" :working="working" />
 
     <span class="sr-only" role="status" aria-live="polite">{{ waitingSummary }}</span>
 

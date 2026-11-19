@@ -34,7 +34,7 @@ describe('SessionLaunchpad', () => {
     const rows = wrapper.findAll('.launchpad__perch')
     expect(rows).toHaveLength(2)
     expect(rows[0]!.attributes('data-state')).toBe('paused')
-    expect(rows[0]!.find('.launchpad__perch-word').text()).toMatch(/^Paused/)
+    expect(rows[0]!.find('.launchpad__perch-word').text()).toMatch(/^Needs you/)
     expect(rows[0]!.text()).toContain('Wants to run rm -rf packages/web/dist')
     expect(rows[0]!.find('.iu-flock').classes()).toEqual(
       expect.arrayContaining(['iu-flock--xl', 'iu-flock--neutral', 'iu-flock--waiting']),
@@ -43,11 +43,11 @@ describe('SessionLaunchpad', () => {
     expect(rows[0]!.find('a.launchpad__perch-title').attributes('href')).toBe(
       `/s/${FIXTURE_SESSION_IDS.waiting}`,
     )
-    // the live activity leads the row; plain "Running" isn't repeated as a word
+    // every row says its state in the same word, then what it is doing
     expect(rows[1]!.find('.launchpad__perch-activity').exists()).toBe(true)
-    expect(rows[1]!.find('.launchpad__perch-word').exists()).toBe(false)
+    expect(rows[1]!.find('.launchpad__perch-word').text()).toBe('Running')
     expect(rows[1]!.find('.iu-flock').classes()).not.toContain('iu-flock--waiting')
-    expect(wrapper.text()).toContain('2 sessions, 1 paused for you')
+    expect(wrapper.text()).toContain('2 sessions, 1 needs you')
     expect(wrapper.text()).not.toContain('Workspace statistics')
     expect(wrapper.findAllComponents(ComposerChoice).map(c => c.props('label'))).toContain(
       'Harness',

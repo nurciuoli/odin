@@ -14,7 +14,7 @@ import { IuFlock } from '@/components/Spinner'
 import { IuSkeleton } from '@/components/States'
 import { useApi, useIsMock } from '@/api'
 import type { Session } from '@odin/shared/api'
-import { SESSION_DISPLAY } from '@/screens/shared/format'
+import { SESSION_DISPLAY, needYouCount } from '@/screens/shared/format'
 import { plural, projectStatus, relativeTime } from '@/screens/shared/format'
 import { useSessionPerches } from '@/screens/shared/useSessionPerches'
 import { layoutDemand, sidebarCrowded } from './layout'
@@ -48,7 +48,7 @@ const sections = computed(() => [
   },
 ])
 function activityOf(s: Session): string {
-  if (!isLive(s)) return `${s.state === 'failed' ? 'Failed' : 'Finished'}, not opened yet`
+  if (!isLive(s)) return `${SESSION_DISPLAY[s.state].label}, not opened yet`
   const perch = perches.value[s.id]
   return [projectOf(s), perch?.activity === 'Starting' ? perch.word : perch?.activity]
     .filter(Boolean)
@@ -103,7 +103,7 @@ async function saveAction() {
 // The collapsed rail has no room for the rows' labels, so the Sessions icon carries how many wait for you.
 const waitingLabel = computed(() => {
   const n = sessions.waiting.value.length
-  return n > 0 ? `${plural(n, 'session')} waiting for you` : ''
+  return n > 0 ? needYouCount(n) : ''
 })
 
 // Live counts from the sessions store; the project summary's own counts lag until the next refetch.
@@ -242,9 +242,7 @@ onBeforeUnmount(() => {
             :aria-label="
               [
                 p.title,
-                p.sessions.waiting > 0
-                  ? `${plural(p.sessions.waiting, 'session')} waiting for you`
-                  : '',
+                p.sessions.waiting > 0 ? needYouCount(p.sessions.waiting) : '',
                 p.sessions.running > 0 ? `${plural(p.sessions.running, 'session')} running` : '',
                 p.sync.state === 'error' || p.missing ? 'needs attention' : '',
               ]
