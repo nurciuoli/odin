@@ -16,7 +16,7 @@ import { emptyMetrics, sessionBranch } from "@odin/shared/session";
 import { findModel } from "@odin/shared/api";
 import { applyHarnessEvent, reconcileTaskHistory } from "@odin/shared/transcript";
 import { HttpError } from "../http/util.ts";
-import { PERMISSION_MODES } from "../launch/service.ts";
+import { PERMISSION_MODES, titleFromPrompt } from "../launch/service.ts";
 import type { Harness, SessionHandle, StartOptions } from "../harness/types.ts";
 import type { Deps, ExternalSessionInput, Services, SessionPatch, SessionsService } from "../services.ts";
 import { messageOutbox } from "./message-queue.ts";
@@ -839,11 +839,15 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       for (const info of infos) {
         const known = get(info.sessionId);
         if (known) {
-          // Hook-created sessions start untitled; adopt the harness's generated name once it has one, unless
-          // the user renamed the session (only placeholder or first-prompt fallback titles are replaced).
+          // Adopt the harness's generated name while the session still has a placeholder or the first-prompt
+          // fallback. A title the user chose (or set at launch) is left alone. Grok sessions get this too,
+          // because the runtime writes `generated_title` after the first turns.
           const next = info.title?.trim().slice(0, 200);
-          const placeholder = (t: string) => PLACEHOLDER_TITLES.has(t) || (!!info.firstPrompt && t === info.firstPrompt.trim().slice(0, 200));
-          if (known.origin === "external" && next && !PLACEHOLDER_TITLES.has(next) && next !== known.title && placeholder(known.title)) {
+          const promptTitle = titleFromPrompt(row(known.id)?.first_prompt ?? "");
+          const firstShown = info.firstPrompt?.trim().slice(0, 200) ?? "";
+          const placeholder = (t: string) => PLACEHOLDER_TITLES.has(t) || (!!firstShown && t === firstShown) || (!!promptTitle && t === promptTitle);
+          const adopt = known.origin === "external" || known.harness === "grok";
+          if (adopt && next && !PLACEHOLDER_TITLES.has(next) && next !== known.title && placeholder(known.title)) {
             try {
               patchAndEmit(known.id, { title: next });
             } catch (err) {

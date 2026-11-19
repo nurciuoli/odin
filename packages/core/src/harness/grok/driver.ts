@@ -10,17 +10,22 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { DatabaseSync } from "node:sqlite";
 import type { ModelInfo, PermissionAnswer, PermissionMode, UserMessage } from "@odin/shared/api";
-import type { HarnessEvent, SlashCommand, TranscriptEntry } from "@odin/shared/harness";
+import { taskKey, type HarnessEvent, type SlashCommand, type TaskActivity, type TranscriptEntry } from "@odin/shared/harness";
 import type { Harness, HarnessSessionInfo, SessionHandle, StartOptions } from "../types.ts";
 import { startHostBridge, type HostBridge } from "./bridge.ts";
-import { listSessions, readMessages, sessionInfo } from "./history.ts";
+import { listSessions, readMessages, readOwnedChild, sessionInfo } from "./history.ts";
 import {
   EventQueue,
   GROK_MODES,
   TURN_TIMEOUT_MS,
   acpMcpServers,
   authMethod,
+  canonicalModel,
+  claimSpawn,
+  grokActivity,
+  grokRules,
   isMode,
+  mergeModels,
   modelsFrom,
   optionFor,
   permissionOptions,
@@ -32,6 +37,7 @@ import {
   toolResult,
   usageFrom,
   type GrokModel,
+  type SpawnLink,
 } from "./map.ts";
 import { imagePromptsAccepted, promptBlocks } from "./input.ts";
 import { connectGrok, grokBinary, grokVersion, type Rpc, type Wire } from "./transport.ts";
@@ -49,6 +55,23 @@ export interface GrokOptions {
 }
 
 const HARNESS_ID = "grok";
+const PLACEHOLDER_TITLES = new Set(["Untitled session", "Untitled", "Grok session"]);
+
+/** A title the user chose. Prompt-derived names stay unset so Grok can generate one. */
+function explicitTitle(opts: StartOptions): string | null {
+  const title = opts.title?.trim().slice(0, 200) ?? "";
+  if (!title || PLACEHOLDER_TITLES.has(title)) return null;
+  const line = opts.prompt?.text?.split("\n").map((part) => part.trim()).find(Boolean) ?? "";
+  const fromPrompt = line.length > 120 ? `${line.slice(0, 119).trimEnd()}…` : line;
+  if (line && (title === line.slice(0, 200) || title === fromPrompt)) return null;
+  return title;
+}
+
+function withRules(body: Wire, opts: StartOptions): Wire {
+  const rules = grokRules(opts.instructions, opts.agents);
+  if (!rules) return body;
+  return { ...body, _meta: { ...(body._meta ?? {}), rules } };
+}
 
 export function createGrokHarness(options: GrokOptions): Harness {
   const historyRoot = options.historyRoot ?? join(process.env.GROK_HOME || join(homedir(), ".grok"), "sessions");
@@ -56,6 +79,7 @@ export function createGrokHarness(options: GrokOptions): Harness {
   const now = options.now ?? (() => new Date());
   const links = options.db;
   let catalog: GrokModel[] = [];
+  const liveSessions = new Map<string, { rpc: Rpc; native: { id: string } }>();
 
   function nativeOf(sessionId: string): string {
     const row = links.prepare("SELECT native_id FROM harness_session_links WHERE harness = ? AND session_id = ?").get(HARNESS_ID, sessionId) as { native_id: string } | undefined;
@@ -74,7 +98,13 @@ export function createGrokHarness(options: GrokOptions): Harness {
     return local;
   }
   function remember(models: GrokModel[]) {
-    if (models.length) catalog = models;
+    if (models.length) catalog = mergeModels(catalog, models);
+  }
+  function catalogIds(): string[] {
+    return catalog.map((model) => model.value);
+  }
+  function knownModel(id: string): boolean {
+    return catalog.length === 0 || catalog.some((item) => item.value === id);
   }
   async function handshake(rpc: Rpc, isClosed = () => false): Promise<Wire> {
     const init = await rpc.request("initialize", {
@@ -130,6 +160,28 @@ export function createGrokHarness(options: GrokOptions): Harness {
     let turnCount = 0;
     let segment = 0;
     const liveTools = new Map<string, Extract<TranscriptEntry, { kind: "tool" }>>();
+    const nativeSlot = { id: "" };
+    liveSessions.set(odinId, { rpc, native: nativeSlot });
+    // True once session/new or session/load has returned, so catch-up task events are kept.
+    let follow = false;
+    let wake = false;
+    let stopWait = false;
+    const tracked = new Map<string, boolean>();
+    const spawns: SpawnLink[] = [];
+    let wakeResolvers: Array<() => void> = [];
+    function poke() {
+      const waiting = wakeResolvers;
+      wakeResolvers = [];
+      for (const resolve of waiting) resolve();
+    }
+    function busy() {
+      return wake || [...tracked.values()].some(Boolean);
+    }
+    function track(task: TaskActivity) {
+      if (!pumping) return;
+      tracked.set(taskKey(task), task.state === "running");
+      poke();
+    }
 
     // Grok's ACP extension uses set_model metadata, independent of permission mode.
     async function applyEffort(value: import("@odin/shared/api").Effort | null) {
@@ -168,6 +220,8 @@ export function createGrokHarness(options: GrokOptions): Harness {
       closed = true;
       ready = false;
       pending.length = 0;
+      liveSessions.delete(odinId);
+      poke();
       void bridge?.close();
       for (const id of permissions.keys()) emit({ type: "permission.resolved", requestId: id, behavior: "cancelled" });
       permissions.clear();
@@ -183,10 +237,11 @@ export function createGrokHarness(options: GrokOptions): Harness {
         if (Array.isArray(tools)) commandTools = tools.filter((tool: unknown) => typeof tool === "string");
         if (initialized) emit({ type: "commands", slashCommands: commands });
       } else if (kind === "model_changed") {
-        const id = typeof update.model_id === "string" ? update.model_id : typeof update.modelId === "string" ? update.modelId : "";
+        const raw = typeof update.model_id === "string" ? update.model_id : typeof update.modelId === "string" ? update.modelId : "";
+        const id = raw ? canonicalModel(catalogIds(), raw) : "";
         if (id) {
           reportedModel = id;
-          if (initialized && id !== model) {
+          if (initialized && id !== model && knownModel(id)) {
             model = id;
             emit({ type: "model", model: id });
           }
@@ -225,6 +280,20 @@ export function createGrokHarness(options: GrokOptions): Harness {
           emit({ type: "tool.result", toolUseId: id, result: entry.result });
         }
       }
+      const activity = grokActivity(update, now().toISOString());
+      if (activity.spawnTool && pumping && !spawns.some((spawn) => spawn.id === activity.spawnTool!.id)) spawns.push({ ...activity.spawnTool, claimed: false });
+      const acceptTasks = pumping || follow;
+      if (acceptTasks) {
+        for (const task of activity.tasks) {
+          if (task.kind === "agent" && !task.toolUseId) task.toolUseId = claimSpawn(spawns, typeof update.description === "string" ? update.description : "");
+          emit({ type: "task", task });
+          track(task);
+        }
+      }
+      if (pumping && activity.willWake) wake = true;
+      // A turn_completed from the prompt itself arrives before will_wake. Only a later one ends the wake.
+      else if (pumping && activity.turnCompleted && wake) wake = false;
+      if (activity.willWake || activity.turnCompleted || activity.tasks.length) poke();
     }
     let commandTools: string[] = [];
     const sessionUpdates = new Set(["session/update", "_x.ai/session/update", "_x.ai/session_notification"]);
@@ -254,6 +323,9 @@ export function createGrokHarness(options: GrokOptions): Harness {
       liveTools.clear();
       thought = "";
       message = "";
+      wake = false;
+      tracked.clear();
+      stopWait = false;
       emit({ type: "state", state: "running" });
       let result: Wire;
       try {
@@ -270,17 +342,25 @@ export function createGrokHarness(options: GrokOptions): Harness {
       flushText();
       const usage = usageFrom(result, contextWindow);
       if (usage && usage.type === "usage") {
-        model = usage.model;
-        emit(usage);
-        emit({ type: "model", model: usage.model });
+        const canon = canonicalModel(catalogIds(), usage.model);
+        const inCatalog = catalog.some((item) => item.value === canon);
+        emit({ ...usage, model: inCatalog ? canon : usage.model });
+        if (inCatalog && canon !== model) {
+          model = canon;
+          emit({ type: "model", model: canon });
+        }
+      }
+      if (result.will_wake === true || result._meta?.will_wake === true) wake = true;
+      while (!closed && !stopWait && busy()) {
+        await new Promise<void>((resolve) => { wakeResolvers.push(resolve); });
       }
       const stop = result.stopReason;
-      const interrupted = stop === "cancelled";
+      const interrupted = stop === "cancelled" || stopWait;
       emit({
         type: "turn.end",
         durationMs: typeof result._meta?.usage?.apiDurationMs === "number" ? result._meta.usage.apiDurationMs : 0,
-        ok: stop === "end_turn",
-        error: stop === "end_turn" ? null : interrupted ? "interrupted" : typeof stop === "string" ? stop : "Grok turn failed",
+        ok: stop === "end_turn" && !stopWait,
+        error: stop === "end_turn" && !stopWait ? null : interrupted ? "interrupted" : typeof stop === "string" ? stop : "Grok turn failed",
       });
       emit({ type: "state", state: "idle" });
     }
@@ -304,41 +384,54 @@ export function createGrokHarness(options: GrokOptions): Harness {
         if (closed) { await bridge?.close(); return; }
         if (opts.resume && !opts.fork) {
           native = nativeOf(opts.resume);
-          await rpc.request("session/load", { sessionId: native, cwd: opts.cwd, mcpServers: mcp.servers }, TURN_TIMEOUT_MS);
+          nativeSlot.id = native;
+          await rpc.request("session/load", withRules({ sessionId: native, cwd: opts.cwd, mcpServers: mcp.servers }, opts), TURN_TIMEOUT_MS);
         } else if (opts.resume && opts.fork) {
           const parent = nativeOf(opts.resume);
-          await rpc.request("session/load", { sessionId: parent, cwd: opts.cwd, mcpServers: mcp.servers }, TURN_TIMEOUT_MS);
+          await rpc.request("session/load", withRules({ sessionId: parent, cwd: opts.cwd, mcpServers: mcp.servers }, opts), TURN_TIMEOUT_MS);
           if (closed) return;
           const forked = await rpc.request("session/fork", { sessionId: parent, cwd: opts.cwd });
           if (closed) return;
           native = typeof forked.sessionId === "string" ? forked.sessionId : "";
           if (!native) throw new Error("Grok fork did not return a session id");
+          nativeSlot.id = native;
           bind(odinId, native);
         } else {
-          const created = await rpc.request("session/new", { cwd: opts.cwd, mcpServers: mcp.servers });
+          const created = await rpc.request("session/new", withRules({ cwd: opts.cwd, mcpServers: mcp.servers }, opts));
           if (closed) return;
           native = typeof created.sessionId === "string" ? created.sessionId : "";
           if (!native) throw new Error("Grok did not return a session id");
+          nativeSlot.id = native;
           bind(odinId, native);
           const createdModels = modelsFrom({ _meta: { modelState: { availableModels: created.models?.availableModels } } });
           remember(createdModels);
         }
+        follow = true;
         if (closed) return;
+        const chosenTitle = explicitTitle(opts);
+        if (chosenTitle && native) {
+          try {
+            await rpc.request("x.ai/session/rename", { sessionId: native, title: chosenTitle });
+          } catch (error) {
+            const text = error instanceof Error ? error.message : "Grok rejected the title";
+            emit({ type: "notice", level: "warning", text: `Grok kept its current title. ${text}` });
+          }
+        }
         if (opts.model && native) {
-          const known = catalog.length === 0 || catalog.some((item) => item.value === opts.model);
-          if (!known) {
+          const requested = canonicalModel(catalogIds(), opts.model);
+          if (!knownModel(requested)) {
             emit({ type: "notice", level: "warning", text: `Grok has no model ${opts.model}. This session continues with ${reportedModel ?? "the model Grok already has"}.` });
             if (reportedModel) model = reportedModel;
-          } else {
+          } else if (requested !== reportedModel) {
             try {
-              await rpc.request("session/set_model", { sessionId: native, modelId: opts.model });
-              model = opts.model;
+              await rpc.request("session/set_model", { sessionId: native, modelId: requested });
+              model = requested;
             } catch (error) {
               const text = error instanceof Error ? error.message : "Grok rejected the model";
               emit({ type: "notice", level: "warning", text: `Grok kept its current model. ${text}` });
               if (reportedModel) model = reportedModel;
             }
-          }
+          } else model = requested;
         } else if (reportedModel) model = reportedModel;
         if (effort !== undefined && (catalog.find(m => m.value === model) ?? (!model ? catalog[0] : undefined))?.effortLevels?.length) {
           let applied: typeof effort;
@@ -370,14 +463,11 @@ export function createGrokHarness(options: GrokOptions): Harness {
           cwd: opts.cwd,
           tools,
           slashCommands: commands,
-          agents: [],
+          agents: Object.keys(opts.agents ?? {}),
         });
         initialized = true;
         for (const event of early) queue.push(event);
         early.length = 0;
-        if ((opts.agents && Object.keys(opts.agents).length) || opts.instructions) {
-          emit({ type: "notice", level: "warning", text: "Grok does not accept Odin subagent definitions or extra instructions on session start." });
-        }
         ready = true;
         if (opts.prompt) pending.push(opts.prompt);
         else emit({ type: "state", state: "idle" });
@@ -417,6 +507,8 @@ export function createGrokHarness(options: GrokOptions): Harness {
       },
       async interrupt() {
         if (closed) return;
+        stopWait = true;
+        poke();
         if (native) rpc.notify("session/cancel", { sessionId: native });
       },
       async setEffort(value) {
@@ -426,9 +518,10 @@ export function createGrokHarness(options: GrokOptions): Harness {
       },
       async setModel(value) {
         if (closed) throw new Error("Grok session closed");
-        if (native) await rpc.request("session/set_model", { sessionId: native, modelId: value });
-        model = value;
-        emit({ type: "model", model: value });
+        const requested = canonicalModel(catalogIds(), value);
+        if (native) await rpc.request("session/set_model", { sessionId: native, modelId: requested });
+        model = requested;
+        emit({ type: "model", model: requested });
       },
       async setPermissionMode(value) {
         if (closed) throw new Error("Grok session closed");
@@ -457,7 +550,7 @@ export function createGrokHarness(options: GrokOptions): Harness {
   return {
     id: HARNESS_ID,
     name: "Grok",
-    capabilities: { permissionModes: GROK_MODES, permissionScopes: ["once", "session"], additionalDirectories: false, instructions: false, attachments: true },
+    capabilities: { permissionModes: GROK_MODES, permissionScopes: ["once", "session"], additionalDirectories: false, instructions: true, attachments: true },
     async check() {
       const command = (options.binary ?? grokBinary)();
       if (!command) return { available: false, note: "Install Grok Build and sign in with grok login" };
@@ -488,8 +581,29 @@ export function createGrokHarness(options: GrokOptions): Harness {
       if (!projectPath) return [];
       return readMessages(historyRoot, projectPath, nativeOf(sessionId));
     },
-    async rename() {
-      /* Grok ACP has no rename method. Odin keeps the title. */
+    async taskMessages(sessionId, task, projectPath) {
+      if (task.kind !== "agent" || !task.childSessionId || !projectPath) return { status: "unavailable", reason: "No native child conversation is available" };
+      const transcript = readOwnedChild(historyRoot, projectPath, nativeOf(sessionId), task.childSessionId);
+      if (!transcript) return { status: "unavailable", reason: "Child conversation is not available in this session" };
+      return { status: "available", transcript };
+    },
+    async rename(sessionId, title) {
+      const trimmed = title.trim().slice(0, 200);
+      if (!trimmed) return;
+      const live = liveSessions.get(sessionId);
+      const native = live?.native.id || nativeOf(sessionId);
+      const rpc = live?.rpc;
+      if (rpc && native) {
+        await rpc.request("x.ai/session/rename", { sessionId: native, title: trimmed });
+        return;
+      }
+      const cold = connect();
+      try {
+        await handshake(cold);
+        await cold.request("x.ai/session/rename", { sessionId: native, title: trimmed });
+      } finally {
+        cold.close();
+      }
     },
     async fork(sessionId, projectPath) {
       if (!projectPath) throw new Error("Grok fork needs a working directory");

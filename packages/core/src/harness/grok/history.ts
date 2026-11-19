@@ -2,7 +2,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { HarnessSessionInfo } from "../types.ts";
-import { historyEntries, userText } from "./map.ts";
+import { historyEntries, tasksFromUpdates, userText } from "./map.ts";
 import type { TranscriptEntry } from "@odin/shared/harness";
 
 export function encodedCwd(cwd: string): string {
@@ -15,6 +15,8 @@ interface Summary {
   updated_at?: unknown;
   current_model_id?: unknown;
   session_summary?: unknown;
+  generated_title?: unknown;
+  session_kind?: unknown;
 }
 
 function readSummary(dir: string): Summary | null {
@@ -47,8 +49,9 @@ export function sessionInfo(dir: string): HarnessSessionInfo | null {
   const summary = readSummary(dir);
   const id = summary?.info?.id;
   if (typeof id !== "string" || !id) return null;
+  const generated = typeof summary.generated_title === "string" ? summary.generated_title.trim() : "";
   const summaryTitle = typeof summary.session_summary === "string" ? summary.session_summary.trim() : "";
-  const title = (summaryTitle || firstUserText(dir) || "Grok session").slice(0, 200);
+  const title = (generated || summaryTitle || firstUserText(dir) || "Grok session").slice(0, 200);
   const updated = typeof summary.updated_at === "string" ? summary.updated_at : new Date(0).toISOString();
   return {
     sessionId: id,
@@ -77,6 +80,9 @@ export function listSessions(historyRoot: string, projectPath: string): HarnessS
     } catch {
       continue;
     }
+    const summary = readSummary(child);
+    // Subagent conversations live beside the parent. They are opened from the parent's task, not imported as sessions.
+    if (summary?.session_kind === "subagent") continue;
     const info = sessionInfo(child);
     // ACP session/new can create a native record before a prompt is ever sent.
     if (info?.firstPrompt) sessions.push(info);
@@ -84,15 +90,14 @@ export function listSessions(historyRoot: string, projectPath: string): HarnessS
   return sessions.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-export function readMessages(historyRoot: string, projectPath: string, sessionId: string): TranscriptEntry[] {
-  const file = join(historyRoot, encodedCwd(projectPath), sessionId, "chat_history.jsonl");
+function readJsonl(file: string): Record<string, unknown>[] {
   let raw: string;
   try {
     raw = readFileSync(file, "utf8");
   } catch {
     return [];
   }
-  const lines = raw.split(/\r?\n/).flatMap((line) => {
+  return raw.split(/\r?\n/).flatMap((line) => {
     if (!line.trim()) return [];
     try {
       return [JSON.parse(line) as Record<string, unknown>];
@@ -100,5 +105,29 @@ export function readMessages(historyRoot: string, projectPath: string, sessionId
       return [];
     }
   });
-  return historyEntries(lines);
+}
+
+export function readMessages(historyRoot: string, projectPath: string, sessionId: string): TranscriptEntry[] {
+  const dir = join(historyRoot, encodedCwd(projectPath), sessionId);
+  const messages = historyEntries(readJsonl(join(dir, "chat_history.jsonl")));
+  const tasks = tasksFromUpdates(readJsonl(join(dir, "updates.jsonl")));
+  return [...messages, ...tasks];
+}
+
+/** Child transcript when `childId` is a subagent of this parent under the same project directory. */
+export function readOwnedChild(historyRoot: string, projectPath: string, parentId: string, childId: string): TranscriptEntry[] | null {
+  if (!parentId || !childId || parentId === childId) return null;
+  const root = join(historyRoot, encodedCwd(projectPath));
+  const summary = readSummary(join(root, childId));
+  if (summary?.session_kind !== "subagent") return null;
+  let owned = false;
+  for (const name of ["chat_history.jsonl", "updates.jsonl"]) {
+    try {
+      if (readFileSync(join(root, parentId, name), "utf8").includes(childId)) owned = true;
+    } catch {
+      /* The other file may still name the child. */
+    }
+  }
+  if (!owned) return null;
+  return readMessages(historyRoot, projectPath, childId);
 }

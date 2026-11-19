@@ -51,7 +51,7 @@ export function buildTimeline(entries: TranscriptEntry[]): TimelineStep[] {
       cur.reply = e.text.trim()
     } else if (e.kind === 'tool') {
       cur.tools++
-      if (e.name === 'Agent') cur.agents++
+      if (presentTool(e).name === 'Agent') cur.agents++
       if (
         e.result &&
         !e.result.ok &&

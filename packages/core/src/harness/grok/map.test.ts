@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { acpMcpServers, authMethod, costUsd, historyEntries, optionFor, permissionRequest, slashCommands, textOf, toolCallInput, toolCallName, usageFrom } from "./map.ts";
+import { acpMcpServers, authMethod, canonicalModel, costUsd, grokRules, historyEntries, mergeModels, modelsFrom, optionFor, permissionRequest, slashCommands, tasksFromUpdates, textOf, toolCallInput, toolCallName, usageFrom } from "./map.ts";
 
 test("auth prefers a cached login and refuses an interactive-only method", () => {
   assert.equal(authMethod({ authMethods: [{ id: "grok.com" }, { id: "cached_token" }] }), "cached_token");
@@ -122,6 +122,40 @@ test("history keeps reasoning, web search, attachments and a dropped-image notic
   }
 });
 
+
+test("runtime model ids map onto the catalog without swallowing a longer id", () => {
+  const ids = ["grok-4.7", "grok-4.7-build-fast", "grok-4.6"];
+  assert.equal(canonicalModel(ids, "grok-4.7-build"), "grok-4.7");
+  assert.equal(canonicalModel(ids, "grok-4.7-build-fast"), "grok-4.7-build-fast");
+  assert.equal(canonicalModel(ids, "grok-4.6-build"), "grok-4.6");
+  assert.equal(canonicalModel(ids, "gpt-4"), "gpt-4");
+  const merged = mergeModels(
+    modelsFrom({ _meta: { modelState: { availableModels: [{ modelId: "grok-4.7", name: "Grok 4.7", description: "frontier" }] } } }),
+    modelsFrom({ _meta: { modelState: { availableModels: [{ modelId: "grok-4.7" }, { id: "grok-4.5", name: "Grok 4.5" }] } } }),
+  );
+  assert.equal(merged.find((model) => model.value === "grok-4.7")?.displayName, "Grok 4.7");
+  assert.equal(merged.find((model) => model.value === "grok-4.7")?.description, "frontier");
+  assert.equal(merged.find((model) => model.value === "grok-4.5")?.displayName, "Grok 4.5");
+});
+
+test("rules include instructions and subagent guidance, and updates become one task", () => {
+  const rules = grokRules("Be brief", { reviewer: { description: "Reviews", prompt: "Look", tools: ["read_file"] } });
+  assert.match(rules, /^Be brief/);
+  assert.match(rules, /## reviewer/);
+  assert.match(rules, /Tools: read_file/);
+  assert.equal(grokRules("  ", {}), "");
+  const [task] = tasksFromUpdates([
+    { timestamp: 10, params: { update: { sessionUpdate: "task_backgrounded", task_id: "bash-1", tool_call_id: "call-1", command: "yarn test" } } },
+    { timestamp: 11, params: { update: { sessionUpdate: "task_completed", task_snapshot: { task_id: "bash-1", command: "yarn test", exit_code: 0, output: "ok" } } } },
+  ]);
+  assert.equal(task?.kind, "task");
+  if (task?.kind === "task") {
+    assert.equal(task.task.state, "completed");
+    assert.equal(task.task.kind, "command");
+    assert.equal(task.task.toolUseId, "call-1");
+    assert.equal(task.task.output?.text, "ok");
+  }
+});
 
 test("Grok permission options never broaden a once grant or infer opaque scope", () => {
   assert.equal(optionFor([{ optionId: "allow_always", kind: "allow_always" }], "allow", "once"), null);

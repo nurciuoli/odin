@@ -84,7 +84,9 @@ export function rowStatus(row: RunRow): Status {
 
 export function isAgentRow(row: RunRow): boolean {
   if (row.kind === 'task') return row.task.kind === 'agent'
-  return row.kind === 'tool' && (row.call.name === 'Agent' || row.call.name === 'Task')
+  if (row.kind !== 'tool') return false
+  if (row.task?.kind === 'agent') return true
+  return row.call.name === 'Agent' || row.call.name === 'Task' || row.call.name === 'spawn_subagent'
 }
 
 /** Whether any step of the run is still running. */

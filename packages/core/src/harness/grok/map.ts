@@ -1,8 +1,8 @@
 // Pure ACP → Odin event mapping. No process, no credentials.
-import type { PermissionMode, TokenUsage } from "@odin/shared/api";
-import type { HarnessEvent, PermissionRequest, SlashCommand, ToolResult, TranscriptEntry } from "@odin/shared/harness";
-import { TOOL_RESULT_MAX_CHARS } from "@odin/shared/harness";
-import type { McpServerStart } from "../types.ts";
+import type { Effort, PermissionMode, TokenUsage } from "@odin/shared/api";
+import type { HarnessEvent, PermissionRequest, SlashCommand, TaskActivity, ToolResult, TranscriptEntry } from "@odin/shared/harness";
+import { TOOL_RESULT_MAX_CHARS, taskKey } from "@odin/shared/harness";
+import type { AgentSpec, McpServerStart } from "../types.ts";
 import type { Wire } from "./transport.ts";
 
 export const GROK_MODES: PermissionMode[] = ["default", "acceptEdits", "plan", "dontAsk", "bypassPermissions", "auto"];
@@ -59,24 +59,92 @@ export interface GrokModel {
   contextWindow: number | null;
 }
 
+const EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
+function effortOf(value: unknown): Effort | undefined {
+  return typeof value === "string" && (EFFORTS as readonly string[]).includes(value) ? value as Effort : undefined;
+}
+
 export function modelsFrom(init: Wire): GrokModel[] {
   const models = init._meta?.modelState?.availableModels;
   if (!Array.isArray(models)) return [];
   return models.flatMap((model: Wire) => {
-    if (typeof model?.modelId !== "string") return [];
+    const id = typeof model?.modelId === "string" ? model.modelId : typeof model?.id === "string" ? model.id : typeof model?.value === "string" ? model.value : "";
+    if (!id) return [];
     const window = model._meta?.totalContextTokens;
-    const known = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
     const levels = Array.isArray(model._meta?.reasoningEfforts) ? model._meta.reasoningEfforts : [];
-    const effortLevels = levels.map((e: Wire | string) => typeof e === "string" ? e : e.value).filter((e: unknown) => typeof e === "string" && known.includes(e));
-    const defaultEffort = levels.find((e: Wire) => e.default)?.value ?? model._meta?.reasoningEffort;
+    const effortLevels = levels.map((e: Wire | string) => effortOf(typeof e === "string" ? e : e?.value)).filter((e: Effort | undefined): e is Effort => !!e);
+    const marked = levels.find((e: Wire) => e && typeof e === "object" && e.default);
+    const defaultEffort = effortOf(marked && typeof marked === "object" ? marked.value : undefined) ?? effortOf(model._meta?.reasoningEffort);
+    const name = typeof model.name === "string" && model.name.trim() ? model.name.trim() : id;
     return [{
-      ...(effortLevels.length ? { effortLevels, defaultEffort } : {}),
-      value: model.modelId,
-      displayName: typeof model.name === "string" ? model.name : model.modelId,
+      ...(effortLevels.length ? { effortLevels, ...(defaultEffort ? { defaultEffort } : {}) } : {}),
+      value: id,
+      displayName: name,
       description: typeof model.description === "string" ? model.description : "",
       contextWindow: typeof window === "number" ? window : null,
     }];
   });
+}
+
+/** Keep a richer catalog record when a later list only repeats the id. */
+export function mergeModels(current: GrokModel[], incoming: GrokModel[]): GrokModel[] {
+  const byId = new Map(current.map((model) => [model.value, model]));
+  for (const next of incoming) {
+    const prev = byId.get(next.value);
+    if (!prev) {
+      byId.set(next.value, next);
+      continue;
+    }
+    const displayName = next.displayName && next.displayName !== next.value ? next.displayName : prev.displayName || next.displayName;
+    byId.set(next.value, {
+      ...prev,
+      ...next,
+      displayName,
+      description: next.description || prev.description,
+      contextWindow: next.contextWindow ?? prev.contextWindow,
+      ...(next.effortLevels?.length ? { effortLevels: next.effortLevels } : prev.effortLevels ? { effortLevels: prev.effortLevels } : {}),
+      ...(next.defaultEffort ? { defaultEffort: next.defaultEffort } : prev.defaultEffort ? { defaultEffort: prev.defaultEffort } : {}),
+    });
+  }
+  const seen = new Set<string>();
+  const merged: GrokModel[] = [];
+  for (const model of [...current, ...incoming]) {
+    if (seen.has(model.value)) continue;
+    seen.add(model.value);
+    const kept = byId.get(model.value);
+    if (kept) merged.push(kept);
+  }
+  return merged;
+}
+
+/**
+ * Usage reports a runtime id such as `grok-4.7-build` for catalog id `grok-4.7`.
+ * An exact catalog id wins, including `grok-4.7-build-fast`. Otherwise the longest catalog id that is a hyphen-prefix.
+ */
+export function canonicalModel(catalogIds: readonly string[], reported: string): string {
+  if (catalogIds.includes(reported)) return reported;
+  let best = "";
+  for (const id of catalogIds) {
+    if (reported.startsWith(`${id}-`) && id.length > best.length) best = id;
+  }
+  return best || reported;
+}
+
+/** Extra rules for `session/new` and `session/load`. Empty when there is nothing to append. */
+export function grokRules(instructions?: string, agents?: Record<string, AgentSpec>): string {
+  const parts: string[] = [];
+  const text = instructions?.trim();
+  if (text) parts.push(text);
+  const specs = Object.entries(agents ?? {}).filter(([, spec]) => spec && (spec.prompt || spec.description));
+  if (specs.length) {
+    const body = specs.map(([name, spec]) => {
+      const tools = spec.tools?.length ? `Tools: ${spec.tools.join(", ")}` : "";
+      return [`## ${name}`, spec.description?.trim(), tools, spec.prompt?.trim()].filter(Boolean).join("\n");
+    }).join("\n\n");
+    parts.push(`Odin subagents available in this session:\n${body}`);
+  }
+  return parts.join("\n\n");
 }
 
 export function slashCommands(commands: unknown): SlashCommand[] {
@@ -335,6 +403,198 @@ export function toolCallInput(update: Wire, previous?: Record<string, unknown>):
   if (typeof input.file_path !== "string" && typeof input.target_file === "string") input.file_path = input.target_file;
   if (typeof input.path !== "string" && typeof input.target_directory === "string") input.path = input.target_directory;
   return input;
+}
+
+export interface GrokActivity {
+  tasks: TaskActivity[];
+  willWake: boolean;
+  turnCompleted: boolean;
+  spawnTool: { id: string; description: string } | null;
+}
+
+function textAt(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function agentState(status: unknown, error: unknown): TaskActivity["state"] {
+  const value = textAt(status).toLowerCase();
+  if (value === "cancelled" || value === "canceled" || value === "stopped") return "stopped";
+  if (value === "failed" || value === "error" || error) return "failed";
+  if (value === "completed" || value === "complete" || value === "success") return "completed";
+  if (value === "running" || value === "in_progress" || value === "pending") return "running";
+  return error ? "failed" : "completed";
+}
+
+function commandState(status: unknown, exitCode: unknown, killed: unknown): TaskActivity["state"] {
+  if (killed === true) return "stopped";
+  const value = textAt(status).toLowerCase();
+  if (value === "cancelled" || value === "canceled" || value === "killed" || value === "stopped") return "stopped";
+  if (value === "running" || value === "in_progress" || value === "pending" || value === "backgrounded") return "running";
+  if (value === "failed" || value === "error") return "failed";
+  if (typeof exitCode === "number") return exitCode === 0 ? "completed" : "failed";
+  if (value === "completed" || value === "complete" || value === "success") return "completed";
+  return "running";
+}
+
+function taskBase(partial: Pick<TaskActivity, "taskId" | "runId" | "kind" | "label" | "state"> & Partial<TaskActivity>, at: string): TaskActivity {
+  return {
+    toolUseId: null,
+    parentToolUseId: null,
+    childSessionId: null,
+    startedAt: partial.state === "running" ? at : null,
+    completedAt: partial.state === "running" ? null : at,
+    observedAt: null,
+    ...partial,
+  };
+}
+
+/** One ACP session update, as a task snapshot. Message and tool chunks are ignored. */
+export function grokActivity(update: Wire, at: string): GrokActivity {
+  const kind = textAt(update.sessionUpdate);
+  const empty: GrokActivity = { tasks: [], willWake: update.will_wake === true, turnCompleted: kind === "turn_completed", spawnTool: null };
+  if (kind === "tool_call" || kind === "tool_call_update") {
+    const name = toolCallName(update);
+    const id = textAt(update.toolCallId);
+    const description = textAt(update.rawInput?.description);
+    if (name === "spawn_subagent" && id) empty.spawnTool = { id, description };
+    return empty;
+  }
+  if (kind === "subagent_spawned" || kind === "subagent_finished") {
+    const taskId = textAt(update.subagent_id);
+    if (!taskId) return empty;
+    const finished = kind === "subagent_finished";
+    const state = finished ? agentState(update.status, update.error) : "running";
+    const output = textAt(update.output);
+    const label = textAt(update.description) || textAt(update.subagent_type) || "Subagent";
+    const child = textAt(update.child_session_id) || taskId;
+    empty.tasks = [taskBase({
+      taskId,
+      runId: textAt(update.attempt_id) || null,
+      kind: "agent",
+      label,
+      state,
+      childSessionId: child,
+      ...(finished && output ? { summary: output } : {}),
+    }, at)];
+    return empty;
+  }
+  if (kind === "task_backgrounded") {
+    const taskId = textAt(update.task_id);
+    if (!taskId) return empty;
+    empty.tasks = [taskBase({
+      taskId,
+      runId: null,
+      kind: "command",
+      label: textAt(update.description) || textAt(update.command) || "Command",
+      state: "running",
+      toolUseId: textAt(update.tool_call_id) || null,
+    }, at)];
+    return empty;
+  }
+  if (kind === "background_tasks" && Array.isArray(update.tasks)) {
+    empty.tasks = update.tasks.flatMap((row: Wire) => {
+      const taskId = textAt(row?.task_id);
+      if (!taskId) return [];
+      return [taskBase({
+        taskId,
+        runId: null,
+        kind: "command",
+        label: textAt(row.description) || textAt(row.command) || "Command",
+        state: commandState(row.status, row.exit_code, row.explicitly_killed),
+        toolUseId: textAt(row.tool_call_id) || null,
+        ...(typeof row.started_at === "string" ? { startedAt: row.started_at } : {}),
+        ...(typeof row.ended_at === "string" ? { completedAt: row.ended_at } : {}),
+      }, at)];
+    });
+    return empty;
+  }
+  if (kind === "task_completed") {
+    const snap = update.task_snapshot && typeof update.task_snapshot === "object" ? update.task_snapshot as Wire : update;
+    const taskId = textAt(snap.task_id) || textAt(update.task_id);
+    if (!taskId) return empty;
+    const output = textAt(snap.output);
+    const state = commandState(snap.status, snap.exit_code, snap.explicitly_killed ?? update.explicitly_killed);
+    empty.tasks = [taskBase({
+      taskId,
+      runId: null,
+      kind: "command",
+      label: textAt(snap.description) || textAt(snap.command) || "Command",
+      state: state === "running" ? "completed" : state,
+      toolUseId: textAt(snap.tool_call_id) || textAt(update.tool_call_id) || null,
+      ...(output ? { output: toolResult(output, (snap.exit_code ?? 0) === 0 && state !== "failed" && state !== "stopped") } : {}),
+    }, at)];
+    return empty;
+  }
+  return empty;
+}
+
+function terminal(state: TaskActivity["state"]): boolean {
+  return state === "completed" || state === "failed" || state === "stopped";
+}
+
+function mergeActivity(prev: TaskActivity | undefined, next: TaskActivity): TaskActivity {
+  if (!prev) return next;
+  const state = terminal(prev.state) && next.state === "running" ? prev.state : next.state;
+  return {
+    ...prev,
+    ...next,
+    state,
+    label: next.label || prev.label,
+    toolUseId: next.toolUseId ?? prev.toolUseId,
+    childSessionId: next.childSessionId ?? prev.childSessionId,
+    startedAt: prev.startedAt ?? next.startedAt,
+    completedAt: state === "running" ? null : next.completedAt ?? prev.completedAt,
+    ...(next.summary ? { summary: next.summary } : prev.summary ? { summary: prev.summary } : {}),
+    ...(next.output ? { output: next.output } : prev.output ? { output: prev.output } : {}),
+  };
+}
+
+export interface SpawnLink {
+  id: string;
+  description: string;
+  claimed: boolean;
+}
+
+/** Match a subagent spawn to the tool call that asked for the same description. */
+export function claimSpawn(spawns: SpawnLink[], description: string): string | null {
+  const wanted = description.trim();
+  const match = [...spawns].reverse().find((spawn) => !spawn.claimed && (!wanted || spawn.description === wanted));
+  if (!match) return null;
+  match.claimed = true;
+  return match.id;
+}
+
+function stamp(line: Wire): string {
+  if (typeof line.timestamp_us === "number") return new Date(line.timestamp_us / 1000).toISOString();
+  if (typeof line.timestamp === "number") return new Date(line.timestamp * 1000).toISOString();
+  return new Date(0).toISOString();
+}
+
+function updateOf(line: Wire): Wire | null {
+  const params = line.params;
+  if (params && typeof params === "object" && !Array.isArray(params)) {
+    const update = (params as Wire).update;
+    if (update && typeof update === "object" && !Array.isArray(update)) return update as Wire;
+  }
+  return typeof line.sessionUpdate === "string" ? line : null;
+}
+
+/** Latest task per id from `updates.jsonl`. Chat text stays in `historyEntries`. */
+export function tasksFromUpdates(lines: Wire[]): TranscriptEntry[] {
+  const tasks = new Map<string, TaskActivity>();
+  const spawns: SpawnLink[] = [];
+  for (const line of lines) {
+    const update = updateOf(line);
+    if (!update) continue;
+    const activity = grokActivity(update, stamp(line));
+    if (activity.spawnTool) spawns.push({ ...activity.spawnTool, claimed: false });
+    for (const task of activity.tasks) {
+      if (task.kind === "agent" && !task.toolUseId) task.toolUseId = claimSpawn(spawns, textAt(update.description));
+      const key = taskKey(task);
+      tasks.set(key, mergeActivity(tasks.get(key), task));
+    }
+  }
+  return [...tasks.values()].map((task) => ({ kind: "task", id: taskKey(task), task, at: task.completedAt ?? task.startedAt, parentToolUseId: null }));
 }
 
 function inputOf(value: unknown): Record<string, unknown> {
