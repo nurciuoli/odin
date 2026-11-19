@@ -1,0 +1,1 @@
+- Projects, Sessions, and New chat sit at the top of the sidebar, under Home and Library. Project and session lists stay in their own groups below.
