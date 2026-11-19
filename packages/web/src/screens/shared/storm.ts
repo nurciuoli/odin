@@ -1,7 +1,8 @@
-// Storm clouds over the flock. Two soft cloud banks slide in from the left and right edges while a session is running
-// and drift back out when none is; a faint flash of cool light inside the clouds marks a session that finished or
-// needs you. The clouds are painted once into offscreen canvases (layered radial gradients, lightly blurred) and then
-// only moved and cross-faded, so a frame costs a few drawImage calls. Coordinates are CSS pixels.
+// The sky above Home. Two lanes of cumulus drift across the whole width of the screen in opposite directions, an
+// endless stream: each lane sends a new cloud in from its edge as the last one clears it, and clouds leave by the far
+// edge. Nothing tints the flock; the only light on it is a flash that marks a session that finished or needs you.
+// Each cloud is painted once into an offscreen canvas (layered radial gradients, lightly blurred), so a frame is a few
+// drawImage calls. Coordinates are CSS pixels.
 export type FlashKind = 'done' | 'attention'
 
 export interface StormColors {
@@ -16,14 +17,11 @@ export interface StormColors {
 interface Flash {
   t0: number
   kind: FlashKind
-  side: 0 | 1 | 2
+  /** where along the width the light is, 0..1 */
+  at: number
 }
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
-const smooth = (a: number, b: number, v: number) => {
-  const t = clamp((v - a) / (b - a), 0, 1)
-  return t * t * (3 - 2 * t)
-}
 
 /** A CSS colour as [r, g, b], so gradients fade to the same hue instead of to transparent black. */
 const rgbCache = new Map<string, [number, number, number]>()
@@ -41,8 +39,11 @@ function rgb(ctx: CanvasRenderingContext2D, color: string): [number, number, num
   return out
 }
 
-/** Seconds for the clouds to roll in (time constant), to roll out, and how long a flash holds some cloud in view. */
-export const STORM = { inTau: 7, outTau: 10, hold: 5, reach: 0.42, depth: 0.5 }
+/**
+ * Timing, in seconds. The sky fades out over `outTau` once the weather ends; Home waits `lag` after every session
+ * has finished and been read before it does. Clouds cross a 1440px screen in about a minute.
+ */
+export const STORM = { lag: 60, inTau: 1.5, outTau: 16 }
 
 function rng(seed: number) {
   let s = seed
@@ -60,38 +61,39 @@ interface Puff {
   r: number
 }
 
-/** Lobes of one cumulus bank in bank coordinates: wide, flat-based, tall at the outer edge, tapering inward. */
-function puffsFor(seed: number, bw: number, bh: number): Puff[] {
+/** Lobes of one cumulus in cloud coordinates: a flat base, a rounded crown, tapering to both ends. */
+function puffsFor(seed: number, cw: number, ch: number): Puff[] {
   const rnd = rng(seed)
-  const base = bh * 0.78
+  const base = ch * 0.78
+  const bell = (u: number) => Math.pow(Math.sin(Math.PI * clamp(u, 0.02, 0.98)), 0.6)
   const out: Puff[] = []
   const tier = (count: number, y: number, r: number, from: number, to: number) => {
     for (let i = 0; i < count; i++) {
-      const u = count === 1 ? from : from + ((to - from) * i) / (count - 1)
-      const taper = 1 - 0.55 * u
-      const pr = r * taper * (0.8 + rnd() * 0.4)
+      const u = count === 1 ? (from + to) / 2 : from + ((to - from) * i) / (count - 1)
+      const pr = r * (0.35 + 0.65 * bell(u)) * (0.85 + rnd() * 0.3)
       out.push({
-        x: bw * u + (rnd() - 0.5) * bw * 0.06,
-        y: Math.min(base - pr * 0.5, y * (0.8 + 0.2 * taper) + (rnd() - 0.5) * bh * 0.06),
+        x: cw * u + (rnd() - 0.5) * cw * 0.04,
+        y: Math.min(base - pr * 0.5, y + (rnd() - 0.5) * ch * 0.08),
         r: pr,
       })
     }
   }
-  tier(7, base, bh * 0.26, 0.02, 0.92)
-  tier(5, bh * 0.5, bh * 0.27, 0.06, 0.76)
-  tier(3, bh * 0.28, bh * 0.2, 0.08, 0.46)
+  const row = Math.max(4, Math.round(cw / (ch * 0.62)))
+  tier(row, base, ch * 0.3, 0.06, 0.94)
+  tier(Math.max(2, Math.round(row * 0.6)), ch * 0.5, ch * 0.3, 0.16, 0.84)
+  tier(Math.max(1, Math.round(row * 0.28)), ch * 0.3, ch * 0.24, 0.3, 0.7)
   return out
 }
 
 /**
- * Paint one bank into a canvas: a soft body, brighter tops, a shaded underside, and small billows along the edges.
+ * Paint one cloud into a canvas: a soft body, brighter tops, a shaded underside, and small billows along the edges.
  * `gain` scales every alpha, so the same painting serves as the dim resting cloud and the lit flash version.
  */
-function paintBank(
+function paintCloud(
   el: HTMLCanvasElement,
   puffs: Puff[],
-  bw: number,
-  bh: number,
+  cw: number,
+  ch: number,
   scale: number,
   body: [number, number, number],
   top: [number, number, number],
@@ -103,7 +105,7 @@ function paintBank(
   if (!g) return
   const rnd = rng(seed)
   g.setTransform(scale, 0, 0, scale, 0, 0)
-  g.clearRect(0, 0, bw, bh)
+  g.clearRect(0, 0, cw, ch)
   const blob = (x: number, y: number, r: number, c: [number, number, number], a: number) => {
     const grad = g.createRadialGradient(x, y, 0, x, y, r)
     grad.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},${a * gain})`)
@@ -112,7 +114,7 @@ function paintBank(
     g.fillStyle = grad
     g.fillRect(x - r, y - r, r * 2, r * 2)
   }
-  g.filter = `blur(${Math.max(2.5, bh * 0.04)}px)`
+  g.filter = `blur(${Math.max(2, ch * 0.035)}px)`
   // body: each lobe as a wide, soft disc
   for (const p of puffs) blob(p.x, p.y, p.r * 1.2, body, 0.4)
   // billows: small soft blobs just inside each lobe's edge give the cauliflower texture
@@ -131,37 +133,73 @@ function paintBank(
   g.filter = 'none'
   // storm-dark underbelly: a slate shadow over the lower half of every lobe, only where there is cloud
   g.globalCompositeOperation = 'source-atop'
-  const belly = g.createLinearGradient(0, bh * 0.3, 0, bh * 0.78)
+  const belly = g.createLinearGradient(0, ch * 0.3, 0, ch * 0.78)
   belly.addColorStop(0, 'rgba(10,11,14,0)')
   belly.addColorStop(1, `rgba(10,11,14,${shade})`)
   g.fillStyle = belly
-  g.fillRect(0, 0, bw, bh)
-  // shade the underside and keep the base flat: fade everything out toward the bottom
+  g.fillRect(0, 0, cw, ch)
+  // keep the base flat and let the underside dissolve, so nothing hangs low over the flock
   g.globalCompositeOperation = 'destination-out'
-  const fall = g.createLinearGradient(0, bh * 0.52, 0, bh * 0.8)
+  const fall = g.createLinearGradient(0, ch * 0.5, 0, ch * 0.8)
   fall.addColorStop(0, 'rgba(0,0,0,0)')
-  fall.addColorStop(0.6, 'rgba(0,0,0,0.55)')
+  fall.addColorStop(0.6, 'rgba(0,0,0,0.6)')
   fall.addColorStop(1, 'rgba(0,0,0,1)')
   g.fillStyle = fall
-  g.fillRect(0, 0, bw, bh)
-  // the leading edge dissolves into wisps instead of ending
-  const lead = g.createLinearGradient(bw * 0.62, 0, bw, 0)
-  lead.addColorStop(0, 'rgba(0,0,0,0)')
-  lead.addColorStop(1, 'rgba(0,0,0,1)')
-  g.fillStyle = lead
-  g.fillRect(0, 0, bw, bh)
+  g.fillRect(0, 0, cw, ch)
   g.globalCompositeOperation = 'source-over'
 }
 
-export function createStorm(w: number, h: number, scale = 1) {
-  const bw = w * STORM.reach
-  const bh = h * STORM.depth
-  const puffs = [puffsFor(11, bw, bh), puffsFor(47, bw, bh)]
-  // offscreen paintings, built on the first draw (they need the theme colours): [side][0 resting, 1 lit]
+/** Cloud shapes in the pool: [width, seed]. Heights follow from the width. */
+const SHAPES = [
+  [300, 11],
+  [460, 47],
+  [360, 73],
+  [520, 29],
+] as const
+const ASPECT = 0.3
+
+interface Lane {
+  /** +1 drifts left to right, -1 right to left */
+  dir: 1 | -1
+  /** px/s at a 1440px-wide screen */
+  speed: number
+  /** top of the lane, and how big its clouds are */
+  y: number
+  size: number
+  alpha: number
+}
+/** The far lane is smaller, paler and slower; the near lane crosses it the other way. */
+const LANES: Lane[] = [
+  { dir: -1, speed: 11, y: 16, size: 0.78, alpha: 0.78 },
+  { dir: 1, speed: 19, y: -6, size: 1, alpha: 1 },
+]
+
+interface Cloud {
+  lane: number
+  shape: number
+  /** left edge */
+  x: number
+  w: number
+  h: number
+  /** phase of the slow bob */
+  bob: number
+  /** clear space to leave before the next cloud follows it in */
+  gap: number
+}
+
+export function createStorm(w: number, _h: number, scale = 1) {
+  const unit = clamp(w / 1440, 0.6, 1.25)
+  const rnd = rng(5)
+  let clouds: Cloud[] = []
+  let weather = 0
+  let flashes: Flash[] = []
+  let nextFlash = 0
+  // offscreen paintings, built on the first draw (they need the theme colours): [shape][0 resting, 1 lit]
   let sprites: HTMLCanvasElement[][] | null = null
   let paintedWith = ''
+
   function build(ctx: CanvasRenderingContext2D, c: StormColors) {
-    const key = `${c.cloud}|${c.lit}`
+    const key = `${c.cloud}|${c.lit}|${scale}`
     if (sprites && paintedWith === key) return sprites
     const mix = (a: number[], b: number[], k: number) =>
       a.map((v, i) => v + (b[i]! - v) * k) as [number, number, number]
@@ -169,33 +207,63 @@ export function createStorm(w: number, h: number, scale = 1) {
     // resting clouds are dark slate with dim tops; the lit painting keeps the bright theme colours
     const body = mix(rgb(ctx, c.cloud), [52, 58, 70], 0.6)
     const top = mix(flash, body, 0.42)
-    sprites = [0, 1].map(side =>
-      [1.9, 2.4].map((gain, lit) => {
+    sprites = SHAPES.map(([sw, seed]) => {
+      const cw = sw * unit
+      const ch = cw * ASPECT
+      const puffs = puffsFor(seed, cw, ch)
+      return [1.9, 2.4].map((gain, lit) => {
         const el = document.createElement('canvas')
-        el.width = Math.max(1, Math.round(bw * scale))
-        el.height = Math.max(1, Math.round(bh * scale))
-        paintBank(
+        el.width = Math.max(1, Math.round(cw * scale))
+        el.height = Math.max(1, Math.round(ch * scale))
+        paintCloud(
           el,
-          puffs[side]!,
-          bw,
-          bh,
+          puffs,
+          cw,
+          ch,
           scale,
           lit ? flash : body,
           lit ? flash : top,
           gain,
-          90 + side,
+          seed + 90,
           lit ? 0.3 : 0.6,
         )
         return el
-      }),
-    )
+      })
+    })
     paintedWith = key
     return sprites
   }
-  let gather = 0
-  let holdUntil = -1
-  let flashes: Flash[] = []
-  let next: 0 | 1 = 0
+
+  function spawn(lane: number) {
+    const l = LANES[lane]!
+    const shape = Math.floor(rnd() * SHAPES.length)
+    const cw = SHAPES[shape]![0] * unit * l.size
+    clouds.push({
+      lane,
+      shape,
+      x: l.dir === 1 ? -cw : w,
+      w: cw,
+      h: cw * ASPECT,
+      bob: rnd() * 6.2832,
+      gap: (30 + rnd() * 150) * unit,
+    })
+  }
+  /** Is the newest cloud of a lane far enough in for the next to follow it? */
+  function roomFor(lane: number) {
+    const l = LANES[lane]!
+    let last: Cloud | undefined
+    for (const c of clouds) if (c.lane === lane) last = c
+    if (!last) return true
+    return l.dir === 1 ? last.x >= last.gap : last.x + last.w <= w - last.gap
+  }
+  function move(dt: number, feed: boolean) {
+    for (const c of clouds) {
+      const l = LANES[c.lane]!
+      c.x += l.dir * l.speed * unit * dt
+    }
+    clouds = clouds.filter(c => c.x < w + 1 && c.x + c.w > -1)
+    if (feed) for (let lane = 0; lane < LANES.length; lane++) if (roomFor(lane)) spawn(lane)
+  }
 
   /** Flash envelope 0..1 at age `a` seconds: a quick rise and a long decay; attention flickers twice. */
   function envelope(f: Flash, a: number): number {
@@ -208,29 +276,31 @@ export function createStorm(w: number, h: number, scale = 1) {
   }
   const life = (k: FlashKind) => (k === 'attention' ? 2.4 : 2.2)
 
+  /** Where the next flash lands: scattered along the width, never the same place twice in a row. */
+  const SPOTS = [0.62, 0.24, 0.8, 0.41, 0.12, 0.9, 0.5, 0.33]
+
   return {
-    /** Advance the weather. `running` is how many sessions are running right now. */
-    step(t: number, dt: number, running: number) {
-      const intensity = running > 0 ? Math.min(1, 0.72 + 0.14 * (running - 1)) : 0
-      const target = Math.max(intensity, t < holdUntil ? 0.5 : 0)
-      const tau = target > gather ? STORM.inTau : STORM.outTau
-      gather += (target - gather) * (1 - Math.exp(-dt / tau))
+    /** Advance the weather. `active` is whether there is weather: a session is running, waiting or unread. */
+    step(t: number, dt: number, active: boolean) {
+      weather +=
+        ((active ? 1 : 0) - weather) * (1 - Math.exp(-dt / (active ? STORM.inTau : STORM.outTau)))
+      move(dt, active)
       flashes = flashes.filter(f => t - f.t0 < life(f.kind))
     },
     flash(t: number, kind: FlashKind) {
-      holdUntil = Math.max(holdUntil, t + STORM.hold)
-      // attention lights both banks; a finished session lights one, alternating
-      const side: 0 | 1 | 2 = kind === 'attention' ? 2 : next
-      if (kind === 'done') next = next === 0 ? 1 : 0
-      flashes.push({ t0: t, kind, side })
+      flashes.push({ t0: t, kind, at: SPOTS[nextFlash++ % SPOTS.length]! })
     },
-    /** 0..1 how far the clouds have come in (for the flock to lean on). */
+    /** 0..1 how present the weather is (the flock leans on it). */
     get gather() {
-      return gather
+      return weather
     },
-    /** Jump straight to a settled weather (reduced motion, first paint). */
-    settle(running: number) {
-      gather = running > 0 ? Math.min(1, 0.72 + 0.14 * (running - 1)) : 0
+    /** Jump straight to a settled sky (reduced motion, first paint): the stream already running, or nothing. */
+    settle(active: boolean) {
+      clouds = []
+      weather = active ? 1 : 0
+      if (!active) return
+      // run the lanes forward until they are full across the screen
+      for (let i = 0; i < Math.ceil((w / (LANES[1]!.speed * unit) + 20) * 4); i++) move(0.25, true)
     },
     draw(
       ctx: CanvasRenderingContext2D,
@@ -238,63 +308,53 @@ export function createStorm(w: number, h: number, scale = 1) {
       c: StormColors,
       opts: { drift: boolean; calm?: boolean } = { drift: true },
     ) {
-      if (gather < 0.01 && !flashes.length) return
+      if (weather < 0.01 && !flashes.length) return
       const art = build(ctx, c)
-      const e = smooth(0, 1, gather) // ease the crawl so it starts and ends slowly
-      const present = smooth(0, 0.25, gather) // fade in as the bank arrives
       const calm = opts.calm ? 0.5 : 1 // reduced motion: lower contrast
-      const level = (side: 0 | 1) =>
-        flashes.reduce(
-          (m, f) => (f.side === 2 || f.side === side ? Math.max(m, envelope(f, t - f.t0)) : m),
-          0,
-        )
-      // an overcast haze behind the banks, so dark cloud has a lighter sky to read against
+      const level = (at: number) =>
+        flashes.reduce((m, f) => {
+          const k = 0.3 + 0.7 * Math.exp(-(((at - f.at) / 0.3) ** 2))
+          return Math.max(m, envelope(f, t - f.t0) * k)
+        }, 0)
+      // the light of a flash: a cool glow around where it struck, reaching down past the clouds
       const [hr, hg, hb] = rgb(ctx, c.glow)
-      const haze = ctx.createLinearGradient(0, 0, 0, h * 0.7)
-      haze.addColorStop(0, `rgba(${hr},${hg},${hb},${0.12 * present})`)
-      haze.addColorStop(1, `rgba(${hr},${hg},${hb},0)`)
-      ctx.globalAlpha = 1
-      ctx.fillStyle = haze
-      ctx.fillRect(0, 0, w, h * 0.7)
-      for (const side of [0, 1] as const) {
-        const lit = level(side) * calm
-        const lead = e * bw // the bank's leading edge sits this far in from its canvas edge
-        const sway = opts.drift ? Math.sin(t * 0.09 + side * 2.1) * 6 : 0
-        const bob = opts.drift ? Math.sin(t * 0.13 + side) * 2 : 0
-        const x = (side === 0 ? lead - bw : w - lead) + sway
-        const y = 4 + bob
-        if (lit > 0.01) {
-          const gx =
-            side === 0 ? Math.max(lead * 0.6, bw * 0.15) : w - Math.max(lead * 0.6, bw * 0.15)
-          const gy = bh * 0.4
-          const g = ctx.createRadialGradient(gx, gy, 0, gx, gy, h * 1.1)
-          const [r, gr, b] = rgb(ctx, c.glow)
-          for (const [at, k] of [
-            [0, 1],
-            [0.35, 0.55],
-            [0.7, 0.16],
-            [1, 0],
-          ] as const)
-            g.addColorStop(at, `rgba(${r},${gr},${b},${k})`)
-          ctx.globalAlpha = 0.18 * lit
-          ctx.fillStyle = g
-          ctx.fillRect(0, 0, w, h)
+      for (const f of flashes) {
+        const lit = envelope(f, t - f.t0) * calm
+        if (lit < 0.01) continue
+        const gx = f.at * w
+        const gy = 50 * unit
+        const g = ctx.createRadialGradient(gx, gy, 0, gx, gy, w * 0.36)
+        for (const [at, k] of [
+          [0, 1],
+          [0.35, 0.55],
+          [0.7, 0.16],
+          [1, 0],
+        ] as const)
+          g.addColorStop(at, `rgba(${hr},${hg},${hb},${k})`)
+        ctx.globalAlpha = 0.18 * lit
+        ctx.fillStyle = g
+        ctx.fillRect(0, 0, w, gy + w * 0.36)
+      }
+      // far lane first, so the near lane crosses in front of it
+      for (const lane of [0, 1]) {
+        const l = LANES[lane]!
+        for (const cloud of clouds) {
+          if (cloud.lane !== lane) continue
+          const y = l.y * unit + (opts.drift ? Math.sin(t * 0.13 + cloud.bob) * 2 : 0)
+          const here = level((cloud.x + cloud.w / 2) / w) * calm
+          ctx.globalAlpha = weather * l.alpha
+          ctx.drawImage(art[cloud.shape]![0]!, cloud.x, y, cloud.w, cloud.h)
+          if (here > 0.01) {
+            ctx.globalAlpha = weather * l.alpha * clamp(here * 1.1, 0, 1)
+            ctx.drawImage(art[cloud.shape]![1]!, cloud.x, y, cloud.w, cloud.h)
+          }
         }
-        ctx.save()
-        if (side === 1) {
-          // the right bank is the same painting mirrored, so its lit tops face the middle too
-          ctx.translate(x + bw, y)
-          ctx.scale(-1, 1)
-        } else ctx.translate(x, y)
-        ctx.globalAlpha = present
-        ctx.drawImage(art[side]![0]!, 0, 0, bw, bh)
-        if (lit > 0.01) {
-          ctx.globalAlpha = present * clamp(lit * 1.1, 0, 1)
-          ctx.drawImage(art[side]![1]!, 0, 0, bw, bh)
-        }
-        ctx.restore()
       }
       ctx.globalAlpha = 1
+    },
+    /** For tests: the clouds in view, lane and left edge. */
+    get clouds() {
+      return clouds.map(c => ({ lane: c.lane, x: c.x, w: c.w }))
     },
   }
 }
