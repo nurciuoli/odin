@@ -5,6 +5,7 @@
 // New content never takes focus; the list follows the bottom only while the reader is already there (IuMessageList).
 // A step that worked on a workspace file or a notebook cell offers to open it in the Files tab (fileActivity.ts).
 import { computed, ref } from 'vue'
+import type { Checkpoint } from '@odin/shared/api'
 import type { TranscriptEntry } from '@odin/shared/harness'
 import { taskKey } from '@odin/shared/harness'
 import type { ChatAuthor, ChatMessage } from '@/components/Chat'
@@ -34,6 +35,7 @@ import {
 import { railRun } from './rail'
 import { useElapsed } from './useElapsed'
 import { entryCell, entryFile, type CellRef } from './fileActivity'
+import { checkpointSummary } from './useCheckpoints'
 
 const props = withDefaults(
   defineProps<{
@@ -51,6 +53,8 @@ const props = withDefaults(
     taskActions?: boolean
     /** The list's accessible name; a second thread on screen (a side thread) needs its own. */
     label?: string
+    /** Checkpoints by the user message they precede; a message with one offers to rewind to it. */
+    checkpoints?: Map<string, Checkpoint>
   }>(),
   { taskActions: true, label: 'Conversation' },
 )
@@ -99,6 +103,8 @@ const emit = defineEmits<{
   'open-file': [path: string]
   /** A step that ran or edited a notebook cell: open its notebook at that cell. */
   'open-cell': [cell: CellRef]
+  /** The reader chose Rewind on a user message's checkpoint. */
+  rewind: [checkpoint: Checkpoint]
 }>()
 
 // A step's file or notebook cell, when it has one: read from its transcript entry, else from the call's view.
@@ -128,6 +134,15 @@ const author = (): ChatAuthor => ({
   kind: 'agent',
   id: props.harness ?? 'claude',
 })
+
+/** " · 3 files changed" for the tooltip, or nothing while the turn runs. */
+function rewindNote(row: Row): string {
+  const cp = checkpointOf(row)
+  const summary = cp ? checkpointSummary(cp) : null
+  return summary ? ` (${summary})` : ''
+}
+const checkpointOf = (row: Row) =>
+  row.kind === 'user' ? props.checkpoints?.get(row.id) : undefined
 
 function message(row: Row): ChatMessage {
   switch (row.kind) {
@@ -300,7 +315,21 @@ const WORKING = computed<ChatMessage>(() => ({
         :show-header="row.kind !== 'system' && row.head"
         :actions="row.kind === 'assistant' || row.kind === 'user'"
         :regenerate="false"
-      />
+      >
+        <template v-if="checkpointOf(row)" #actions>
+          <IuButton
+            class="session-thread__rewind"
+            variant="ghost"
+            size="sm"
+            icon-only
+            :aria-label="`Rewind to before this message${rewindNote(row)}`"
+            :title="`Rewind to before this message${rewindNote(row)}`"
+            @click="emit('rewind', checkpointOf(row)!)"
+          >
+            <template #icon><IuIcon name="history" :size="14" /></template>
+          </IuButton>
+        </template>
+      </IuMessage>
     </template>
     <IuMessage
       v-if="looseWorking"

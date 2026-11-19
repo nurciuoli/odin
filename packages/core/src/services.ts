@@ -324,6 +324,7 @@ export interface SettingsService {
 // ── wiring ─────────────────────────────────────────────────────────────────
 
 export interface Services {
+  checkpoints: CheckpointsService;
   notebooks: NotebooksService;
   files: FilesService;
   projects: ProjectsService;
@@ -340,7 +341,32 @@ export interface Services {
 }
 
 export type ServiceName = keyof Services;
-export const SERVICE_NAMES: ServiceName[] = ["notebooks", "files", "projects", "sessions", "launch", "artifacts", "library", "sync", "ingest", "metrics", "settings", "secrets", "mcpOAuth"];
+export const SERVICE_NAMES: ServiceName[] = ["checkpoints", "notebooks", "files", "projects", "sessions", "launch", "artifacts", "library", "sync", "ingest", "metrics", "settings", "secrets", "mcpOAuth"];
+
+// ── checkpoints (src/checkpoints) ──────────────────────────────────────────
+
+export interface CheckpointsService extends Closeable {
+  list(sessionId: string): import("@odin/shared/api").Checkpoint[];
+  diff(sessionId: string, checkpointId: string, against?: "turn" | "current"): Promise<import("@odin/shared/api").CheckpointDiff>;
+  /** Needs an idle session with an empty message queue (409). Files-only restores keep the session; see the result. */
+  restore(sessionId: string, checkpointId: string, request: import("@odin/shared/api").RestoreCheckpointRequest): Promise<import("@odin/shared/api").RestoreCheckpointResult>;
+  /**
+   * Called by sessions at turn boundaries. Never throws; failures are recorded on the checkpoint
+   * (`snapshot: "failed"`). Phases, in order for one turn:
+   * - `turn.prepare` (`messageId` null): sessions awaits it just before handing the message to the harness. It snapshots
+   *   the working tree (bounded by the size and time budget) and holds it as the pending before-tree.
+   * - `turn.start` (`messageId` = the user entry's id): the harness announced the message; creates the checkpoint
+   *   from the pending before-tree. Not awaited.
+   * - `turn.end` (`messageId` null): records the end tree and `files`. Not awaited.
+   */
+  capture(sessionId: string, phase: "turn.prepare" | "turn.start" | "turn.end", messageId: string | null): Promise<void>;
+  /** Writes a checkpoint's files into `dir` (a fork's fresh worktree). 409 when the checkpoint has no files. */
+  materialize(sessionId: string, checkpointId: string, dir: string): Promise<void>;
+  /** A fork inherits its parent's checkpoints up to and including `checkpointId`'s predecessor (sharing the trees). */
+  inherit(parentId: string, childId: string, uptoCheckpointId: string | null): void;
+  /** Drops a session's checkpoints and any store objects only it used (session or project deleted, retention). */
+  forget(sessionId: string): Promise<void>;
+}
 
 export interface NotebooksService extends Closeable {
   widgetState(kernelId: string): import("@odin/shared/notebooks").NotebookComm[];

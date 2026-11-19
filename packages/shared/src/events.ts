@@ -1,5 +1,5 @@
 // SSE: GET /api/events. Each frame is `event: <type>\ndata: <json>\n\n`. Clients refetch REST state on (re)connect.
-import type { Artifact, Installation, MessageQueue, Session, SyncStatus } from "./api.ts";
+import type { Artifact, Checkpoint, Installation, MessageQueue, Session, SyncStatus } from "./api.ts";
 import type { HarnessEvent } from "./harness.ts";
 
 export const HEARTBEAT_MS = 20_000;
@@ -24,6 +24,8 @@ export type ServerEvent =
    * be watching; the record-level effects also arrive as `session.updated`.
    */
   | { type: "session.event"; sessionId: string; event: HarnessEvent }
+  /** A checkpoint was taken, or finished (its `files` and `snapshot` are now known). Merge by `id`. */
+  | { type: "checkpoint.updated"; sessionId: string; checkpoint: Checkpoint }
   | { type: "artifact.updated"; sessionId: string; artifact: Artifact }
   | { type: "library.updated"; kind: string; id: string }
   | { type: "install.updated"; installation: Installation }

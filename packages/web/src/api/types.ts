@@ -178,6 +178,18 @@ export interface Api {
   handoffPreview(id: string, harness: string): Promise<HandoffPreview>
   /** A new session on another harness, same checkout, started with a briefing. 409 while the source runs or waits. */
   handoffSession(id: string, req: HandoffRequest): Promise<Session>
+  // checkpoints (docs/contracts.md#checkpoints)
+  listCheckpoints(id: string): Promise<import('@odin/shared/api').Checkpoint[]>
+  checkpointDiff(
+    id: string,
+    checkpointId: string,
+    against?: 'turn' | 'current',
+  ): Promise<import('@odin/shared/api').CheckpointDiff>
+  restoreCheckpoint(
+    id: string,
+    checkpointId: string,
+    req: import('@odin/shared/api').RestoreCheckpointRequest,
+  ): Promise<import('@odin/shared/api').RestoreCheckpointResult>
   listModels(harness?: string): Promise<ModelInfo[]>
 
   // artifacts

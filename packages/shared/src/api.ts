@@ -87,6 +87,8 @@ export interface ProjectSettings {
   githubEnabled?: boolean;
   /** Run new sessions in a fresh worktree by default. Unset falls back to AppSettings.defaultWorktree. */
   defaultWorktree?: boolean;
+  /** Session checkpoints (file snapshots per turn). Defaults: enabled, 200 per project, 500 MB. docs/contracts.md#checkpoints */
+  checkpoints?: { enabled?: boolean; maxCount?: number; maxBytes?: number };
   title: string;
   description: string;
   /** GitHub owner/name, or null for a local-only project. */
@@ -626,6 +628,70 @@ export interface ForkSessionRequest {
   permissionMode?: PermissionMode;
   /** Model for the fork. Default: the parent's. */
   model?: string;
+  /**
+   * Cut the forked conversation just before this user message (a `TranscriptEntry` id, as `Checkpoint.messageId`).
+   * 400 when the harness lacks `capabilities.checkpoints.forkAt` or the id is not a user message of the parent.
+   */
+  atMessageId?: string;
+  /**
+   * Also give the fork the working tree the parent had at `atMessageId`'s checkpoint. Requires `atMessageId` and
+   * `worktree: true` (400 otherwise: files are never restored into a checkout another session is using). 409 when
+   * that checkpoint has no files (`snapshot` is not `ok`).
+   */
+  restoreFiles?: boolean;
+}
+
+/** One rewind point: the state of a session just before the agent acted on one user message. docs/contracts.md#checkpoints */
+export interface Checkpoint {
+  /** `<sessionId>:<n>` for a turn, `<sessionId>:undo:<n>` for a pre-restore safety snapshot. */
+  id: string;
+  sessionId: string;
+  /** `turn`: taken before a user message. `pre-restore`: taken before a restore wrote files, so it can be undone. */
+  kind: "turn" | "pre-restore";
+  /** Transcript entry id of the user message this checkpoint precedes. Null for `pre-restore`. */
+  messageId: string | null;
+  /** 1-based turn number; for `pre-restore`, the turn it was taken before. */
+  turn: number;
+  at: string;
+  /** Files that differ between the previous checkpoint's end state and this turn's end; null until the turn ends. */
+  files: { changed: number; added: number; removed: number } | null;
+  /** `ok`: files can be restored. `skipped`: over the size or time budget, or not a plain directory. `failed`: error. */
+  snapshot: "ok" | "skipped" | "failed";
+}
+
+export interface CheckpointFileChange {
+  path: string;
+  status: "added" | "modified" | "removed";
+}
+
+/** GET /api/sessions/:id/checkpoints/:cid/diff?against=turn|current */
+export interface CheckpointDiff {
+  checkpointId: string;
+  /** `turn`: what that turn changed (its start to its end). `current`: what restoring it would change right now. */
+  against: "turn" | "current";
+  files: CheckpointFileChange[];
+  /** The list is capped (500 paths); `files` holds the first ones. */
+  truncated: boolean;
+}
+
+/** POST /api/sessions/:id/checkpoints/:cid/restore. At least one of `files` and `conversation` is true (400 otherwise). */
+export interface RestoreCheckpointRequest {
+  /** Put the working tree back as it was at the checkpoint (in the session's own workspace). */
+  files: boolean;
+  /**
+   * Rewind the conversation to the checkpoint's message. Done as a fork at that message: the result is a new session,
+   * and the original is archived and kept. Needs `capabilities.checkpoints.forkAt` (400 otherwise).
+   */
+  conversation: boolean;
+}
+
+export interface RestoreCheckpointResult {
+  /** The session to continue in: the same one for a files-only restore, the new fork when `conversation` was true. */
+  session: Session;
+  /** The original session, archived by a conversation rewind. Null for a files-only restore. */
+  archivedSessionId: string | null;
+  /** The `pre-restore` checkpoint holding the files as they were before the restore. Null when files were not restored. */
+  undoCheckpointId: string | null;
 }
 
 /** GET /api/sessions/:id/handoff?harness=: what a handoff to `harness` would send, without doing it. */
@@ -1159,6 +1225,8 @@ export interface HarnessInfo {
 
 export interface HarnessCapabilities {
   native?: { agents: boolean; variants: boolean; permissionRules: boolean; actions: NativeSessionAction["type"][] };
+  /** `forkAt`: the driver can fork a stored session cut before a given user message. Absent or false: no rewind of the conversation. */
+  checkpoints?: { forkAt: boolean };
   permissionModes: PermissionMode[];
   permissionScopes: PermissionAnswerScope[];
   /** False means launches with additional repositories must be rejected before starting. */

@@ -29,7 +29,14 @@ import {
   activityLabel,
 } from './activity'
 import { useRoute, useRouter } from 'vue-router'
-import type { ModelInfo, Session, PermissionAnswerScope, PermissionMode } from '@odin/shared/api'
+import type {
+  Checkpoint,
+  ModelInfo,
+  PermissionAnswerScope,
+  PermissionMode,
+  RestoreCheckpointResult,
+  Session,
+} from '@odin/shared/api'
 import { useApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import { registerCommand } from '@/app/commands'
@@ -51,6 +58,8 @@ import { handoffCard } from './handoff'
 import { CHAT_MIN, PREVIEW_MIN, detailsFit, setLayoutDemand } from '@/app/layout'
 import SessionSide from './SessionSide.vue'
 import SessionThread from './SessionThread.vue'
+import RewindPrompt from './RewindPrompt.vue'
+import { useCheckpoints } from './useCheckpoints'
 import type { CellRef } from './fileActivity'
 import SessionWorkbench from './SessionWorkbench.vue'
 import SideThreadPane from './SideThreadPane.vue'
@@ -70,6 +79,9 @@ const { view, phase, error, load, setRecord, setQueue } = useSessionView(toRef(p
 const { toast } = useToast()
 const side = useSideThreads(toRef(props, 'id'))
 const sideThreads = side.threads
+const { checkpoints: allCheckpoints, byMessage: checkpointsByMessage } = useCheckpoints(
+  toRef(props, 'id'),
+)
 
 const session = computed(() => view.value?.detail ?? null)
 // Opening a session reads it: Home stops listing it as finished-but-unopened (`app/seen.ts`). Updates that land while
@@ -189,6 +201,8 @@ const context = computed(() => {
 const models = ref<ModelInfo[]>([])
 const permissionModes = ref<PermissionMode[]>([])
 const permissionScopes = ref<Exclude<PermissionAnswerScope, 'once'>[]>([])
+// whether the harness can fork a stored session at a message (the conversation half of rewind)
+const forkAt = ref(false)
 watch(
   () => session.value?.harness,
   async harness => {
@@ -208,6 +222,8 @@ watch(
           'dontAsk',
           'bypassPermissions',
         ]
+        forkAt.value =
+          settings.harnesses.find(h => h.id === harness)?.capabilities?.checkpoints?.forkAt === true
         const scopes = settings.harnesses.find(h => h.id === harness)?.capabilities
           ?.permissionScopes ?? ['once', 'session', 'project', 'local', 'user']
         permissionScopes.value = scopes.filter(
@@ -486,6 +502,74 @@ onMounted(() => {
 })
 onBeforeUnmount(() => withdraw.splice(0).forEach(off => off()))
 
+// ── rewind ──
+const rewindOpen = ref(false)
+const rewindFor = ref<Checkpoint | null>(null)
+const rewindText = computed(() => {
+  const id = rewindFor.value?.messageId
+  const entry = session.value?.transcript.find(e => e.id === id)
+  return entry?.kind === 'user' ? entry.text : ''
+})
+// The card only makes sense while the session is idle: a turn or a prompt starting puts the message box back.
+const rewindShown = computed(
+  () =>
+    rewindOpen.value &&
+    !!rewindFor.value &&
+    session.value?.state !== 'running' &&
+    session.value?.state !== 'waiting',
+)
+function openRewind(cp: Checkpoint) {
+  rewindFor.value = cp
+  rewindOpen.value = true
+}
+// After a files-only restore this session offers to undo it; a conversation rewind moved to a new session.
+const undoable = ref<{ checkpointId: string } | null>(null)
+const undoing = ref(false)
+watch(
+  () => props.id,
+  () => {
+    undoable.value = null
+    rewindOpen.value = false
+  },
+)
+function onRestored(result: RestoreCheckpointResult) {
+  if (result.archivedSessionId) {
+    toast({
+      title: 'Rewound to before that message',
+      description: 'This is a new session. The original is archived.',
+      intent: 'info',
+      action: {
+        label: 'Open original',
+        onClick: () => void router.push(`/s/${result.archivedSessionId}`),
+      },
+    })
+    return
+  }
+  undoable.value = result.undoCheckpointId ? { checkpointId: result.undoCheckpointId } : null
+}
+async function undoRestore() {
+  const u = undoable.value
+  if (!u || undoing.value) return
+  undoing.value = true
+  try {
+    await api.restoreCheckpoint(props.id, u.checkpointId, { files: true, conversation: false })
+    undoable.value = null
+    toast({
+      title: 'Restore undone',
+      description: 'The files are back as they were.',
+      intent: 'info',
+    })
+  } catch (e) {
+    toast({
+      title: 'Could not undo the restore',
+      description: e instanceof Error ? e.message : String(e),
+      intent: 'danger',
+    })
+  } finally {
+    undoing.value = false
+  }
+}
+
 // ── actions that leave this page ──
 function onForked(s: Session) {
   void router.push(`/s/${s.id}`)
@@ -606,7 +690,18 @@ function onDeleted() {
             >
               {{ recordError }}
             </IuCallout>
+            <IuCallout v-if="undoable" intent="info" variant="subtle" title="Files restored">
+              The project files are back as they were before that message.
+              <template #actions>
+                <IuButton variant="secondary" size="sm" :loading="undoing" @click="undoRestore"
+                  >Undo</IuButton
+                >
+                <IuButton variant="ghost" size="sm" @click="undoable = null">Dismiss</IuButton>
+              </template>
+            </IuCallout>
             <SessionThread
+              :checkpoints="checkpointsByMessage"
+              @rewind="openRewind"
               :rows="rows"
               :entries="view.detail.transcript"
               :root="session.cwd"
@@ -652,9 +747,10 @@ function onDeleted() {
                 :slash-commands="view.detail.slashCommands"
                 :context="context"
                 :usage="{ costUsd: session.metrics.costUsd, tokens: session.metrics.tokens }"
-                :replaced="session.pending.length > 0 || handoffCard === session.id"
+                :replaced="session.pending.length > 0 || rewindShown || handoffCard === session.id"
                 :replacement-key="
-                  session.pending[0]?.id ?? (handoffCard === session.id ? 'handoff' : null)
+                  session.pending[0]?.id ??
+                  (rewindShown ? 'rewind' : handoffCard === session.id ? 'handoff' : null)
                 "
                 :queued="session.messageQueue.messages.filter(m => m.state === 'queued').length"
                 :queue-blocked="session.messageQueue.messages.some(m => m.state === 'uncertain')"
@@ -663,8 +759,19 @@ function onDeleted() {
                 @aside="onAside"
               >
                 <template #replacement>
+                  <RewindPrompt
+                    v-if="!session.pending.length && rewindShown"
+                    :session-id="session.id"
+                    :checkpoint="rewindFor"
+                    :checkpoints="allCheckpoints"
+                    :message-text="rewindText"
+                    :fork-at="forkAt"
+                    @close="rewindOpen = false"
+                    @forked="onForked"
+                    @restored="onRestored"
+                  />
                   <HandoffPrompt
-                    v-if="!session.pending.length && handoffCard === session.id"
+                    v-else-if="!session.pending.length && handoffCard === session.id"
                     :session-id="session.id"
                     :harness="session.harness"
                   />

@@ -3,6 +3,7 @@ import { Router } from "./router.ts";
 import type { Deps, Services } from "../services.ts";
 import { registerProjectsRoutes } from "../projects/routes.ts";
 import { registerSessionsRoutes } from "../sessions/routes.ts";
+import { registerCheckpointsRoutes } from "../checkpoints/routes.ts";
 import { registerArtifactsRoutes } from "../artifacts/routes.ts";
 import { registerArtifactPrintRoutes } from "../artifacts/print.ts";
 import { registerLibraryRoutes } from "../library/routes.ts";
@@ -33,6 +34,7 @@ export function apiRouter(deps: Deps, services: Services): Router {
   for (const register of [
     registerProjectsRoutes,
     registerSessionsRoutes,
+    registerCheckpointsRoutes,
     registerFilesRoutes,
     registerNotebookRoutes,
     registerNotebookOutputRoutes,
