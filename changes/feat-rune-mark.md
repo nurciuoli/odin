@@ -1,1 +1,0 @@
-- Odin has a new mark: Ansuz, the rune of Odin, in the app icon, the favicon and the sidebar.

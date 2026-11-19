@@ -5,7 +5,7 @@
 // built to that contract.
 import { computed } from 'vue'
 import { IuIcon } from '@/components/Icon'
-import { IuRuneMark } from '@/components/RuneMark'
+import type { IconName } from '@/components/Icon'
 
 const props = withDefaults(
   defineProps<{
@@ -21,6 +21,12 @@ const props = withDefaults(
   }>(),
   { kind: 'first-run', eyebrow: true, proverb: undefined },
 )
+
+const ICON: Record<typeof props.kind, IconName> = {
+  'first-run': 'terminal',
+  filtered: 'filter',
+  cleared: 'check',
+}
 
 // Paraphrased from the Hávamál. One is picked per title, so a given screen always shows the same line.
 const PROVERBS: Record<typeof props.kind, string[]> = {
@@ -38,6 +44,7 @@ const EYEBROW: Record<typeof props.kind, string> = {
   cleared: 'cleared · a good outcome',
 }
 
+const icon = computed(() => ICON[props.kind])
 const proverbText = computed(() => {
   if (props.proverb !== undefined) return props.proverb || ''
   const list = PROVERBS[props.kind]
@@ -50,10 +57,7 @@ const eyebrowText = computed(() => EYEBROW[props.kind])
 
 <template>
   <div class="iu-empty" :class="`iu-empty--${kind}`">
-    <div class="iu-empty__icon">
-      <IuIcon v-if="kind === 'cleared'" name="check" :size="20" />
-      <IuRuneMark v-else :size="22" />
-    </div>
+    <div class="iu-empty__icon"><IuIcon :name="icon" :size="20" /></div>
     <div class="iu-empty__title">{{ title }}</div>
     <div v-if="proverbText" class="iu-empty__proverb">{{ proverbText }}</div>
     <div v-if="body || $slots.default" class="iu-empty__body">

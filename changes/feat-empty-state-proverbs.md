@@ -1,1 +1,1 @@
-- Empty states now carry the rune mark and a short Norse line under the title.
+- Empty states now carry a short Norse line under the title.

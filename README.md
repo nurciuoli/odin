@@ -1,4 +1,4 @@
-<p align="center"><img src="packages/web/public/odin.svg" width="96" alt="Odin logo: the Ansuz rune"></p>
+<p align="center"><img src="packages/web/public/odin.svg" width="96" alt="Odin logo: a raven"></p>
 
 # Odin
 
