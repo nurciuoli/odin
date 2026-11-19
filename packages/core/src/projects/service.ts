@@ -2,7 +2,7 @@
 // and worktrees. SQLite holds the last-read state; refresh() re-reads disk and git and emits project.updated when
 // something changed. Odin never writes into a project's files (docs/contracts.md#projects).
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { CreateProjectRequest, ProjectAgent, ProjectBranch, ProjectCommands, ProjectSettings, ProjectSourceSelection, PullRef, UpdateProjectSettingsRequest, UpdateProjectSourcesRequest } from "@odin/shared/api";
 import { parseProjectSources } from "@odin/shared/api";
@@ -16,7 +16,7 @@ import { HttpError } from "../http/util.ts";
 import { validBranchName } from "../git-policy.ts";
 import type { Deps, ProjectRef, ProjectsService, Services } from "../services.ts";
 import {
-  EMPTY_GIT, GitError, aheadBehind, defaultBase, git, initRepo, isGitRepo, listBranches, listWorktrees, mergedBranches, readGitState, statusPaths,
+  EMPTY_GIT, GitError, aheadBehind, cloneRepo, defaultBase, git, initRepo, isGitRepo, listBranches, listWorktrees, mergedBranches, readGitState, statusPaths,
 } from "./git.ts";
 import { readProject, repoFromRemote, type ManifestFields, type SettingOverrides } from "./context.ts";
 
@@ -522,6 +522,15 @@ export function createProjectsService(deps: Deps, services?: Services): Projects
 
   // ── create ────────────────────────────────────────────────────────────────
 
+  /** `owner/name` → GitHub https URL; https://, ssh:// and git@host:path pass; anything else (ext::, file, -options) is refused. */
+  function cloneUrlOf(input: unknown): string {
+    if (typeof input !== "string" || !input.trim()) throw new HttpError(400, "clone must be a repository URL or owner/name");
+    const v = input.trim();
+    if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(v)) return `https://github.com/${v.replace(/\.git$/, "")}.git`;
+    if (/^(https:\/\/|ssh:\/\/)[^\s]+$/.test(v) || /^git@[A-Za-z0-9.-]+:[^\s]+$/.test(v)) return v;
+    throw new HttpError(400, "clone must be owner/name, an https:// or ssh:// URL, or git@host:path");
+  }
+
   async function create(req: CreateProjectRequest): Promise<ProjectRef> {
     if (req === null || typeof req !== "object") throw new HttpError(400, "expected a JSON object");
     if (typeof req.path !== "string" || !req.path.trim()) throw new HttpError(400, "path is required");
@@ -531,7 +540,15 @@ export function createProjectsService(deps: Deps, services?: Services): Projects
     if (req.name !== undefined && (typeof req.name !== "string" || !PROJECT_NAME_PATTERN.test(req.name))) {
       throw new HttpError(400, `"${String(req.name)}" isn't a valid project name (a-z, 0-9 and -, up to 40)`);
     }
-    if (!existsSync(path) || !statSync(path).isDirectory()) throw new HttpError(400, `${path} isn't a folder`);
+    const makes = req.mkdir === true || req.clone !== undefined;
+    if (req.clone !== undefined && (req.mkdir || req.init || req.readme)) throw new HttpError(400, "clone can't be combined with mkdir, init or readme");
+    if (req.readme && !req.mkdir) throw new HttpError(400, "readme needs mkdir");
+    const cloneUrl = req.clone === undefined ? null : cloneUrlOf(req.clone);
+    if (makes) {
+      if (existsSync(path) && !(statSync(path).isDirectory() && readdirSync(path).length === 0)) {
+        throw new HttpError(409, `${path} already exists and isn't an empty folder`);
+      }
+    } else if (!existsSync(path) || !statSync(path).isDirectory()) throw new HttpError(400, `${path} isn't a folder`);
     const name = req.name ?? slugify(basename(path));
     if (!PROJECT_NAME_PATTERN.test(name)) throw new HttpError(400, `"${name}" isn't a valid project name (a-z, 0-9 and -, up to 40); pass name`);
     if (getRow(name)) throw new HttpError(409, `a project named "${name}" is already registered`);
@@ -539,12 +556,30 @@ export function createProjectsService(deps: Deps, services?: Services): Projects
     for (const row of allRows()) {
       if (row.path === path || realPathLoose(row.path) === real) throw new HttpError(409, `${path} is already registered as "${row.name}"`);
     }
-    if (!isGitRepo(path) && req.init === true) {
-      try {
-        await initRepo(path, "main");
-      } catch (err) {
-        throw new HttpError(500, `git init failed: ${err instanceof Error ? err.message : String(err)}`);
+    // Everything is validated; from here on a failure removes the folder this call made.
+    const existedBefore = existsSync(path);
+    try {
+      if (makes) mkdirSync(existedBefore ? path : dirname(path), { recursive: true });
+      if (cloneUrl !== null) {
+        try {
+          await cloneRepo(dirname(path), cloneUrl, path);
+        } catch (err) {
+          throw new HttpError(400, `couldn't clone: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      } else if (makes) {
+        mkdirSync(path, { recursive: true });
+        if (req.readme) writeFileSync(join(path, "README.md"), `# ${name}\n`, { flag: "wx" });
       }
+      if (!isGitRepo(path) && req.init === true) {
+        try {
+          await initRepo(path, "main");
+        } catch (err) {
+          throw new HttpError(500, `git init failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    } catch (err) {
+      if (makes && !existedBefore) rmSync(path, { recursive: true, force: true });
+      throw err;
     }
     const t = now();
     db.prepare("INSERT INTO projects (name, path, created_at, updated_at) VALUES (?, ?, ?, ?)").run(name, path, t, t);

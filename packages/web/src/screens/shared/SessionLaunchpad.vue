@@ -5,6 +5,7 @@
 // live frames that arrive while Home is open.
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { openNewProject } from '@/app/newProject'
 import type { Session } from '@odin/shared/api'
 import type { PermissionRequest } from '@odin/shared/harness'
 import { applyHarnessEvent } from '@odin/shared/transcript'
@@ -206,9 +207,7 @@ const title = (s: Session) =>
       v-if="empty"
       title="Your next project starts here"
       body="Add a repository to start a conversation with Claude or Codex."
-      ><IuButton as="router-link" to="/projects/new" variant="primary"
-        >Add project</IuButton
-      ></IuEmpty
+      ><IuButton variant="primary" @click="openNewProject()">New project</IuButton></IuEmpty
     >
     <template v-else>
       <section class="launchpad__composer" aria-label="Start a conversation">

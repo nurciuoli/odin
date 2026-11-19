@@ -7,6 +7,7 @@ import { IuStatusDot } from '@/components/StatusDot'
 import { mountScreen } from '@/screens/shared/testSupport'
 import { buildPerch } from '@/screens/shared/lanes'
 import AppSidebar from './AppSidebar.vue'
+import { newProjectOpen } from './newProject'
 import { markAllSeen, markSeen, resetSeen } from './seen'
 
 const SIDEBAR_KEY = 'odin.sidebar.collapsed'
@@ -29,22 +30,23 @@ it('puts a collapsible Sessions group after Projects with global navigation and 
   sessions.stop()
 })
 
-it('puts Add project as an icon button in the Projects header, not in the footer', async () => {
-  const { wrapper, router, projects, sessions } = await mountScreen(AppSidebar, '/')
+it('puts New project as an icon button in the Projects header, not in the footer', async () => {
+  const { wrapper, projects, sessions } = await mountScreen(AppSidebar, '/')
   await flushPromises()
   const group = wrapper.findAllComponents(IuNavGroup)[0]!
   const toggle = group.find('button[aria-expanded]')
-  const add = group.find('[aria-label="Add project"]')
+  const add = group.find('[aria-label="New project"]')
   expect(add.exists()).toBe(true)
-  expect(add.attributes('title')).toBe('Add project')
-  expect(add.attributes('href')).toBe('/projects/new')
+  expect(add.attributes('title')).toBe('New project')
   // A sibling of the collapse toggle, never nested inside it.
-  expect(toggle.find('[aria-label="Add project"]').exists()).toBe(false)
-  expect(wrapper.findAll('[aria-label="Add project"]')).toHaveLength(1)
-  expect(wrapper.text()).not.toContain('Add project')
+  expect(toggle.find('[aria-label="New project"]').exists()).toBe(false)
+  expect(wrapper.findAll('[aria-label="New project"]')).toHaveLength(1)
+  expect(wrapper.text()).not.toContain('New project')
 
+  newProjectOpen.value = false
   await add.trigger('click')
-  await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('add-project'))
+  expect(newProjectOpen.value).toBe(true)
+  newProjectOpen.value = false
   expect(toggle.attributes('aria-expanded')).toBe('true')
   wrapper.unmount()
   projects.stop()

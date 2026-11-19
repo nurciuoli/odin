@@ -7,36 +7,76 @@ import ProjectSettingsScreen from './ProjectSettingsScreen.vue'
 const mountSettings = (project = 'odin', api = createMockApi()) =>
   mountProjectScreen(ProjectSettingsScreen, `/p/${project}/settings`, api, project)
 
+type Wrapper = Awaited<ReturnType<typeof mountSettings>>['wrapper']
+// Click a row's value to edit it, type, and press Enter.
+async function edit(wrapper: Wrapper, label: string, value: string, key = 'Enter') {
+  await wrapper.find(`button[aria-label="Edit ${label}"]`).trigger('click')
+  const input = wrapper.find('input.sheet-row__input, textarea.sheet-row__input')
+  await input.setValue(value)
+  await input.trigger('keydown', { key })
+  await flushPromises()
+}
+
 describe('ProjectSettingsScreen', () => {
-  it('starts from the effective settings with nothing to save', async () => {
+  it('shows the effective settings as rows', async () => {
     const { wrapper } = await mountSettings()
     await flushPromises()
-    const title = wrapper.find('input[type="text"]').element as HTMLInputElement
-    expect(title.value).toBe('Odin')
-    expect(wrapper.text()).toContain('All changes saved')
-    expect(wrapper.text()).toContain('Claude Code tracking')
+    expect(wrapper.find('button[aria-label="Edit Title"]').text()).toBe('Odin')
+    expect(wrapper.text()).toContain('Claude Code')
+    expect(wrapper.text()).not.toContain('Save changes')
   })
 
-  it('saves only what changed, and null clears the repo', async () => {
+  it('saves one field when Enter is pressed, and only that field', async () => {
     const { api, wrapper } = await mountSettings()
     await flushPromises()
     const spy = vi.spyOn(api, 'updateProjectSettings')
-    const [title, repo] = wrapper.findAll('input[type="text"]')
-    await title!.setValue('Odin 2')
-    await repo!.setValue('')
-    await wrapper.find('form').trigger('submit')
-    await flushPromises()
-    expect(spy).toHaveBeenCalledWith('odin', { title: 'Odin 2', repo: null })
+    await edit(wrapper, 'Title', 'Odin 2')
+    expect(spy).toHaveBeenCalledWith('odin', { title: 'Odin 2' })
   })
 
-  it('does not save an invalid repo', async () => {
+  it('Esc cancels without saving, and an unchanged value does not save', async () => {
     const { api, wrapper } = await mountSettings()
     await flushPromises()
     const spy = vi.spyOn(api, 'updateProjectSettings')
-    await wrapper.findAll('input[type="text"]')[1]!.setValue('not a repo')
-    await wrapper.find('form').trigger('submit')
+    await edit(wrapper, 'Title', 'Changed', 'Escape')
+    expect(wrapper.find('button[aria-label="Edit Title"]').text()).toBe('Odin')
+    await edit(wrapper, 'Title', 'Odin')
+    expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('clears the repo with an empty value and refuses an invalid one', async () => {
+    const { api, wrapper } = await mountSettings()
+    await flushPromises()
+    const spy = vi.spyOn(api, 'updateProjectSettings')
+    await edit(wrapper, 'GitHub repo', 'not a repo')
     expect(wrapper.text()).toContain('Use owner/name')
     expect(spy).not.toHaveBeenCalled()
+    const input = wrapper.find('input.sheet-row__input')
+    await input.setValue('')
+    await input.trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+    expect(spy).toHaveBeenCalledWith('odin', { repo: null })
+  })
+
+  it('sends the whole commands object when one command changes', async () => {
+    const { api, wrapper } = await mountSettings()
+    await flushPromises()
+    const spy = vi.spyOn(api, 'updateProjectSettings')
+    await edit(wrapper, 'Build', 'npm run build')
+    expect(spy).toHaveBeenCalledWith('odin', {
+      commands: expect.objectContaining({ build: 'npm run build' }),
+    })
+  })
+
+  it('saves the sources with the edited list', async () => {
+    const { api, wrapper } = await mountSettings()
+    await flushPromises()
+    const spy = vi.spyOn(api, 'updateProjectSources')
+    await edit(wrapper, 'Status', 'docs/STATUS.md, docs/NOW.md')
+    expect(spy).toHaveBeenCalledWith(
+      'odin',
+      expect.objectContaining({ status: ['docs/STATUS.md', 'docs/NOW.md'] }),
+    )
   })
 
   it('toggles Claude Code tracking', async () => {
