@@ -1,0 +1,1 @@
+- When a session finishes while Home is open, a raven glides in and lands on its row, and a pull request merged while you watch Outputs gets one quiet shimmer on its number.

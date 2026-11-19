@@ -21,6 +21,7 @@
 
   /* text */
   --iu-text: #eceae4;
+  --iu-text-bright: #ffffff; /* the pale band in the merged shimmer */
   --iu-text-2: #b4b2a9;
   --iu-text-muted: #96948c;
   --iu-text-disabled: #5c5b54;
@@ -90,9 +91,20 @@
   --iu-diff-remove-gutter: #211412;
   --iu-diff-remove-ink: #e7b4aa;
 
+  /* focus: one crisp ring everywhere (2px ember, 2px gap; inset rows use the negative offset) and one selection colour */
+  --iu-focus-ring: 2px solid var(--iu-accent);
+  --iu-focus-offset: 2px;
+  --iu-selection: rgb(224 123 74 / 0.34);
+
+  /* depth by light: a raised surface catches light on its top edge instead of casting a shadow */
+  --iu-lip-edge: rgb(255 255 255 / 0.085); /* the top border of a raised surface */
+  --iu-lip: inset 0 1px 0 rgb(255 255 255 / 0.04);
+
   /* motion */
   --iu-ease: cubic-bezier(0.2, 0, 0, 1);
   --iu-dur-fast: 80ms;
+  --iu-dur-micro: 120ms; /* things arriving: a popover, dialog, row or panel; always with --iu-ease, never bounces */
+  --iu-rise: 4px; /* how far an arriving thing travels */
   --iu-dur: 160ms;
   /* tempo is the status: each state has its own speed, readable from the corner of the eye.
      running = quick and even (linear, never stops); awaiting the user = a slow breath;
@@ -113,6 +125,9 @@
   --iu-font-sans: 'IBM Plex Sans', system-ui, sans-serif;
   --iu-font-brand: 'Space Grotesk', var(--iu-font-sans);
   --iu-font-serif: 'Fraunces', Georgia, serif; /* the one italic proverb line in an empty state; nowhere else */
+  --iu-font-display: var(
+    --iu-font-brand
+  ); /* page titles and the big numbers; never body or labels */
   --iu-font-mono: 'IBM Plex Mono', monospace;
 
   /* type scale — UI text runs 10–14px in half-pixel steps; names are the px value
@@ -142,7 +157,7 @@
   --iu-leading-code: 1.7; /* code wells and diffs */
 
   /* tracking for mono uppercase labels (eyebrows, column heads, group labels) */
-  --iu-tracking-caps: 0.12em;
+  --iu-tracking-caps: 0.08em;
   --iu-tracking-caps-tight: 0.06em; /* badges and other caps inside a pill */
 
   /* geometry */

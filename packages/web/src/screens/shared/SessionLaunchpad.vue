@@ -16,6 +16,8 @@ import { isUnread, markAllSeen } from '@/app/seen'
 import { IuButton } from '@/components/Button'
 import { IuEmpty, IuErrorState, IuSkeleton } from '@/components/States'
 import { IuFlock } from '@/components/Spinner'
+import { IuRavenLanding } from '@/components/RavenLanding'
+import { useFlagged } from '@/composables/useFlagged'
 import { buildPerch, perchParts, type LaneSource, type Perch } from '@/screens/shared/lanes'
 import { SESSION_DISPLAY, plural, relativeTime } from './format'
 import StatusWord from './StatusWord.vue'
@@ -188,6 +190,21 @@ const unread = computed(() =>
 )
 const finishedText = (s: Session) => SESSION_DISPLAY[s.state].label
 
+// A session that finishes while Home is open gets a raven that lands on its row. Opening Home later just shows it perched.
+const { flagged: landed, flag: flagLanded } = useFlagged<string>()
+const lastStates = new Map<string, string>()
+watch(
+  () => sessions.data.value,
+  list => {
+    for (const s of list ?? []) {
+      const before = lastStates.get(s.id)
+      if ((before === 'running' || before === 'waiting') && s.state === 'ended') flagLanded(s.id)
+      lastStates.set(s.id, s.state)
+    }
+  },
+  { immediate: true },
+)
+
 // ── earlier ──
 const recent = computed(() => stopped.value.filter(s => !allUnread.value.includes(s)).slice(0, 5))
 
@@ -258,7 +275,13 @@ const title = (s: Session) =>
           <IuFlock state="idle" size="lg" />
           <p class="launchpad__quiet">All quiet. Sessions you start gather here.</p>
         </div>
-        <ul v-else class="launchpad__perches" aria-label="Sessions in progress">
+        <TransitionGroup
+          v-else
+          tag="ul"
+          name="launchpad-perch"
+          class="launchpad__perches"
+          aria-label="Sessions in progress"
+        >
           <li v-for="p in perches" :key="p.id" class="launchpad__perch" :data-state="p.state">
             <span class="launchpad__perch-glyph" role="img" :aria-label="p.description"
               ><IuFlock size="xl" tone="neutral" :state="p.flock" :agents="p.agents"
@@ -322,7 +345,10 @@ const title = (s: Session) =>
             data-state="finished"
           >
             <span class="launchpad__perch-glyph"
-              ><IuFlock size="xl" :state="s.state === 'failed' ? 'failed' : 'idle'"
+              ><IuRavenLanding v-if="s.state === 'ended'" :landing="landed.has(s.id)" /><IuFlock
+                v-else
+                size="xl"
+                :state="s.state === 'failed' ? 'failed' : 'idle'"
             /></span>
             <RouterLink
               :to="{ name: 'session', params: { id: s.id } }"
@@ -338,7 +364,7 @@ const title = (s: Session) =>
             </div>
             <div class="launchpad__perch-state" />
           </li>
-        </ul>
+        </TransitionGroup>
       </section>
 
       <section class="launchpad__section" aria-labelledby="launchpad-recent">
@@ -414,7 +440,8 @@ const title = (s: Session) =>
 }
 .launchpad__heading h2 {
   margin: 0;
-  font-size: var(--iu-font-size-13);
+  font-family: var(--iu-font-display);
+  font-size: var(--iu-font-size-13-5);
   font-weight: var(--iu-font-weight-medium);
   color: var(--iu-text-2);
 }
@@ -483,8 +510,8 @@ const title = (s: Session) =>
   color: var(--iu-accent);
 }
 .launchpad__perch-title:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: -2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: calc(var(--iu-focus-offset) * -1);
 }
 .launchpad__perch-activity {
   color: var(--iu-text-muted);
@@ -521,6 +548,20 @@ const title = (s: Session) =>
 }
 .launchpad__perch-label > .launchpad__perch-activity {
   min-width: 0;
+}
+.launchpad-perch-enter-active {
+  animation: iu-settle var(--iu-dur-micro) var(--iu-ease);
+}
+.launchpad-perch-move {
+  transition: transform var(--iu-dur-micro) var(--iu-ease);
+}
+@media (prefers-reduced-motion: reduce) {
+  .launchpad-perch-enter-active {
+    animation: none;
+  }
+  .launchpad-perch-move {
+    transition: none;
+  }
 }
 .launchpad-update-enter-active,
 .launchpad-update-leave-active {
@@ -574,8 +615,8 @@ const title = (s: Session) =>
   color: var(--iu-accent);
 }
 .launchpad__session:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 3px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .launchpad__session-title {
   flex: 1;

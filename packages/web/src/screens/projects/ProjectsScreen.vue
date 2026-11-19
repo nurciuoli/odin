@@ -144,8 +144,8 @@ const cards = computed(() =>
   color: var(--iu-text);
 }
 .projects__title:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .projects__text {
   margin: 6px 0;

@@ -213,7 +213,7 @@ const summary = computed(() => {
   color: var(--iu-text);
 }
 .ov-branches__pr:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 </style>

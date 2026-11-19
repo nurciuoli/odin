@@ -122,7 +122,7 @@ defineExpose({ focus })
   width: var(--iu-side-panel-w);
   border-left: 1px solid var(--iu-hairline);
   background: var(--iu-ground);
-  transition: width var(--iu-dur) var(--iu-ease);
+  transition: width var(--iu-dur-micro) var(--iu-ease);
 }
 .iu-side-panel.is-closed {
   width: 0;

@@ -124,8 +124,8 @@ const stats = computed(() => [
 }
 .ov-pulls__link:focus-visible,
 .ov-pulls__more:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .ov-pulls__muted {
   font-size: var(--iu-font-size-12);

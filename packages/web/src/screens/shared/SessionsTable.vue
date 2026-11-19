@@ -367,8 +367,8 @@ async function confirm() {
   font-weight: var(--iu-font-weight-medium);
 }
 .sessions-table__link:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .sessions-table__projects {
   display: inline-flex;
@@ -376,8 +376,8 @@ async function confirm() {
   gap: 4px 8px;
 }
 .sessions-table__project:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .sessions-table__code {
   font-family: var(--iu-font-mono);

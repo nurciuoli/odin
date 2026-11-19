@@ -288,8 +288,8 @@ button.iu-rail__line:hover .iu-rail__verb {
   color: var(--iu-text);
 }
 button.iu-rail__line:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: -2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: calc(var(--iu-focus-offset) * -1);
   border-radius: var(--iu-radius-sm);
 }
 

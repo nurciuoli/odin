@@ -179,12 +179,12 @@ const overflow = computed(() => Math.max(0, items.value.length - MAX_VISIBLE))
 .iu-toast-enter-active,
 .iu-toast-leave-active {
   transition:
-    transform 0.18s ease,
-    opacity 0.18s ease;
+    transform var(--iu-dur-micro) var(--iu-ease),
+    opacity var(--iu-dur-micro) var(--iu-ease);
 }
 .iu-toast-enter-from {
   opacity: 0;
-  transform: translateX(24px);
+  transform: translateY(var(--iu-rise));
 }
 .iu-toast-leave-to {
   opacity: 0;

@@ -379,8 +379,8 @@ function onLeave(el: Element, done: () => void) {
   outline: none;
 }
 .iu-approval-line:focus-visible {
-  outline: 1px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
   border-radius: var(--iu-radius-sm);
 }
 .iu-approval-line {

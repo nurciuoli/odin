@@ -220,8 +220,8 @@ async function onBlur() {
   background: var(--iu-raised);
 }
 .iu-activity-strip button:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: -2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: calc(var(--iu-focus-offset) * -1);
 }
 @media (max-width: 600px) {
   .iu-activity-strip__select {

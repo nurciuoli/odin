@@ -972,8 +972,8 @@ onBeforeUnmount(() => {
 }
 .nb-doc__dismiss:focus-visible,
 .nb-doc__outline-item:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .nb-chip {
   max-width: 220px;
@@ -1106,8 +1106,8 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 .nb-doc__table th button:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .nb-doc__pager {
   display: flex;

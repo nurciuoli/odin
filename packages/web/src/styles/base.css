@@ -1,4 +1,5 @@
 @import './tokens.css';
+@import './raven-glyphs.css';
 @import './desktop-chrome.css';
 
 *,
@@ -20,6 +21,7 @@ body {
   font-size: var(--iu-font-size-14);
   line-height: var(--iu-leading-normal);
   -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums; /* costs, times and counts line up in every column */
 }
 
 a {
@@ -38,8 +40,8 @@ select {
 }
 
 ::selection {
-  background: var(--iu-accent-wash);
-  color: var(--iu-text);
+  background: var(--iu-selection);
+  color: inherit;
 }
 
 /* pinned to its containing block's origin: left at its static position, a span
@@ -56,4 +58,39 @@ select {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* An arriving thing fades in while rising a few px. Shared by dialogs, popovers and new rows. */
+@keyframes iu-settle {
+  from {
+    opacity: 0;
+    transform: translateY(var(--iu-rise));
+  }
+}
+
+/* A one-off pale band crossing a title, for the moment a pull request is merged. */
+.iu-shimmer {
+  background: linear-gradient(
+      100deg,
+      var(--iu-text) 40%,
+      var(--iu-text-bright) 50%,
+      var(--iu-text) 60%
+    )
+    120% 0 / 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: iu-shimmer-band 1.1s var(--iu-ease) 1 both;
+}
+@keyframes iu-shimmer-band {
+  to {
+    background-position: -20% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .iu-shimmer {
+    animation: none;
+    background: none;
+    -webkit-text-fill-color: currentcolor;
+  }
 }

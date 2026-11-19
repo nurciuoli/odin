@@ -92,8 +92,8 @@ function toggle() {
   color: var(--iu-text-2);
 }
 .iu-nav-group__header:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: -2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: calc(var(--iu-focus-offset) * -1);
 }
 
 /* header actions (size="sm" ghost icon buttons fit the row height) */

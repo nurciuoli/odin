@@ -288,8 +288,8 @@ function toggle() {
   color: var(--iu-text);
 }
 .iu-rail__sum:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .iu-rail__chevron {
   flex: none;

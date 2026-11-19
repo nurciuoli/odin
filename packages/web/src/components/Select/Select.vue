@@ -398,6 +398,7 @@ watch(list.open, isOpen => {
   background: var(--iu-raised);
   box-shadow: var(--iu-shadow-raised);
   overflow: hidden;
+  animation: iu-settle var(--iu-dur-micro) var(--iu-ease);
 }
 
 .iu-select__search {
@@ -548,5 +549,10 @@ watch(list.open, isOpen => {
   border-color: var(--iu-accent);
   background: var(--iu-well);
   box-shadow: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .iu-select__panel {
+    animation: none;
+  }
 }
 </style>

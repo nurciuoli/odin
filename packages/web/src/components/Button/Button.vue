@@ -73,8 +73,8 @@ const classes = computed(() => [
     color 0.08s linear;
 }
 .iu-btn:focus-visible {
-  outline: 1px solid var(--iu-accent);
-  outline-offset: 1px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .iu-btn:disabled,
 .iu-btn[aria-disabled='true'] {

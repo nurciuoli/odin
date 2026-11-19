@@ -98,13 +98,12 @@ function onCancel(e: Event) {
 
 /* Entry animation */
 .iu-dialog[open] {
-  animation: iu-dialog-in 140ms ease-out;
+  animation: iu-settle var(--iu-dur-micro) var(--iu-ease);
 }
 
-@keyframes iu-dialog-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
+@media (prefers-reduced-motion: reduce) {
+  .iu-dialog[open] {
+    animation: none;
   }
 }
 

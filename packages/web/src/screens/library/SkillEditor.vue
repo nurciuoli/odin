@@ -167,8 +167,8 @@ function removeFile(name: string) {
   color: var(--iu-text);
 }
 .skill-editor__file:focus-visible {
-  outline: 1px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .skill-editor__add {
   display: flex;

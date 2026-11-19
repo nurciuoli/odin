@@ -207,8 +207,8 @@ async function openIn(target: string) {
   font-size: var(--iu-font-size-12);
 }
 .project__chip:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .project__code {
   font-family: var(--iu-font-mono);

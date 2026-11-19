@@ -341,8 +341,8 @@ const stepLabel = (i: number) => {
   opacity: 0.6;
 }
 .iu-question-carousel__dot:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .iu-question-carousel__slide {
   min-width: 0;
