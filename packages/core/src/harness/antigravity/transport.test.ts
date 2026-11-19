@@ -51,13 +51,18 @@ test("attachAntigravity handles request/response matching and timeout", async ()
   const res = await reqPromise;
   assert.deepEqual(res, { protocolVersion: 1 });
 
-  // Test timeout
-  await assert.rejects(
-    rpc.request("session/new", {}, 20),
-    /Antigravity session\/new timed out/,
-  );
-
-  rpc.close();
+  // The request timer is unref'd (it must not keep a real process alive), so hold the event loop open while
+  // the test waits on it; otherwise node:test cancels this test and the ones after it.
+  const hold = setInterval(() => {}, 1000);
+  try {
+    await assert.rejects(
+      rpc.request("session/new", {}, 20),
+      /Antigravity session\/new timed out/,
+    );
+  } finally {
+    clearInterval(hold);
+    rpc.close();
+  }
 });
 
 test("attachAntigravity ignores non-object frames and a throwing event handler", async () => {

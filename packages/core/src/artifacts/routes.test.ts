@@ -3,35 +3,28 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ArtifactDetail, Session, SessionDetail } from "@odin/shared/api";
 import { fakeHarness, type FakeScript } from "../harness/fake.ts";
-import { collectEvents, startApp, type TestApp } from "../test-helpers.ts";
+import { watchEvents, startApp, waitFor, type TestApp, tempDir, removeTempDir } from "../test-helpers.ts";
 import { ARTIFACT_CSP } from "./routes.ts";
 
 const git = (cwd: string, ...args: string[]) =>
   execFileSync("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", ...args], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 
 function tempRepo(): { path: string; cleanup: () => void } {
-  const root = mkdtempSync(join(tmpdir(), "odin-artifacts-"));
+  const root = tempDir("odin-artifacts-");
   const path = join(root, "demo");
   mkdirSync(path);
   git(path, "init", "-q", "-b", "main");
   writeFileSync(join(path, "README.md"), "# demo\n");
   git(path, "add", ".");
   git(path, "commit", "-qm", "init");
-  return { path, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+  return { path, cleanup: () => removeTempDir(root) };
 }
 
-async function until(cond: () => Promise<boolean>, what: string, timeoutMs = 3000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!(await cond())) {
-    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
-    await new Promise((r) => setTimeout(r, 10));
-  }
-}
+const until = (cond: () => Promise<boolean>, what: string, timeoutMs = 3000) => waitFor(cond, timeoutMs, what);
 
 const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>Choose</title></head><body><button onclick="odin.submit({ choice: 'A' })">A</button></body></html>`;
 
@@ -63,14 +56,14 @@ test("artifacts: post through the host tool, new version, refusal, served page, 
     assert.equal((await post(app, "/api/projects", { path: repo.path })).status, 201);
 
     // Start → the tool posts an artifact; artifact.updated goes out over SSE.
-    const sse = collectEvents(app.base, (evs) => evs.some((e) => e.type === "artifact.updated"), 3000);
-    await new Promise((r) => setTimeout(r, 50));
+    const sse = watchEvents(app.base, (evs) => evs.some((e) => e.type === "artifact.updated"), 3000);
+    await sse.connected;
     const res = await post(app, "/api/sessions", { project: "demo", prompt: { text: "post" } });
     assert.equal(res.status, 201);
     const s1 = (await res.json()) as Session;
     assert.ok(harness.starts[0]!.hostTools!.some(t => t.name === "post_artifact"));
     assert.ok(harness.starts[0]!.hostTools!.some(t => t.name === "notebook_execute"));
-    const frames = await sse;
+    const frames = await sse.events;
     const update = frames.find((e) => e.type === "artifact.updated");
     assert.ok(update && update.type === "artifact.updated");
     assert.equal(update.sessionId, s1.id);

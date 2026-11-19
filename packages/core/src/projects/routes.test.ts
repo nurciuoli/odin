@@ -1,12 +1,11 @@
 import { afterEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { startApp, type TestApp } from "../test-helpers.ts";
+import { startApp, type TestApp, tempDir } from "../test-helpers.ts";
 
-const root = realpathSync(mkdtempSync(join(tmpdir(), "odin-projects-routes-")));
+const root = tempDir("odin-projects-routes-");
 let app: TestApp | null = null;
 afterEach(async () => {
   await app?.close();
@@ -120,7 +119,7 @@ describe("projects routes", () => {
     assert.equal((await post({})).status, 400);
     const bad = await app.api("/api/projects/plain/settings", { method: "PATCH", body: JSON.stringify({ repo: "nope" }) });
     assert.equal(bad.status, 400);
-    assert.ok((await bad.json()).error);
+    assert.match((await bad.json()).error, /repo/i);
   });
 
   test("project views: summary activity, branches, worktree removal, artifacts and activity routes", async () => {

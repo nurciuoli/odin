@@ -1,16 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CheckpointStore, MAX_FILE_BYTES } from "./store.ts";
+import { tempDir, removeTempDir } from "../test-helpers.ts";
 
 function fixture() {
-  const base = mkdtempSync(join(tmpdir(), "odin-ckpt-"));
+  const base = tempDir("odin-ckpt-");
   const cwd = join(base, "work");
   mkdirSync(cwd, { recursive: true });
   const store = new CheckpointStore(join(base, "store"), "demo");
-  return { base, cwd, store, done: () => rmSync(base, { recursive: true, force: true }) };
+  return { base, cwd, store, done: () => removeTempDir(base) };
 }
 const put = (cwd: string, path: string, text: string) => {
   const full = join(cwd, path);

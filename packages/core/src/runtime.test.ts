@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { clearRuntime, instanceId, readRuntime, writeRuntime } from "./runtime.ts";
+import { tempDir, removeTempDir } from "./test-helpers.ts";
 
 function home(): string {
-  return mkdtempSync(join(tmpdir(), "odin-runtime-"));
+  return tempDir("odin-runtime-");
 }
 
 test("instanceId is created once and then reused", () => {
@@ -17,7 +17,7 @@ test("instanceId is created once and then reused", () => {
     assert.equal(instanceId(h), id);
     assert.equal(readFileSync(join(h, "instance"), "utf8").trim(), id);
   } finally {
-    rmSync(h, { recursive: true, force: true });
+    removeTempDir(h);
   }
 });
 
@@ -31,7 +31,7 @@ test("instanceId keeps an id written by someone else and replaces garbage", () =
     assert.notEqual(id, "<bad>");
     assert.equal(instanceId(h), id);
   } finally {
-    rmSync(h, { recursive: true, force: true });
+    removeTempDir(h);
   }
 });
 
@@ -49,6 +49,6 @@ test("runtime.json round-trips and is cleared only by its own process", () => {
     writeFileSync(join(h, "runtime.json"), JSON.stringify({ port: "x", pid: 1, instance: "a" }));
     assert.equal(readRuntime(h), null);
   } finally {
-    rmSync(h, { recursive: true, force: true });
+    removeTempDir(h);
   }
 });

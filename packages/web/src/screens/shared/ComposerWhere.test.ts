@@ -47,12 +47,14 @@ describe('branchProblem', () => {
     expect(branchProblem('')).toBeUndefined()
     expect(branchProblem('feat/new-thing')).toBeUndefined()
     for (const bad of ['a..b', 'a//b', 'a/', 'a.', 'a.lock', '.hidden', 'a/.b', 'a b'])
-      expect(branchProblem(bad)).toBeTruthy()
+      expect(branchProblem(bad), bad).toBe('Use a valid Git branch name.')
   })
   it('only applies to the form when a worktree is wanted', () => {
     const form = { ...emptySessionForm('odin'), prompt: 'x', branch: 'a..b' }
     expect(validateSessionForm(form).branch).toBeUndefined()
-    expect(validateSessionForm({ ...form, worktree: true }).branch).toBeTruthy()
+    expect(validateSessionForm({ ...form, worktree: true }).branch).toBe(
+      'Use a valid Git branch name.',
+    )
   })
 })
 

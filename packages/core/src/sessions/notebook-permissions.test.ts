@@ -1,11 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { setup } from "./test-setup.ts";
+import { setup, waitFor } from "./test-setup.ts";
 
-async function until(check: () => boolean) {
-  const deadline = Date.now() + 2000;
-  while (!check()) { if (Date.now() > deadline) throw new Error("session did not reach expected state"); await new Promise(resolve => setTimeout(resolve, 5)); }
-}
+const until = (check: () => boolean) => waitFor(check, 2000, "the session to reach the expected state");
 test("notebook host approval is visible in session detail and denial never runs the handler", async () => {
   const s = setup({ harness: { script: () => [{ hostTool: "test_notebook_execute", input: { source: "print(1)" } }] } });
   let executed = 0;

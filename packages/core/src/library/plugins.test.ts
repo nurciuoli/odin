@@ -1,14 +1,13 @@
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AssetDetail, Installation, InstallResult, PluginPreview } from "@odin/shared/api";
-import { startApp } from "../test-helpers.ts";
+import { startApp, tempDir, removeTempDir } from "../test-helpers.ts";
 
-const root = realpathSync(mkdtempSync(join(tmpdir(), "odin-plugins-")));
-after(() => rmSync(root, { recursive: true, force: true }));
+const root = tempDir("odin-plugins-");
+after(() => removeTempDir(root));
 
 const SKILL = (d: string) => `---\nname: notes\ndescription: ${d}\n---\nDo it.\n`;
 const AGENT = "---\nname: helper\ndescription: Helps\n---\nHelp.\n";

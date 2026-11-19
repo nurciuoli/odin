@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { listSessions, readMessages, sessionInfo } from "./history.ts";
+import { tempDir, removeTempDir } from "../../test-helpers.ts";
 
 test("history lists sessions and reads transcript entries", () => {
-  const root = mkdtempSync(join(tmpdir(), "odin-agy-history-"));
+  const root = tempDir("odin-agy-history-");
   try {
     const sessId = "session-test-123";
     const logDir = join(root, sessId, ".system_generated", "logs");
@@ -64,6 +64,6 @@ test("history lists sessions and reads transcript entries", () => {
     assert.equal((messages[3] as any).result?.ok, true);
     assert.equal((messages[3] as any).result?.text, "File contents here");
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    removeTempDir(root);
   }
 });

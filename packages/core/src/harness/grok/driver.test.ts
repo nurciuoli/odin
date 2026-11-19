@@ -5,9 +5,10 @@ import { tmpdir } from "node:os";
 import { openDb } from "../../db/db.ts";
 import type { HarnessEvent } from "@odin/shared/harness";
 import { Buffer } from "node:buffer";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { createGrokHarness } from "./driver.ts";
 import type { Rpc, Wire } from "./transport.ts";
+import { tempDir, removeTempDir } from "../../test-helpers.ts";
 
 class FakeRpc implements Rpc {
   onMessage: (message: Wire) => void = () => {};
@@ -377,7 +378,7 @@ test("closing Grok during initialization does not authenticate or create a sessi
 });
 
 test("Grok discovery preserves local identity and includes native worktree histories", async () => {
-  const root = mkdtempSync(join(tmpdir(), "odin-grok-discovery-"));
+  const root = tempDir("odin-grok-discovery-");
   const project = join(root, "repo"), worktree = join(root, "worktree");
   const { db, connections, harness } = setup({ historyRoot: join(root, "sessions"), directories: async () => [project, worktree, project] });
   const handle = harness.start({ cwd: project, sessionId: "odin-local" });
@@ -395,7 +396,7 @@ test("Grok discovery preserves local identity and includes native worktree histo
     assert.equal((await harness.info("odin-local", project))?.sessionId, "odin-local");
     assert.equal((await harness.messages("grok:outside-worktree", worktree)).length, 1);
     assert.equal(connections.length, 1, "discovery and history do not spawn Grok");
-  } finally { await handle.close(); db.close(); rmSync(root, { recursive: true, force: true }); }
+  } finally { await handle.close(); db.close(); removeTempDir(root); }
 });
 
 test("Grok cancels an unavailable once scope and stays waiting for remaining requests", async () => {
@@ -451,7 +452,7 @@ test("a background subagent holds the turn until it finishes and the wake turn c
           setTimeout(() => {
             rpc.onMessage({ method: "session/update", params: { update: { sessionUpdate: "turn_completed" } } });
           }, 30);
-        }, 30);
+        }, 0);
       }
       return { stopReason: "end_turn", _meta: { usage: { apiDurationMs: 5, modelUsage: { "grok-4.7-build": { inputTokens: 1, outputTokens: 1, reasoningTokens: 0, cachedReadTokens: 0, cacheCreationTokens: 0, costUsdTicks: 0 } } } } };
     }
@@ -490,7 +491,7 @@ test("rename uses the live session and a background command holds the turn", asy
       rpc.onMessage({ method: "session/update", params: { update: { sessionUpdate: "task_backgrounded", task_id: "bash-1", tool_call_id: "call-1", command: "yarn test" } } });
       setTimeout(() => {
         rpc.onMessage({ method: "session/update", params: { update: { sessionUpdate: "task_completed", will_wake: false, task_snapshot: { task_id: "bash-1", command: "yarn test", exit_code: 0, output: "ok" } } } });
-      }, 20);
+      }, 0);
       return { stopReason: "end_turn" };
     }
     return original(method, params);

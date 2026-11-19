@@ -1,17 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ProjectAgentContext, ProjectDetail } from "@odin/shared/api";
 import { fakeHarness } from "../harness/fake.ts";
-import { startApp } from "../test-helpers.ts";
+import { startApp, tempDir } from "../test-helpers.ts";
 import { scanProject } from "./agent-context.ts";
 
 const SKILL = (description: string, body: string) => `---\nname: ship\ndescription: ${description}\n---\n${body}\n`;
 
 test("scan reads skills, agents, MCP servers and instruction files", () => {
-  const cwd = mkdtempSync(join(tmpdir(), "odin-context-"));
+  const cwd = tempDir("odin-context-");
   mkdirSync(join(cwd, ".grok", "skills", "ship"), { recursive: true });
   writeFileSync(join(cwd, ".grok", "skills", "ship", "SKILL.md"), SKILL("Ship from grok", "Do the grok one."));
   mkdirSync(join(cwd, ".claude", "agents"), { recursive: true });
@@ -29,7 +28,7 @@ test("sessions take global context, let project files win, and a project can tur
   const claude = fakeHarness();
   const grok = fakeHarness();
   const app = await startApp({ harnesses: { claude, grok } });
-  const cwd = mkdtempSync(join(tmpdir(), "odin-context-app-"));
+  const cwd = tempDir("odin-context-app-");
   mkdirSync(join(cwd, ".claude", "skills", "ship"), { recursive: true });
   writeFileSync(join(cwd, ".claude", "skills", "ship", "SKILL.md"), SKILL("Project ship", "Use the project steps."));
   writeFileSync(join(cwd, ".mcp.json"), JSON.stringify({ mcpServers: { local: { command: "local-mcp" } } }));

@@ -3,87 +3,85 @@ import { mount } from '@vue/test-utils'
 import { IuFilePath, fileName, relativePath, splitPath } from './index'
 
 describe('relativePath', () => {
-  it('makes Windows paths relative to the root, with forward slashes', () => {
-    expect(
-      relativePath(
-        'C:\\Users\\alex\\Documents\\code\\odin\\packages\\web\\src\\App.vue',
-        'C:\\Users\\alex\\Documents\\code\\odin',
-      ),
-    ).toBe('packages/web/src/App.vue')
-  })
+  const table: Record<string, [args: [string, (string | null)?], expected: string][]> = {
+    'makes Windows paths relative to the root, with forward slashes': [
+      [
+        [
+          'C:\\Users\\alex\\Documents\\code\\odin\\packages\\web\\src\\App.vue',
+          'C:\\Users\\alex\\Documents\\code\\odin',
+        ],
+        'packages/web/src/App.vue',
+      ],
+    ],
+    'compares Windows paths case-insensitively (drive letter and segments)': [
+      [['c:\\Repo\\src\\a.ts', 'C:\\repo'], 'src/a.ts'],
+      [['C:\\REPO\\src\\a.ts', 'c:\\repo\\'], 'src/a.ts'],
+    ],
+    'accepts mixed separators on Windows': [
+      [['C:/repo/src\\a.ts', 'C:\\repo'], 'src/a.ts'],
+      [['C:\\repo\\src\\a.ts', 'C:/repo/'], 'src/a.ts'],
+    ],
+    'handles UNC roots': [
+      [['\\\\server\\share\\repo\\a.ts', '\\\\server\\share\\repo'], 'a.ts'],
+      [
+        ['\\\\server\\share\\other\\a.ts', '\\\\server\\share\\repo'],
+        '\\\\server\\share\\other\\a.ts',
+      ],
+    ],
+    'makes POSIX paths relative, case-sensitively': [
+      [['/home/me/repo/src/a.ts', '/home/me/repo'], 'src/a.ts'],
+      [['/home/me/Repo/src/a.ts', '/home/me/repo'], '/home/me/Repo/src/a.ts'],
+    ],
+    'ignores trailing and repeated separators': [
+      [['/home/me/repo/src/a.ts', '/home/me/repo/'], 'src/a.ts'],
+      [['/home/me/repo/src/a.ts', '/home/me/repo//'], 'src/a.ts'],
+      [['/home/me/repo//src/a.ts', '/home/me/repo'], 'src/a.ts'],
+      [['C:\\repo\\src\\', 'C:\\repo'], 'src'],
+    ],
+    'gives "." for the root itself': [
+      [['/home/me/repo', '/home/me/repo'], '.'],
+      [['/home/me/repo/', '/home/me/repo'], '.'],
+      [['C:\\repo', 'c:\\repo\\'], '.'],
+    ],
+    'handles filesystem roots': [
+      [['/etc/hosts', '/'], 'etc/hosts'],
+      [['C:\\a\\b.txt', 'C:\\'], 'a/b.txt'],
+      [['D:\\a\\b.txt', 'C:\\'], 'D:\\a\\b.txt'],
+    ],
+    'leaves paths outside the root as given': [
+      [['/home/me/other/a.ts', '/home/me/repo'], '/home/me/other/a.ts'],
+      [['/home/me/repo-two/a.ts', '/home/me/repo'], '/home/me/repo-two/a.ts'],
+      [
+        ['C:\\Users\\alex\\.claude\\x.md', 'C:\\Users\\alex\\repo'],
+        'C:\\Users\\alex\\.claude\\x.md',
+      ],
+      [['D:\\repo\\a.ts', 'C:\\repo'], 'D:\\repo\\a.ts'],
+    ],
+    'returns the path as given without a root': [
+      [['C:\\repo\\a.ts'], 'C:\\repo\\a.ts'],
+      [['/repo/a.ts', null], '/repo/a.ts'],
+      [['/repo/a.ts', ''], '/repo/a.ts'],
+      [['/repo/a.ts', 'relative/root'], '/repo/a.ts'],
+    ],
+    'tidies paths that are already relative': [
+      [['packages\\web\\a.ts', '/repo'], 'packages/web/a.ts'],
+      [['./src/a.ts', '/repo'], 'src/a.ts'],
+      [['src/a.ts'], 'src/a.ts'],
+      [['./', '/repo'], '.'],
+    ],
+    'passes an empty path through': [[['', '/repo'], '']],
+  }
 
-  it('compares Windows paths case-insensitively (drive letter and segments)', () => {
-    expect(relativePath('c:\\Repo\\src\\a.ts', 'C:\\repo')).toBe('src/a.ts')
-    expect(relativePath('C:\\REPO\\src\\a.ts', 'c:\\repo\\')).toBe('src/a.ts')
-  })
-
-  it('accepts mixed separators on Windows', () => {
-    expect(relativePath('C:/repo/src\\a.ts', 'C:\\repo')).toBe('src/a.ts')
-    expect(relativePath('C:\\repo\\src\\a.ts', 'C:/repo/')).toBe('src/a.ts')
-  })
-
-  it('handles UNC roots', () => {
-    expect(relativePath('\\\\server\\share\\repo\\a.ts', '\\\\server\\share\\repo')).toBe('a.ts')
-    expect(relativePath('\\\\server\\share\\other\\a.ts', '\\\\server\\share\\repo')).toBe(
-      '\\\\server\\share\\other\\a.ts',
-    )
-  })
-
-  it('makes POSIX paths relative, case-sensitively', () => {
-    expect(relativePath('/home/me/repo/src/a.ts', '/home/me/repo')).toBe('src/a.ts')
-    expect(relativePath('/home/me/Repo/src/a.ts', '/home/me/repo')).toBe('/home/me/Repo/src/a.ts')
-  })
-
-  it('ignores trailing and repeated separators', () => {
-    expect(relativePath('/home/me/repo/src/a.ts', '/home/me/repo/')).toBe('src/a.ts')
-    expect(relativePath('/home/me/repo/src/a.ts', '/home/me/repo//')).toBe('src/a.ts')
-    expect(relativePath('/home/me/repo//src/a.ts', '/home/me/repo')).toBe('src/a.ts')
-    expect(relativePath('C:\\repo\\src\\', 'C:\\repo')).toBe('src')
-  })
-
-  it('gives "." for the root itself', () => {
-    expect(relativePath('/home/me/repo', '/home/me/repo')).toBe('.')
-    expect(relativePath('/home/me/repo/', '/home/me/repo')).toBe('.')
-    expect(relativePath('C:\\repo', 'c:\\repo\\')).toBe('.')
-  })
-
-  it('handles filesystem roots', () => {
-    expect(relativePath('/etc/hosts', '/')).toBe('etc/hosts')
-    expect(relativePath('C:\\a\\b.txt', 'C:\\')).toBe('a/b.txt')
-    expect(relativePath('D:\\a\\b.txt', 'C:\\')).toBe('D:\\a\\b.txt')
-  })
-
-  it('leaves paths outside the root as given', () => {
-    expect(relativePath('/home/me/other/a.ts', '/home/me/repo')).toBe('/home/me/other/a.ts')
-    // a sibling that shares the root as a string prefix is still outside
-    expect(relativePath('/home/me/repo-two/a.ts', '/home/me/repo')).toBe('/home/me/repo-two/a.ts')
-    expect(relativePath('C:\\Users\\alex\\.claude\\x.md', 'C:\\Users\\alex\\repo')).toBe(
-      'C:\\Users\\alex\\.claude\\x.md',
-    )
-    expect(relativePath('D:\\repo\\a.ts', 'C:\\repo')).toBe('D:\\repo\\a.ts')
-  })
+  for (const [title, cases] of Object.entries(table)) {
+    it(title, () => {
+      for (const [args, expected] of cases)
+        expect(relativePath(...args), JSON.stringify(args)).toBe(expected)
+    })
+  }
 
   it('makes worktree paths relative to the worktree', () => {
     const wt = '/home/me/.odin/worktrees/odin/item-21'
     expect(relativePath(`${wt}/packages/web/src/App.vue`, wt)).toBe('packages/web/src/App.vue')
-  })
-
-  it('returns the path as given without a root', () => {
-    expect(relativePath('C:\\repo\\a.ts')).toBe('C:\\repo\\a.ts')
-    expect(relativePath('/repo/a.ts', null)).toBe('/repo/a.ts')
-    expect(relativePath('/repo/a.ts', '')).toBe('/repo/a.ts')
-    expect(relativePath('/repo/a.ts', 'relative/root')).toBe('/repo/a.ts')
-  })
-
-  it('tidies paths that are already relative', () => {
-    expect(relativePath('packages\\web\\a.ts', '/repo')).toBe('packages/web/a.ts')
-    expect(relativePath('./src/a.ts', '/repo')).toBe('src/a.ts')
-    expect(relativePath('src/a.ts')).toBe('src/a.ts')
-    expect(relativePath('./', '/repo')).toBe('.')
-  })
-
-  it('passes an empty path through', () => {
-    expect(relativePath('', '/repo')).toBe('')
   })
 })
 

@@ -1,17 +1,16 @@
 // Managing project files: rename, move, duplicate and the trash, through the service (confinement and clashes) and routes.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { startApp, stubServices, testDeps } from "../test-helpers.ts";
+import { startApp, stubServices, testDeps, tempDir, removeTempDir } from "../test-helpers.ts";
 import { checkName, createFileManager, TRASH_KEEP_MS } from "./manage.ts";
 
 function setup(t: { after(fn: () => void): void }, opts: { busy?: boolean; now?: () => Date } = {}) {
   const deps = testDeps();
   if (opts.now) deps.now = opts.now;
-  const root = mkdtempSync(join(tmpdir(), "odin-manage-"));
-  t.after(() => { deps.db.close(); rmSync(root, { recursive: true, force: true }); rmSync(join(deps.config.home, ".."), { recursive: true, force: true }); });
+  const root = tempDir("odin-manage-");
+  t.after(() => { deps.db.close(); removeTempDir(root); rmSync(join(deps.config.home, ".."), { recursive: true, force: true }); });
   const written: string[][] = [];
   const services = stubServices({});
   services.projects = { get: (n: string) => (n === "p" ? { path: root } : null), noteWritten: (_n: string, paths: string[]) => written.push(paths) } as unknown as typeof services.projects;
@@ -50,8 +49,8 @@ test("move: into a folder or the root; never into itself, over a clash, or throu
   assert.equal(readFileSync(join(root, "docs", "a.md"), "utf8"), "A", "the existing file is not overwritten");
   assert.throws(() => m.move("p", ["b.md"], "missing"), { status: 404 });
   assert.throws(() => m.move("p", [], "docs"), { status: 400 });
-  const outside = mkdtempSync(join(tmpdir(), "odin-outside-"));
-  t.after(() => rmSync(outside, { recursive: true, force: true }));
+  const outside = tempDir("odin-outside-");
+  t.after(() => removeTempDir(outside));
   symlinkSync(outside, join(root, "link"), "dir");
   assert.throws(() => m.move("p", ["b.md"], "link"), { status: 403 });
   assert.throws(() => m.move("p", ["link"], "docs"), { status: 403 });
@@ -114,7 +113,7 @@ test("checkName accepts ordinary names", () => {
 
 test("file management routes", async () => {
   const t = await startApp();
-  const dir = mkdtempSync(join(tmpdir(), "odin-manage-routes-"));
+  const dir = tempDir("odin-manage-routes-");
   try {
     writeFileSync(join(dir, "one.txt"), "1");
     const added = await t.api("/api/projects", { method: "POST", body: JSON.stringify({ path: dir, name: "mp" }) });

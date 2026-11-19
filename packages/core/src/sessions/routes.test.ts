@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { collectEvents, startApp } from "../test-helpers.ts";
+import { watchEvents, startApp } from "../test-helpers.ts";
 import { parseSessionFilter } from "./routes.ts";
 import { PROJECT, serve, setup, waitFor } from "./test-setup.ts";
 
@@ -27,13 +27,13 @@ test("POST /api/sessions → 201, SSE session.updated + session.event, detail wi
   const s = setup();
   const app = await serve(s);
   try {
-    const sse = collectEvents(app.base, (evs) => evs.some((e) => e.type === "session.event" && e.event.type === "turn.end"), 3000);
-    await new Promise((r) => setTimeout(r, 50)); // let the SSE stream connect
+    const sse = watchEvents(app.base, (evs) => evs.some((e) => e.type === "session.event" && e.event.type === "turn.end"), 3000);
+    await sse.connected;
     const res = await app.post("/api/sessions", { project: PROJECT, prompt: { text: "hi" } });
     assert.equal(res.status, 201);
     const session = await res.json();
     assert.equal(session.state, "running");
-    const events = await sse;
+    const events = await sse.events;
     assert.ok(events.some((e) => e.type === "session.updated" && e.session.id === session.id));
     assert.ok(events.some((e) => e.type === "session.event" && e.sessionId === session.id && e.event.type === "init"));
 

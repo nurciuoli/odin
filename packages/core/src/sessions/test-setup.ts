@@ -133,11 +133,4 @@ export async function serve(s: ReturnType<typeof setup>) {
   };
 }
 
-/** Polls until `cond` holds (real time). */
-export async function waitFor(cond: () => boolean | Promise<boolean>, timeoutMs = 2000, what = "condition"): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!(await cond())) {
-    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
-    await new Promise((r) => setTimeout(r, 5));
-  }
-}
+export { waitFor } from "../test-helpers.ts";

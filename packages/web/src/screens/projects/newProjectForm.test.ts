@@ -65,12 +65,16 @@ describe('new project form', () => {
   it('validates each mode', () => {
     expect(validateNewProject(fresh()).name).toBe('Give it a name.')
     expect(validateNewProject(fresh({ name: 'Bad Name' })).name).toContain('Lowercase')
-    expect(validateNewProject(fresh({ name: 'ok', parent: '' })).parent).toBeDefined()
+    expect(validateNewProject(fresh({ name: 'ok', parent: '' })).parent).toBe(
+      'Choose where it goes.',
+    )
     expect(validateNewProject(fresh({ name: 'ok' }))).toEqual({})
     expect(validateNewProject({ ...emptyNewProject('existing'), path: 'rel/dir' }).path).toContain(
       'absolute',
     )
-    expect(validateNewProject(fresh({ mode: 'clone', source: 'not a url' })).source).toBeDefined()
+    expect(validateNewProject(fresh({ mode: 'clone', source: 'not a url' })).source).toBe(
+      'Use owner/name, an https:// or ssh:// URL, or git@host:path.',
+    )
     expect(validateNewProject(fresh({ mode: 'clone', source: 'git@github.com:a/b.git' }))).toEqual(
       {},
     )
