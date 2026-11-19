@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// The session's state in words, under the title: the flock, the state word, and one line of what is happening
+// The session's state in words, in the title row beside the name: the flock, the state word, and one line of what is happening
 // (what the open prompt asks, the current tool call, or why it failed). Only a session that needs you or failed is
 // tinted; a running one stays calm. Idle and done sessions have no band, the header chip says it.
 import { computed, onBeforeUnmount, ref } from 'vue'
@@ -39,7 +39,7 @@ const flock = computed(() => (perch.value ? perch.value.flock : 'failed'))
 
 <template>
   <section v-if="shown" class="status-band" :data-state="state" aria-label="Session status">
-    <IuFlock :state="flock" :agents="perch?.agents" size="xl" tone="neutral" />
+    <IuFlock :state="flock" :agents="perch?.agents" size="md" tone="neutral" />
     <div class="status-band__text">
       <StatusWord :word="parts.word" :since="parts.since" />
       <span class="status-band__context" :title="context">{{ context }}</span>
@@ -48,33 +48,39 @@ const flock = computed(() => (perch.value ? perch.value.flock : 'failed'))
 </template>
 
 <style scoped>
+/* Sits in the title row, level with the session name: a quiet run on the row's own background, a tint for the two
+   states that need a look (needs you, failed). The context line is what gives way when the window is narrow. */
 .status-band {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
+  /* the squeeze lands here first, so the session name keeps its width */
+  flex: 0 4 auto;
   min-width: 0;
-  padding: 10px 20px;
-  border-bottom: 1px solid var(--iu-hairline);
-  background: var(--iu-surface);
+  padding: 2px 10px 2px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--iu-radius-md);
 }
 .status-band[data-state='waiting'] {
   background: var(--iu-warning-wash);
-  border-bottom-color: var(--iu-warning-border);
+  border-color: var(--iu-warning-border);
 }
 .status-band[data-state='failed'] {
   background: var(--iu-danger-wash);
-  border-bottom-color: var(--iu-danger-border);
+  border-color: var(--iu-danger-border);
 }
 .status-band__text {
-  display: grid;
-  gap: 1px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   min-width: 0;
 }
 .status-band__context {
   color: var(--iu-text-2);
-  font-size: var(--iu-font-size-13);
+  font-size: var(--iu-font-size-12-5);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 </style>
