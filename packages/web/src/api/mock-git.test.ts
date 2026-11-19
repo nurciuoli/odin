@@ -31,7 +31,9 @@ describe('mock api: git', () => {
     const r = await api.gitCommit(t, { message: 'feat: prompt' })
     expect(r.status.staged).toHaveLength(0)
     expect((await api.gitLog(t, { limit: 1 })).commits[0]!.subject).toBe('feat: prompt')
-    await expect(api.gitCommit(t, { message: 'again' })).rejects.toMatchObject({ code: 'nothing-to-commit' })
+    await expect(api.gitCommit(t, { message: 'again' })).rejects.toMatchObject({
+      code: 'nothing-to-commit',
+    })
   })
 
   it('refuses a dirty switch, then stashes and brings the changes back on return', async () => {
@@ -50,7 +52,9 @@ describe('mock api: git', () => {
 
   it('needs a rebase or merge to pull a diverged branch', async () => {
     const { api, t } = setup()
-    await expect(api.gitPull(t, { strategy: 'ff-only' })).rejects.toMatchObject({ code: 'diverged' })
+    await expect(api.gitPull(t, { strategy: 'ff-only' })).rejects.toMatchObject({
+      code: 'diverged',
+    })
     const pulled = await api.gitPull(t, { strategy: 'rebase' })
     expect(pulled.status.behind).toBe(0)
     const pushed = await api.gitPush(t, {})
