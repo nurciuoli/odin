@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { HttpError } from "../http/util.ts";
 import { join } from "node:path";
 import { git, makeRepo, repoCount, root, setup, status } from "./test-repo.ts";
@@ -49,6 +49,39 @@ describe("register", () => {
     mkdirSync(dir);
     await projects.create({ path: dir, init: true });
     assert.throws(() => git(dir, "rev-parse", "--verify", "HEAD"));
+  });
+
+  test("mkdir creates the folder, README and git without a commit", async () => {
+    const { projects } = setup();
+    const dir = join(root, "fresh", "nested", "notes");
+    const ref = await projects.create({ path: dir, mkdir: true, readme: true, init: true });
+    assert.equal(ref.name, "notes");
+    assert.equal(readFileSync(join(dir, "README.md"), "utf8"), "# notes\n");
+    assert.equal(existsSync(join(dir, ".git")), true);
+    assert.throws(() => git(dir, "rev-parse", "--verify", "HEAD"));
+  });
+
+  test("mkdir accepts an empty folder and refuses a used one", async () => {
+    const { projects } = setup();
+    const empty = join(root, "empty-ok");
+    mkdirSync(empty);
+    assert.equal((await projects.create({ path: empty, mkdir: true })).name, "empty-ok");
+    const used = join(root, "used-no");
+    mkdirSync(used);
+    writeFileSync(join(used, "a.txt"), "x");
+    assert.equal(await status(projects.create({ path: used, mkdir: true })), 409);
+    assert.equal(await status(projects.create({ path: join(root, "r1"), readme: true })), 400);
+  });
+
+  test("clone validates the source and leaves nothing behind on failure", async () => {
+    const { projects } = setup();
+    for (const clone of ["-oProxyCommand=x", "ext::sh -c id", "/etc/passwd", "file:///tmp/x", ""]) {
+      assert.equal(await status(projects.create({ path: join(root, "c1"), clone })), 400, clone);
+    }
+    assert.equal(await status(projects.create({ path: join(root, "c1"), clone: "a/b", init: true })), 400);
+    const dest = join(root, "cloned", "x");
+    assert.equal(await status(projects.create({ path: dest, clone: "https://127.0.0.1:1/x.git" })), 400);
+    assert.equal(existsSync(dest), false);
   });
 
   test("a missing or relative path is 400", async () => {

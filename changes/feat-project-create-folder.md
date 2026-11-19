@@ -1,0 +1,1 @@
+- Adding a project can now create a new folder (with a README and git) or clone a repository into one.

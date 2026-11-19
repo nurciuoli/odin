@@ -295,6 +295,11 @@ Subagents (`invoke_subagent`) and background tasks map to Odin task activities. 
 - A project is a registered directory, normally a git repo. `POST /api/projects { path, name?, init? }`; a non-repo
   folder is refused (400) unless `init: true` (`git init`, no commit). `name` defaults to the folder name slugged;
   must match `PROJECT_NAME_PATTERN` and be unique (409).
+- **Making the folder**: `mkdir: true` creates `path` (and parents) first; `readme: true` (with `mkdir`) writes
+  `README.md` as `# <name>`; `clone` (`owner/name` for GitHub, an `https://` or `ssh://` URL, or `git@host:path`; never
+  `ext::`, `file:` or a leading `-`) runs `git clone -- <url> <path>` (10 min limit, no prompts). Both need `path` to be
+  missing or an empty folder (409 otherwise); `clone` can't be combined with `mkdir`/`init`/`readme` (400). Nothing is
+  committed. A failure removes the folder this call created.
 - **Settings**: effective = DB override ?? PROJECT.md frontmatter (`title`, `description`, `repo`, `default_branch`,
   `commands`) ?? a discovered source ?? default (`title` = name, `defaultBranch` = the repo's current default or
   `main`). A title comes from an overview heading, never from `package.json`'s name. Description is that
