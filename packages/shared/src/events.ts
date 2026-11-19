@@ -26,6 +26,8 @@ export type ServerEvent =
   | { type: "session.event"; sessionId: string; event: HarnessEvent }
   /** A checkpoint was taken, or finished (its `files` and `snapshot` are now known). Merge by `id`. */
   | { type: "checkpoint.updated"; sessionId: string; checkpoint: Checkpoint }
+  /** Odin changed a checkout through the git routes (stage, commit, checkout, pull…): refetch its git status. */
+  | { type: "git.changed"; target: import("./git.ts").GitTarget }
   | { type: "artifact.updated"; sessionId: string; artifact: Artifact }
   | { type: "library.updated"; kind: string; id: string }
   | { type: "install.updated"; installation: Installation }

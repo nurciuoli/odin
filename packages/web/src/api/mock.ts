@@ -50,6 +50,7 @@ import { MOCK_FILE_MAP, mockFileText } from './mock.filemap'
 import { createFixtures, fakeHash, fakeUuid, localDay, type Fixtures } from './fixtures'
 import { ApiRequestError } from './types'
 import { mockNotebooks } from './mock-notebooks'
+import { mockGit } from './mock-git'
 
 export interface MockApiOptions {
   /** Simulated round trip in ms. 0 resolves on the next microtask (tests). */
@@ -888,8 +889,46 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
       '// Folding live harness events into a transcript.\nexport function applyHarnessEvent() {}\n',
     'packages/web/src/screens/session/SessionScreen.vue':
       '<script setup lang="ts">\n// The session screen.\n</script>\n',
-    'packages/web/src/screens/session/SessionSide.vue':
-      '<script setup lang="ts">\n// The side column.\n</script>\n',
+    // long enough for blame and history to have something to show
+    'packages/web/src/screens/session/SessionSide.vue': [
+      '<script setup lang="ts">',
+      "import { computed, onMounted, ref, watch } from 'vue'",
+      'const props = defineProps<{ session: Session }>()',
+      '',
+      'const events = useSessionEvents(props.session.id)',
+      'const open = ref(false)',
+      "const width = useStoredWidth('side', 420)",
+      'const pending = computed(() =>',
+      '  props.session.permissions.filter(p => !p.answered),',
+      ')',
+      '',
+      'function toggle(force?: boolean) {',
+      '  open.value = force ?? !open.value',
+      '}',
+      '',
+      "const tabs = ['preview', 'files', 'changes', 'history'] as const",
+      "const tab = ref<(typeof tabs)[number]>('preview')",
+      '',
+      'async function load() {',
+      '  const res = await api.sessionSide(props.session.id)',
+      '  state.value = res',
+      '}',
+      'onMounted(load)',
+      'watch(pending, list => {',
+      '  if (list.length) toggle(true)',
+      '})',
+      '',
+      'watch(events, () => void load())',
+      '</script>',
+      '',
+      '<template>',
+      '  <aside class="session-side" :style="{ width: `${width}px` }">',
+      '    <SessionTabs v-model="tab" :tabs="tabs" />',
+      '    <PermissionPrompt v-if="pending.length" :request="pending[0]" />',
+      '  </aside>',
+      '</template>',
+      '',
+    ].join('\n'),
     'packages/web/src/app/router.ts': "export const routes = [{ path: '/s/:id' }]\n",
     'analysis.ipynb': JSON.stringify({
       cells: [
@@ -939,6 +978,7 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
   })
 
   const api: MockApi = {
+    ...mockGit({ emit, sessions: () => db.sessions }),
     ...mockNotebooks({
       project: projectOf,
       session: sessionOf,
