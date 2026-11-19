@@ -104,7 +104,7 @@ optional dependency, `@anthropic-ai/claude-agent-sdk-<os>-<arch>`):
 | Additional repositories | Supported | Supported | Rejected | Supported | Supported |
 | Supplemental instructions | Supported | Supported | Warning, unsupported | Supported | Supported |
 | Attachments | Images/text | Images/text | Images/text | Supported | Supported |
-| Fork at a message (`checkpoints.forkAt`) | Planned | Planned | Not supported | Planned | Not supported |
+| Fork at a message (`checkpoints.forkAt`) | Supported (not before the first message) | Planned | Not supported | Planned | Not supported |
 
 Claude, Codex and Grok rebuild selected MCP servers from library IDs on resume and fork, and discover project and
 worktree sessions. Optional capability fields omitted by a driver keep their default behaviour.

@@ -1,0 +1,1 @@
+- Claude sessions can be forked at an earlier message (the SDK's `upToMessageId`), the conversation half of rewind. Rewinding to the very first message isn't possible; restore files or start a new session instead.

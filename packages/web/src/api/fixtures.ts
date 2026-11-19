@@ -1825,6 +1825,18 @@ export function createFixtures(now: number = Date.now()): Fixtures {
           name: 'Claude',
           available: true,
           note: 'Auth comes from your Claude Code login or ANTHROPIC_API_KEY.',
+          capabilities: {
+            permissionModes: [
+              'default',
+              'acceptEdits',
+              'plan',
+              'dontAsk',
+              'bypassPermissions',
+              'auto',
+            ],
+            permissionScopes: ['once', 'session', 'project', 'user'],
+            checkpoints: { forkAt: true },
+          },
         },
         {
           id: 'codex',

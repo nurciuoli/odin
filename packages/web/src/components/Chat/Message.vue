@@ -125,6 +125,8 @@ async function onCopy() {
       class="iu-message__actions"
       :class="{ 'iu-message__actions--float': !showHeaderLine }"
     >
+      <!-- the host's own actions for this message (for example Rewind), before the built-in ones -->
+      <slot name="actions" />
       <IuButton
         v-if="copyText"
         class="iu-message__copy"
