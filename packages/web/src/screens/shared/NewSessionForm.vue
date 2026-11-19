@@ -29,7 +29,6 @@ import { effortChoices, asEffort, pickerExtras } from './effort'
 import ComposerProjects from './ComposerProjects.vue'
 import ComposerWhere from './ComposerWhere.vue'
 import Murmuration from './Murmuration.vue'
-import { useStormSignal } from './useStormSignal'
 import { lastRuntime, rememberRuntime } from './lastRuntime'
 import { harnessLabel, PERMISSION_MODE_LABELS } from './format'
 import {
@@ -48,6 +47,8 @@ const props = withDefaults(
     harness?: string
     autofocus?: boolean
     visual?: boolean
+    /** With `visual`: the sky above Home is stormy, so the flock settles lower and tighter. */
+    stormy?: boolean
     /**
      * ↵ starts the session in the background (you stay where you are) and ⌘↵ / Ctrl+↵ starts and opens it: the quick
      * launch dialog. Without it, ↵ starts and opens and ⌘↵ starts in the background.
@@ -59,6 +60,7 @@ const props = withDefaults(
     harness: undefined,
     autofocus: false,
     visual: false,
+    stormy: false,
     backgroundDefault: false,
   },
 )
@@ -75,7 +77,6 @@ const searchFiles = async (query: string) =>
 const router = useRouter()
 const store = useProjects()
 const drafts = useDrafts()
-const sky = useStormSignal()
 const { toast } = useToast()
 const form = reactive(emptySessionForm())
 const root = ref<HTMLElement | null>(null)
@@ -434,7 +435,7 @@ defineExpose({ focus })
 
 <template>
   <div ref="root" class="new-session">
-    <Murmuration v-if="visual" :running="sky.running.value" :signal="sky.signal.value" />
+    <Murmuration v-if="visual" :stormy="stormy" />
     <div class="new-session__launch-controls" aria-label="Session configuration">
       <ComposerProjects
         v-model="form.project"
