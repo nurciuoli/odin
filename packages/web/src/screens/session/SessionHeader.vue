@@ -288,6 +288,7 @@ async function confirmDelete() {
             @focusout="stopRename(true)"
           />
           <h1 v-else class="session-header__title" :title="session.title">{{ session.title }}</h1>
+          <SessionStatusBand :session="session" :working="working" />
           <IuBadge
             v-if="!hasBand"
             class="session-header__status"
@@ -338,8 +339,6 @@ async function confirmDelete() {
         </IuMenu>
       </template>
     </IuHeader>
-
-    <SessionStatusBand :session="session" :working="working" />
 
     <span class="sr-only" role="status" aria-live="polite">{{ waitingSummary }}</span>
 

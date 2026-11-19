@@ -1,0 +1,1 @@
+- The session's status (flock, state word and what it is doing) sits in the top bar beside the session name instead of in a band below it.
