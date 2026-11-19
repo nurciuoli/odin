@@ -116,7 +116,7 @@ const title = 'Retry policy for the GitHub sync client'
 <template>
   <div class="lab" :data-v="variant">
     <nav class="lab-switch" aria-label="Variants">
-      <a v-for="v in ['rail', 'ladder', 'branch', 'film', 'crawl']" :key="v" :href="`?v=${v}`" :aria-current="variant === v || undefined">{{ v }}</a>
+      <a v-for="v in ['rail', 'ladder', 'branch', 'film', 'crawl', 'margin']" :key="v" :href="`?v=${v}`" :aria-current="variant === v || undefined">{{ v }}</a>
     </nav>
     <div ref="frame" class="frame">
       <header class="bar">
@@ -283,6 +283,25 @@ const title = 'Retry policy for the GitHub sync client'
         </footer>
       </section>
 
+      <!-- ⑥ MARGIN: no panel, no scrim. The steps appear as a quiet list in the thread's own side gutter -->
+      <nav v-if="open && variant === 'margin'" class="margin" aria-label="Session timeline">
+        <ol class="margin__list">
+          <li v-for="(t, i) in all" :key="t.id" :class="{ on: sel === i, past: i < sel, next: i > sel }" :data-mark="mark(t)" @click="sel = i" @dblclick="close(true)">
+            <span class="margin__tick" />
+            <div class="margin__txt">
+              <div class="margin__k"><time>{{ clock(t.at) }}</time><span v-if="t.failed" class="bad">failed</span><span v-if="t.agents">agent</span><span v-if="t.files.length">{{ t.files.length }} file{{ t.files.length > 1 ? 's' : '' }}</span></div>
+              <p class="margin__q">{{ t.prompt }}</p>
+              <div v-if="sel === i" class="margin__acts">
+                <button @click.stop="copy('prompt')">Copy prompt <kbd>c</kbd></button>
+                <button @click.stop="copy('reply')">Copy reply <kbd>r</kbd></button>
+                <button @click.stop="close(true)">Stay <kbd>↵</kbd></button>
+              </div>
+            </div>
+          </li>
+        </ol>
+        <p class="margin__keys"><kbd>↑↓</kbd> move <kbd>esc</kbd> back</p>
+      </nav>
+
       <div v-if="copied" class="lab-toast" role="status">{{ copied }}</div>
     </div>
   </div>
@@ -415,4 +434,21 @@ li.on .card__q { color: var(--iu-text); }
 .crawl__hud { position: relative; z-index: 2; padding: 10px 0 14px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .crawl__hud .chips, .crawl__hud .acts { justify-content: center; margin-top: 4px; }
 .keys--flat { border: 0; padding: 4px 0 0; }
+
+/* ⑥ margin */
+.margin { position: absolute; top: 44px; bottom: 0; left: 0; width: 330px; z-index: 10; display: flex; flex-direction: column; justify-content: center; padding: 0 12px 0 20px; background: linear-gradient(to right, var(--iu-ground) 55%, transparent); }
+.margin__list { list-style: none; margin: 0; padding: 0; position: relative; -webkit-mask-image: linear-gradient(to bottom, transparent, #000 14%, #000 86%, transparent); mask-image: linear-gradient(to bottom, transparent, #000 14%, #000 86%, transparent); }
+.margin__list::before { content: ''; position: absolute; left: 3px; top: 0; bottom: 0; width: 1px; background: var(--iu-border); }
+.margin__list li { position: relative; display: flex; gap: 14px; padding: 9px 0; cursor: pointer; opacity: 0.55; transition: opacity 0.2s; }
+.margin__list li.past { opacity: 0.4; } .margin__list li:hover, .margin__list li.on { opacity: 1; }
+.margin__tick { flex: none; width: 7px; height: 7px; margin-top: 5px; border-radius: 50%; background: var(--iu-ground); border: 1.5px solid var(--iu-text-muted); box-sizing: border-box; z-index: 1; }
+li.on .margin__tick { background: var(--iu-text); border-color: var(--iu-text); }
+li[data-mark='fail'] .margin__tick { border-color: var(--iu-danger); } li[data-mark='agent'] .margin__tick { border-color: var(--iu-info); border-style: dashed; }
+.margin__txt { min-width: 0; }
+.margin__k { display: flex; gap: 8px; font-size: 11px; color: var(--iu-text-muted); align-items: baseline; }
+.margin__q { margin: 2px 0 0; font-size: 13px; line-height: 1.4; color: var(--iu-text-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+li.on .margin__q { color: var(--iu-text); -webkit-line-clamp: 4; }
+.margin__acts { display: flex; gap: 6px; margin-top: 7px; flex-wrap: wrap; }
+.margin__acts button { font-size: 11px; color: var(--iu-text-2); background: var(--iu-surface); border: 1px solid var(--iu-border); border-radius: 6px; padding: 2px 7px; cursor: pointer; }
+.margin__keys { position: absolute; bottom: 14px; left: 20px; margin: 0; font-size: 11px; color: var(--iu-text-muted); }
 </style>
