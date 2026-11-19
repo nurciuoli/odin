@@ -5,6 +5,7 @@ import type { RouteLocationRaw } from 'vue-router'
 import type { SessionDetail } from '@odin/shared/api'
 import type { PermissionRequest, TranscriptEntry } from '@odin/shared/harness'
 import type { FlockState } from '@/components/Spinner'
+import { SESSION_DISPLAY } from './format'
 import { describeWork, workTotal, type WorkCount } from '@/app/backgroundWork'
 
 export const MINUTE = 60_000
@@ -23,7 +24,7 @@ export interface Perch {
   state: 'running' | 'quiet' | 'paused'
   /** How the flock behaves for that state. */
   flock: Extract<FlockState, 'working' | 'quiet' | 'waiting'>
-  /** The state in words, always shown beside the flock: "Running", "Running · quiet 4m", "Paused 6m". */
+  /** The state in words, always shown beside the flock: "Running", "Running · quiet 4m", "Needs you 6m". */
   word: string
   /** The same at more length, for assistive tech ("Started 12 minutes ago, paused for the last 4 minutes"). */
   description: string
@@ -67,10 +68,18 @@ export function shortDuration(ms: number): string {
 export function perchWord(input: PerchInput): string {
   if (input.pausedSince !== null) {
     const paused = input.now - input.pausedSince
-    return paused >= MINUTE ? `Paused ${shortDuration(paused)}` : 'Paused'
+    const word = SESSION_DISPLAY.waiting.label
+    return paused >= MINUTE ? `${word} ${shortDuration(paused)}` : word
   }
   const quiet = quietFor(input)
-  return quiet === null ? 'Running' : `Running · quiet ${shortDuration(quiet)}`
+  const running = SESSION_DISPLAY.running.label
+  return quiet === null ? running : `${running} · quiet ${shortDuration(quiet)}`
+}
+
+/** A perch's word split into the state label and what follows it ("Needs you" + "2m", "Running" + "quiet 4m"). */
+export function perchParts(p: Pick<Perch, 'word' | 'state'>): { word: string; since: string } {
+  const word = SESSION_DISPLAY[p.state === 'paused' ? 'waiting' : 'running'].label
+  return { word, since: p.word.slice(word.length).replace(/^\s*·?\s*/, '') }
 }
 
 const minutesText = (n: number) => `${n} minute${n === 1 ? '' : 's'}`

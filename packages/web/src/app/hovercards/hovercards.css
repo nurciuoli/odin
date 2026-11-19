@@ -23,6 +23,11 @@
   color: var(--iu-text-muted);
   font-size: var(--iu-font-size-12);
 }
+.hc__need {
+  margin: -4px 0 0;
+  color: var(--iu-text-2);
+  font-size: var(--iu-font-size-12-5);
+}
 .hc__strong {
   color: var(--iu-text);
   font-weight: var(--iu-font-weight-medium);

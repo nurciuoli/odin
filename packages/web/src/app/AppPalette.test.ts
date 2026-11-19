@@ -33,7 +33,7 @@ describe('AppPalette', () => {
     expect(rows[0]).toBe('Permission prompt component')
     expect(rows[1]).toBe('Session screen: streaming chat')
     expect(rows.some(r => r.startsWith('Side:'))).toBe(false)
-    expect(wrapper.text()).toContain('Waiting')
+    expect(wrapper.text()).toContain('Needs you')
     expect(wrapper.text()).toContain('Needs you ·')
     wrapper.unmount()
     sessions.stop()

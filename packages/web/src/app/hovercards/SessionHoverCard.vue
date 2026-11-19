@@ -4,7 +4,9 @@ import { computed, onMounted, shallowRef } from 'vue'
 import type { Session, SessionDetail } from '@odin/shared/api'
 import { IuBadge } from '@/components/Badge'
 import { IuIcon } from '@/components/Icon'
+import { IuFlock } from '@/components/Spinner'
 import IuStatusDot from '@/components/StatusDot/StatusDot.vue'
+import StatusWord from '@/screens/shared/StatusWord.vue'
 import { useApi } from '@/api'
 import { SESSION_DISPLAY, formatCost, harnessLabel, relativeTime } from '@/screens/shared/format'
 import './hovercards.css'
@@ -23,12 +25,13 @@ onMounted(() => {
 const display = computed(() => SESSION_DISPLAY[props.session.state])
 const metrics = computed(() => props.session.metrics)
 const project = computed(() => props.session.project)
+// what a session that needs you is waiting for
 const needs = computed(() =>
-  props.session.waitingFor === 'permission'
-    ? 'Waiting for a permission'
+  props.session.state !== 'waiting'
+    ? ''
     : props.session.waitingFor === 'question'
-      ? 'Waiting for your answer'
-      : '',
+      ? 'Has a question for you'
+      : 'Asking for your permission',
 )
 // Last thing the agent said; falls back to the last thing you asked.
 const snippet = computed(() => {
@@ -50,13 +53,14 @@ const cost = computed(() => formatCost(metrics.value.costUsd))
 <template>
   <div class="hc">
     <header class="hc__head">
-      <IuStatusDot :status="display.status" :size="9" decorative />
+      <IuFlock v-if="display.flock" :state="display.flock" tone="neutral" />
+      <IuStatusDot v-else :status="display.status" :size="9" decorative />
       <span class="hc__title">{{ session.title }}</span>
     </header>
     <p class="hc__state">
-      <span class="hc__strong">{{ needs || display.label }}</span>
-      <span class="hc__dim"> · updated {{ relativeTime(session.updatedAt) }}</span>
+      <StatusWord :word="display.label" :since="`updated ${relativeTime(session.updatedAt)}`" />
     </p>
+    <p v-if="needs" class="hc__need">{{ needs }}</p>
 
     <dl class="hc__props">
       <div>

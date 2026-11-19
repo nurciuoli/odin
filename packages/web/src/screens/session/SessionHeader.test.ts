@@ -22,8 +22,8 @@ it('shows how many other sessions wait, and answers a tool prompt from the list'
   const { wrapper, api, sessions, projects } = await mountHeader(FIXTURE_SESSION_IDS.running)
   const chip = wrapper.find('.session-header__waiting')
   expect(chip.text()).toContain('1 waiting')
-  expect(chip.attributes('aria-label')).toBe('1 other session waiting for you. Show them')
-  expect(wrapper.find('[role="status"]').text()).toBe('1 other session waiting for you')
+  expect(chip.attributes('aria-label')).toBe('1 other session needs you. Show them')
+  expect(wrapper.find('[role="status"]').text()).toBe('1 other session needs you')
 
   await chip.trigger('click')
   await flushPromises()
@@ -54,4 +54,27 @@ it('has no chip on the waiting session itself, and offers Fork to the palette wh
   expect(useCommands().value.map(c => c.id)).not.toContain('session-fork')
   sessions.stop()
   projects.stop()
+})
+
+it('says the state in a band under the title: word, then what is happening', async () => {
+  const waiting = await mountHeader(FIXTURE_SESSION_IDS.waiting)
+  const band = waiting.wrapper.find('.status-band')
+  expect(band.attributes('data-state')).toBe('waiting')
+  expect(band.find('.status-word').text()).toMatch(/^Needs you/)
+  expect(band.text()).toContain('Wants to run rm -rf packages/web/dist')
+  expect(band.find('.iu-flock').classes()).toContain('iu-flock--waiting')
+  // the band replaces the chip for live states
+  expect(waiting.wrapper.find('.session-header__status').exists()).toBe(false)
+
+  const running = await mountHeader(FIXTURE_SESSION_IDS.running)
+  expect(running.wrapper.find('.status-band .status-word').text()).toMatch(/^Running/)
+
+  const failed = await mountHeader(FIXTURE_SESSION_IDS.failed)
+  expect(failed.wrapper.find('.status-band').attributes('data-state')).toBe('failed')
+  expect(failed.wrapper.find('.status-band .status-word').text()).toMatch(/^Failed/)
+
+  // done and idle keep the quiet chip, no band
+  const ended = await mountHeader(FIXTURE_SESSION_IDS.ended)
+  expect(ended.wrapper.find('.status-band').exists()).toBe(false)
+  expect(ended.wrapper.find('.session-header__status').text()).toBe('Done')
 })

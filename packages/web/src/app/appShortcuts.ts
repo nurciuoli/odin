@@ -28,7 +28,7 @@ export function useAppShortcuts(dialogs: ShellDialogs, sessions: SessionsStore) 
       currentId(),
     )
     if (next) open(next)
-    else toast({ title: 'Nothing else is waiting for you', intent: 'info', duration: 2500 })
+    else toast({ title: 'Nothing else needs you', intent: 'info', duration: 2500 })
   }
 
   const closeDialogs = () => {
@@ -102,7 +102,7 @@ export function useAppShortcuts(dialogs: ShellDialogs, sessions: SessionsStore) 
       registerShortcut({
         id: 'session-waiting',
         keys: 'Mod+J',
-        label: 'Next session waiting for you',
+        label: 'Next session that needs you',
         group: 'Sessions',
         whileTyping: true,
         run: goNextWaiting,

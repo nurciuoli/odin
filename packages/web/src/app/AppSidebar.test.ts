@@ -163,7 +163,7 @@ it('perches the waiting count on the Sessions icon of the collapsed rail only wh
   const n = sessions.waiting.value.length
   expect(n).toBeGreaterThan(0)
   const all = () => wrapper.find('a[href="/sessions"]')
-  const words = `${n} ${n === 1 ? 'session' : 'sessions'} waiting for you`
+  const words = `${n} ${n === 1 ? 'session needs' : 'sessions need'} you`
   expect(wrapper.find('.app-nav-slot__count').text()).toBe(String(n))
   expect(all().attributes('aria-label')).toBe(`All sessions, ${words}`)
 
@@ -305,7 +305,7 @@ it('keeps recently finished unopened sessions in progress until read, with proje
   const finished = () => wrapper.find('section[aria-label="Finished / read"]')
   const row = progress().find(`a[href="/s/${session.id}"]`)
   expect(row.exists()).toBe(true)
-  expect(row.attributes('aria-label')).toContain('Finished, not opened yet')
+  expect(row.attributes('aria-label')).toContain('Done, not opened yet')
   expect(row.findComponent(IuFlock).props('state')).toBe('idle')
   const projectTitle = projects.projects.value.find(p => p.name === 'odin')!.title
   expect(row.find('.app-session-row__project').text()).toBe(`${projectTitle} +1`)

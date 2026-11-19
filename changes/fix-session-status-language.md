@@ -1,0 +1,2 @@
+- Sessions use the same words everywhere: Running, Needs you, Done, Failed and Idle. The sidebar, Home, the sessions lists, hover cards, the command palette and screen-reader labels no longer mix "Waiting", "Paused", "Finished" and "Ended" for the same state.
+- A session's state now reads as a status line: a band under the session title shows the flock, the state word and what is happening (what it needs, what it is doing, why it failed). Home's in-progress rows and the session hover card show the same word and context.

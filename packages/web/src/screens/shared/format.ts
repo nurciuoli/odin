@@ -1,6 +1,7 @@
 // Small display helpers shared by the project screens.
 import type { PermissionMode, ProjectSummary, SessionState, SyncState } from '@odin/shared/api'
-import type { Status } from '@/styles/status'
+import { statusLabel, type Status } from '@/styles/status'
+import type { FlockState } from '@/components/Spinner/types'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -43,13 +44,49 @@ export function projectStatus(p: Pick<ProjectSummary, 'sessions' | 'sync' | 'mis
   return p.sessions.running > 0 ? 'running' : 'idle'
 }
 
-/** A session state on the shared status vocabulary, with the word the user sees. */
-export const SESSION_DISPLAY: Record<SessionState, { status: Status; label: string }> = {
-  idle: { status: 'idle', label: 'Idle' },
-  running: { status: 'running', label: 'Running' },
-  waiting: { status: 'awaiting', label: 'Needs you' },
-  ended: { status: 'ok', label: 'Ended' },
-  failed: { status: 'failed', label: 'Failed' },
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+
+/**
+ * The one place a session state gets its look: the status (colour, dot shape, motion), the word, the flock that
+ * perches for it and the palette icon. The sidebar, lists, hover cards, Details, the palette and the flock all read
+ * this, so a session that needs you is "Needs you" everywhere. The word comes from `statusLabel`; to rename a state
+ * change it there.
+ */
+export interface SessionLook {
+  status: Status
+  /** the word, capitalised: "Running", "Needs you", "Done", "Failed", "Idle" */
+  label: string
+  /** the flock that stands for a live state; absent for states that only show a dot */
+  flock?: FlockState
+  icon: 'play' | 'bell' | 'check' | 'alert' | 'message'
+}
+const look = (status: Status, icon: SessionLook['icon'], flock?: FlockState): SessionLook => ({
+  status,
+  label: cap(statusLabel[status]),
+  icon,
+  ...(flock ? { flock } : {}),
+})
+export const SESSION_DISPLAY: Record<SessionState, SessionLook> = {
+  idle: look('idle', 'message'),
+  running: look('running', 'play', 'working'),
+  waiting: look('awaiting', 'bell', 'waiting'),
+  ended: look('ok', 'check'),
+  failed: look('failed', 'alert'),
+}
+
+/** What a session that needs you needs: "Needs you · permission". Plain "Needs you" when the record doesn't say. */
+export function needsYouText(waitingFor: 'permission' | 'question' | null | undefined): string {
+  const word = SESSION_DISPLAY.waiting.label
+  return waitingFor === 'permission'
+    ? `${word} · permission`
+    : waitingFor === 'question'
+      ? `${word} · answer`
+      : word
+}
+
+/** "1 session needs you", "3 sessions need you" (the count of sessions in the needs-you state). */
+export function needYouCount(n: number, noun = 'session'): string {
+  return `${plural(n, noun)} ${n === 1 ? 'needs' : 'need'} you`
 }
 
 /** A date ("2026-10-31") as "31 Oct". */
