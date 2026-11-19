@@ -188,6 +188,9 @@ const allUnread = computed(() =>
 const unread = computed(() =>
   showAllUnread.value ? allUnread.value : allUnread.value.slice(0, MAX_UNREAD),
 )
+// Idle and not opened yet leads this section. Ended and failed unread stay under the live rows.
+const unreadIdle = computed(() => unread.value.filter(s => s.state === 'idle'))
+const unreadOther = computed(() => unread.value.filter(s => s.state !== 'idle'))
 const finishedText = (s: Session) => SESSION_DISPLAY[s.state].label
 
 // A session that finishes while Home is open gets a raven that lands on its row. Opening Home later just shows it perched.
@@ -282,6 +285,27 @@ const title = (s: Session) =>
           class="launchpad__perches"
           aria-label="Sessions in progress"
         >
+          <li
+            v-for="s in unreadIdle"
+            :key="s.id"
+            class="launchpad__perch launchpad__perch--finished"
+            data-state="finished"
+          >
+            <span class="launchpad__perch-glyph"><IuFlock size="xl" state="idle" /></span>
+            <RouterLink
+              :to="{ name: 'session', params: { id: s.id } }"
+              class="launchpad__perch-title"
+              :title="s.title"
+              >{{ s.title }}</RouterLink
+            >
+            <span class="launchpad__perch-time">{{ relativeTime(s.updatedAt) }}</span>
+            <span class="launchpad__perch-project">{{ projectSummary(s) }}</span>
+            <div class="launchpad__perch-label">
+              <span class="launchpad__perch-activity">Not opened yet</span>
+              <StatusWord class="launchpad__perch-word" :word="finishedText(s)" />
+            </div>
+            <div class="launchpad__perch-state" />
+          </li>
           <li v-for="p in perches" :key="p.id" class="launchpad__perch" :data-state="p.state">
             <span class="launchpad__perch-glyph" role="img" :aria-label="p.description"
               ><IuFlock size="xl" tone="neutral" :state="p.flock" :agents="p.agents"
@@ -296,12 +320,12 @@ const title = (s: Session) =>
               sessionFor(p.id) ? projectSummary(sessionFor(p.id)!) : ''
             }}</span>
             <div class="launchpad__perch-label">
-              <StatusWord class="launchpad__perch-word" v-bind="perchParts(p)" />
               <Transition name="launchpad-update" mode="out-in">
                 <span :key="p.activity" class="launchpad__perch-activity" :title="p.activity">{{
                   p.activity
                 }}</span>
               </Transition>
+              <StatusWord class="launchpad__perch-word" v-bind="perchParts(p)" />
             </div>
             <div class="launchpad__perch-state">
               <span
@@ -339,7 +363,7 @@ const title = (s: Session) =>
             </div>
           </li>
           <li
-            v-for="s in unread"
+            v-for="s in unreadOther"
             :key="s.id"
             class="launchpad__perch launchpad__perch--finished"
             data-state="finished"
@@ -359,8 +383,8 @@ const title = (s: Session) =>
             <span class="launchpad__perch-time">{{ relativeTime(s.updatedAt) }}</span>
             <span class="launchpad__perch-project">{{ projectSummary(s) }}</span>
             <div class="launchpad__perch-label">
-              <StatusWord class="launchpad__perch-word" :word="finishedText(s)" />
               <span class="launchpad__perch-activity">Not opened yet</span>
+              <StatusWord class="launchpad__perch-word" :word="finishedText(s)" />
             </div>
             <div class="launchpad__perch-state" />
           </li>
@@ -549,6 +573,10 @@ const title = (s: Session) =>
 .launchpad__perch-label > .launchpad__perch-activity {
   min-width: 0;
 }
+/* The state word is the right edge of this line, so a changing activity does not move it. */
+.launchpad__perch-word {
+  flex: none;
+}
 .launchpad-perch-enter-active {
   animation: iu-settle var(--iu-dur-micro) var(--iu-ease);
 }
@@ -655,7 +683,7 @@ const title = (s: Session) =>
   }
   .launchpad__perch-label {
     grid-column: 2 / 4;
-    justify-content: flex-start;
+    justify-content: flex-end;
   }
   .launchpad__perch-state {
     grid-column: 2 / 4;

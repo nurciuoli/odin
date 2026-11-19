@@ -1,0 +1,1 @@
+- On Home, unopened idle sessions lead the in-progress list, and the status word stays at the right of each row while the activity text changes.

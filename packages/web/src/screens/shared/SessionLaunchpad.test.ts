@@ -43,8 +43,10 @@ describe('SessionLaunchpad', () => {
     expect(rows[0]!.find('a.launchpad__perch-title').attributes('href')).toBe(
       `/s/${FIXTURE_SESSION_IDS.waiting}`,
     )
-    // every row says its state in the same word, then what it is doing
-    expect(rows[1]!.find('.launchpad__perch-activity').exists()).toBe(true)
+    // the activity sits left of the state word, which stays the right edge of the line
+    const activity = rows[1]!.find('.launchpad__perch-activity').element
+    const word = rows[1]!.find('.launchpad__perch-word').element
+    expect(activity.compareDocumentPosition(word) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(rows[1]!.find('.launchpad__perch-word').text()).toBe('Running')
     expect(rows[1]!.find('.iu-flock').classes()).not.toContain('iu-flock--waiting')
     expect(wrapper.text()).toContain('2 sessions, 1 needs you')
@@ -122,6 +124,22 @@ describe('SessionLaunchpad', () => {
     expect(wrapper.text()).toContain("Couldn't load ongoing sessions")
     expect(wrapper.text()).toContain("Couldn't load sessions")
     expect(wrapper.text()).not.toContain('All quiet.')
+  })
+
+  it('puts unopened idle sessions above live rows in this section', async () => {
+    const api = createMockApi()
+    const { wrapper } = await mountScreen(SessionLaunchpad, '/', api)
+    await flushPromises()
+    const titles = wrapper.findAll('.launchpad__perch-title').map(row => row.text())
+    const idle = titles.indexOf('Why is history search slow?')
+    const running = titles.indexOf('Session screen: streaming chat')
+    const failed = titles.indexOf('Try the Electron packaging')
+    expect(idle).toBeGreaterThanOrEqual(0)
+    expect(idle).toBeLessThan(running)
+    expect(failed).toBeGreaterThan(running)
+    const idleRow = wrapper.findAll('.launchpad__perch')[idle]!
+    expect(idleRow.text()).toContain('Not opened yet')
+    expect(idleRow.find('.iu-flock').classes()).toContain('iu-flock--idle')
   })
 
   it('keeps a finished session you have not opened with the active ones, until you open it', async () => {
