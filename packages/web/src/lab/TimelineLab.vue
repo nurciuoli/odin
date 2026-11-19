@@ -116,7 +116,7 @@ const title = 'Retry policy for the GitHub sync client'
 <template>
   <div class="lab" :data-v="variant">
     <nav class="lab-switch" aria-label="Variants">
-      <a v-for="v in ['rail', 'ladder', 'branch', 'film']" :key="v" :href="`?v=${v}`" :aria-current="variant === v || undefined">{{ v }}</a>
+      <a v-for="v in ['rail', 'ladder', 'branch', 'film', 'crawl']" :key="v" :href="`?v=${v}`" :aria-current="variant === v || undefined">{{ v }}</a>
     </nav>
     <div ref="frame" class="frame">
       <header class="bar">
@@ -257,6 +257,32 @@ const title = 'Retry policy for the GitHub sync client'
         <footer class="keys"><kbd>←→</kbd> move <kbd>↵</kbd> jump <kbd>c</kbd> copy prompt <kbd>r</kbd> copy reply <kbd>esc</kbd> back</footer>
       </section>
 
+      <!-- ⑤ CRAWL: the thread recedes; steps scroll away in perspective, like the opening crawl -->
+      <section v-if="open && variant === 'crawl'" class="crawl" aria-label="Session timeline" @wheel.prevent="move($event.deltaY > 0 ? 1 : -1)">
+        <div class="crawl__stars" aria-hidden="true" />
+        <header class="crawl__title"><span>ᚨ</span> Session timeline <span class="dim">{{ sel + 1 }} / {{ all.length }}</span></header>
+        <div class="crawl__stage">
+          <div class="crawl__plane">
+            <ol class="crawl__list" :style="{ transform: `translateY(${-sel * 240}px)` }">
+              <li v-for="(t, i) in all" :key="t.id" :class="{ on: sel === i }" :style="{ opacity: sel === i ? 1 : Math.max(0.08, 1 - Math.abs(i - sel) * (i > sel ? 0.5 : 0.3)) }" :data-mark="mark(t)" @click="sel = i" @dblclick="close(true)">
+                <div class="crawl__k">Step {{ ['I','II','III','IV','V','VI','VII','VIII'][i] }} · {{ clock(t.at) }}<template v-if="t.failed"> · {{ t.failed }} failed</template><template v-if="t.agents"> · an agent was sent out</template></div>
+                <p class="crawl__q">{{ t.prompt }}</p>
+                <p class="crawl__r">{{ strip(t.reply) }}</p>
+              </li>
+            </ol>
+          </div>
+        </div>
+        <footer class="crawl__hud">
+          <div class="chips"><span v-if="cur.files.length">{{ cur.files.map(base).join(' · ') }}</span><span>{{ cur.steps }} steps</span></div>
+          <div class="acts">
+            <button @click="close(true)">Jump here <kbd>↵</kbd></button>
+            <button @click="copy('prompt')">Copy prompt <kbd>c</kbd></button>
+            <button @click="copy('reply')">Copy reply <kbd>r</kbd></button>
+          </div>
+          <div class="keys keys--flat"><kbd>↑↓</kbd> or scroll <kbd>esc</kbd> back where I was</div>
+        </footer>
+      </section>
+
       <div v-if="copied" class="lab-toast" role="status">{{ copied }}</div>
     </div>
   </div>
@@ -370,4 +396,23 @@ li.on .branch__q { color: var(--iu-text); white-space: normal; }
 li.on .card__q { color: var(--iu-text); }
 .film__cards li[data-mark='fail'] { border-top: 2px solid var(--iu-danger-border); } .film__cards li[data-mark='agent'] { border-top: 2px dashed var(--iu-info-border); }
 .card__acts { display: flex; gap: 6px; margin-top: 8px; } .card__acts button { font-size: 11px; color: var(--iu-text-2); background: var(--iu-surface); border: 1px solid var(--iu-border); border-radius: 6px; padding: 2px 7px; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; }
+
+/* ⑤ crawl */
+.crawl { position: absolute; inset: 44px 0 0; z-index: 10; background: radial-gradient(ellipse at 50% 100%, rgb(18 18 17 / 0.94), rgb(8 8 8 / 0.98) 70%); overflow: hidden; display: flex; flex-direction: column; align-items: center; animation: crawl-in 0.5s var(--iu-ease); }
+@keyframes crawl-in { from { opacity: 0; } }
+.crawl__stars { position: absolute; inset: 0; background-image: radial-gradient(1px 1px at 12% 18%, #fff8, transparent), radial-gradient(1px 1px at 78% 12%, #fff6, transparent), radial-gradient(1.5px 1.5px at 34% 42%, #fff5, transparent), radial-gradient(1px 1px at 90% 55%, #fff6, transparent), radial-gradient(1px 1px at 6% 70%, #fff5, transparent), radial-gradient(1px 1px at 58% 28%, #fff4, transparent), radial-gradient(1.5px 1.5px at 66% 78%, #fff4, transparent), radial-gradient(1px 1px at 22% 88%, #fff5, transparent); pointer-events: none; }
+.crawl__title { position: relative; z-index: 2; margin-top: 14px; font-size: 11px; letter-spacing: 0.28em; text-transform: uppercase; color: var(--iu-hue-2-ink); display: flex; gap: 10px; align-items: baseline; }
+.crawl__stage { position: relative; flex: 1; width: 100%; perspective: 520px; perspective-origin: 50% 8%; overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22%, #000 78%, transparent 96%); mask-image: linear-gradient(to bottom, transparent 0, #000 22%, #000 78%, transparent 96%); }
+.crawl__plane { position: absolute; left: 50%; top: 46%; width: 700px; margin-left: -350px; transform-origin: 50% 0; transform: rotateX(52deg); }
+.crawl__list { list-style: none; margin: 0; padding: 0; transition: transform 0.6s var(--iu-ease); animation: crawl-run 0.9s var(--iu-ease); }
+@keyframes crawl-run { from { margin-top: 520px; } }
+.crawl__list li { height: 240px; box-sizing: border-box; cursor: pointer; text-align: justify; transition: opacity 0.4s; }
+.crawl__k { text-align: center; font-size: 15px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--iu-hue-2-ink); margin-bottom: 10px; }
+.crawl__q { margin: 0 0 8px; font-size: 25px; line-height: 1.3; font-weight: 500; color: var(--iu-text-2); }
+.crawl__r { margin: 0; font-size: 18px; line-height: 1.4; color: var(--iu-text-muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.crawl__list li.on .crawl__q { color: var(--iu-text); }
+.crawl__list li[data-mark='fail'] .crawl__k { color: var(--iu-danger); }
+.crawl__hud { position: relative; z-index: 2; padding: 10px 0 14px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.crawl__hud .chips, .crawl__hud .acts { justify-content: center; margin-top: 4px; }
+.keys--flat { border: 0; padding: 4px 0 0; }
 </style>
