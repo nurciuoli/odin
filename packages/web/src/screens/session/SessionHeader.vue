@@ -302,7 +302,6 @@ async function confirmDelete() {
           >
           <IuBadge v-if="session.pinned" variant="tag" size="xs">Pinned</IuBadge>
           <IuBadge v-if="session.archived" variant="tag" size="xs">Archived</IuBadge>
-          <BranchChip :session="session" @changes="emit('changes')" />
         </div>
       </template>
       <template #actions>
@@ -324,6 +323,7 @@ async function confirmDelete() {
             </IuButton>
           </template>
         </IuMenu>
+        <BranchChip :session="session" @changes="emit('changes')" />
         <slot name="actions" />
         <IuMenu :items="menuItems" @select="onAction">
           <template #trigger="{ toggle, open }">

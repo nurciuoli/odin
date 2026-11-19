@@ -509,11 +509,18 @@ onBeforeUnmount(() => {
 .branch-chip {
   position: relative;
   display: inline-flex;
-  min-width: 0;
+  flex: none;
 }
-.branch-chip__button {
-  min-width: 0;
-  max-width: 280px;
+.branch-chip__name {
+  display: inline-block;
+  max-width: 160px;
+  vertical-align: bottom;
+}
+/* Narrow windows: the chip keeps its icon and counts; its accessible name still says the branch. */
+@media (max-width: 1100px) {
+  .branch-chip__name {
+    max-width: 96px;
+  }
 }
 .branch-chip__name {
   min-width: 0;
