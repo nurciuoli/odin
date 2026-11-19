@@ -1,0 +1,1 @@
+- Odin now snapshots a session's working files before and after each turn in its own store under `~/.odin/checkpoints/` (your repository is never touched), and core can restore them: files only, or the conversation too through a fork. A UI follows.

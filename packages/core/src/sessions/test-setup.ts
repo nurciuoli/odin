@@ -21,6 +21,13 @@ import { stubServices, testDeps } from "../test-helpers.ts";
 import { registerSessionsRoutes } from "./routes.ts";
 import { createSessionsService, type SessionsOptions } from "./service.ts";
 import { createNotebooksService } from "../notebooks/service.ts";
+import { createCheckpointsService } from "../checkpoints/service.ts";
+import type { CheckpointsService } from "../services.ts";
+
+const noopCheckpoints: CheckpointsService = {
+  list: () => [], diff: async () => { throw new Error("no checkpoints"); }, restore: async () => { throw new Error("no checkpoints"); },
+  capture: async () => {}, materialize: async () => {}, inherit: () => {}, forget: async () => {}, close: () => {},
+};
 
 export const PROJECT = "demo";
 
@@ -32,6 +39,8 @@ export interface SetupOptions extends SessionsOptions {
   before?: (deps: ReturnType<typeof testDeps>) => void;
   harnesses?: Harnesses;
   projectsRescanMs?: number;
+  /** Use the real checkpoints service (a shadow git store under the temp home). Default: a no-op. */
+  checkpoints?: boolean;
 }
 
 export function setup(o: SetupOptions = {}) {
@@ -80,6 +89,7 @@ export function setup(o: SetupOptions = {}) {
   services.library = createLibraryService(deps, services);
   services.launch = createLaunchService(deps, services);
   services.notebooks = createNotebooksService(deps, services);
+  services.checkpoints = o.checkpoints ? createCheckpointsService(deps, services) : noopCheckpoints;
   services.sessions = createSessionsService(deps, services, o);
   return { deps, harness, services, sessions: services.sessions, projectPath, worktrees, harnessEvents, baselines, refreshed };
 }

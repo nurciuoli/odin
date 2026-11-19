@@ -573,14 +573,15 @@ same behavior as its effort selector. Unsupported commands remain native harness
 
 ## Checkpoints
 
-Status: contracts only; behaviour lands in later PRs (`docs/plans/checkpoints.md`). Until then `list` is empty and
-`capture` does nothing.
+Status: the store, service and routes are implemented. No driver implements `forkAt` yet, so conversation rewinds work
+only on harnesses that do (the fake, for now); the UI follows (`docs/plans/checkpoints.md`).
 
 - A **checkpoint** is the state of a session just before the agent acted on one user message: the conversation up to
   but not including that message, and the working tree at that moment. One per turn (`kind: "turn"`, id
   `<sessionId>:<n>`), plus a `pre-restore` safety snapshot (`<sessionId>:undo:<n>`) taken before any restore writes files.
 - **Files** are snapshotted by core for every harness, in a bare git repository Odin owns at
-  `<home>/checkpoints/<project>/<hash of cwd>.git`, driven as `git --git-dir=<store> --work-tree=<cwd>` with argv
+  `<home>/checkpoints/<project>.git` (one per project, shared by its worktrees and sessions so a fork can use its
+  parent's trees), driven as `git --git-dir=<store> --work-tree=<cwd>` with argv
   (never a shell string). The user's own `.git`, index, refs and hooks are never touched, so "Odin never commits, resets,
   pushes" still holds. The session's `cwd` only: `additionalDirectories` are not snapshotted. Nested repositories,
   submodules and files over 5 MB are skipped; over 20,000 files or 10 s the checkpoint is `snapshot: "skipped"`.
@@ -596,8 +597,9 @@ Status: contracts only; behaviour lands in later PRs (`docs/plans/checkpoints.md
   declared by `capabilities.checkpoints.forkAt`. Odin keeps no transcript of its own, so a harness without it can only
   do files-only restores (`conversation: true` is a 400).
 - **Fork** with `atMessageId` is the conversation fork cut there; with `restoreFiles: true` (needs `worktree: true`) the
-  fork's fresh worktree is filled from that checkpoint's tree through `materialize`, and the fork inherits the
-  parent's checkpoints before that message.
+  fork's fresh worktree is filled from that checkpoint's tree through `materialize` (tracked files the tree lacks are
+  removed), and every fork inherits its parent's turn checkpoints before the cut (all of them without `atMessageId`);
+  the fork's own turns continue the numbering.
 - **Restore** (`POST …/restore`) needs an idle session and an empty queue (409 otherwise). `files` writes the tree back
   in the session's own workspace after a `pre-restore` snapshot, deleting only files that the latest snapshot had and
   the target lacks. `conversation` forks at the message and archives the original, which is kept: the result's
