@@ -746,16 +746,20 @@ onBeforeUnmount(() => {
   gap: 8px;
   padding: 10px 12px 8px;
   background: var(--iu-surface);
-  border: 1px solid var(--iu-border);
+  border: 1px solid var(--iu-hairline);
+  border-top-color: var(--iu-lip-edge);
   border-radius: var(--iu-radius-lg);
+  box-shadow: var(--iu-lip);
   transition: border-color var(--iu-dur) var(--iu-ease);
 }
 .iu-composer__frame:focus-within {
-  border-color: var(--iu-border-strong);
+  border-color: var(--iu-border);
+  border-top-color: var(--iu-lip-edge);
 }
 .iu-composer--disabled .iu-composer__frame {
   background: var(--iu-surface-sunken);
   border-color: var(--iu-hairline);
+  box-shadow: none;
 }
 
 .iu-composer__attachments {

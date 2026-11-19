@@ -1,0 +1,1 @@
+- Cards and the composer now catch a faint light on their top edge instead of relying on a heavier border.

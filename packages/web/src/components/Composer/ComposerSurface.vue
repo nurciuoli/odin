@@ -29,8 +29,9 @@ withDefaults(defineProps<{ joined?: boolean }>(), { joined: false })
 .iu-composer-surface--joined .iu-composer--embedded .iu-composer__frame {
   border-top: 0;
   border-radius: 0 0 var(--iu-radius-lg) var(--iu-radius-lg);
+  box-shadow: none;
 }
 .iu-composer-surface--joined:focus-within .iu-composer--embedded .iu-composer__frame {
-  border-color: var(--iu-border-strong);
+  border-color: var(--iu-border);
 }
 </style>
