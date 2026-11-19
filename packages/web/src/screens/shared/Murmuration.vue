@@ -3,8 +3,8 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { createFlock, type FlockInput } from './murmuration'
 import { createStorm, type FlashKind } from './storm'
 
-// The home flock. While sessions run, storm clouds crawl in from both sides above it; a finished session or one that
-// needs you lights the clouds with a faint flash, like lightning far off.
+// The home flock: two loose parties of ravens. While sessions run, storm clouds crawl in from both sides above it; a
+// finished session or one that needs you lights the clouds with a faint flash, like lightning far off.
 const props = withDefaults(
   defineProps<{
     /** sessions running right now: clouds are in while this is above zero */
@@ -50,7 +50,7 @@ onMounted(() => {
     ctx!.setTransform(scale, 0, 0, scale, 0, 0)
     ctx!.clearRect(0, 0, width, height)
     storm.draw(ctx!, time, colors, { drift: !motion.matches, calm: motion.matches })
-    flock.draw(ctx!, text, accent)
+    flock.draw(ctx!, text, accent, time, motion.matches)
   }
   function tick(now: number) {
     frame = 0
