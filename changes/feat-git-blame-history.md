@@ -1,0 +1,1 @@
+- Files open from a session now have Code, Blame and History views. Blame shows who last changed each line, naming the Odin session and turn for commits a session made, with the commit on hover and a summary of who wrote the file. History lists the file's commits with each one's change to it.
