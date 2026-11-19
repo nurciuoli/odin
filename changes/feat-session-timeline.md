@@ -1,0 +1,1 @@
+- Press ⌥T in a session (or pick "Show timeline" in ⌘K) to see every message you sent down the side of the thread. Moving through it scrolls the conversation, ↵ stays where you are, Esc goes back, and `c` / `r` copy your message or Claude's reply from that step.

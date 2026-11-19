@@ -312,6 +312,7 @@ const WORKING = computed<ChatMessage>(() => ({
       <IuMessage
         v-else
         :message="message(row)"
+        :data-turn="row.kind === 'user' ? row.id : undefined"
         :show-header="row.kind !== 'system' && row.head"
         :actions="row.kind === 'assistant' || row.kind === 'user'"
         :regenerate="false"
