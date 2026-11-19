@@ -10,6 +10,7 @@ import { IuCard } from '@/components/Card'
 import { IuEmpty, IuErrorState, IuSkeleton } from '@/components/States'
 import { relativeTime } from '@/screens/shared/format'
 import { useResource, useServerEvents } from '@/screens/shared/useResource'
+import { useFlagged } from '@/composables/useFlagged'
 import { useProject } from '../useProject'
 import { pullsOf } from './outputs'
 
@@ -49,6 +50,21 @@ useServerEvents(
 
 const titles = computed(() => new Map((sessions.data.value ?? []).map(s => [s.id, s.title])))
 const pulls = computed(() => pullsOf(sessions.data.value ?? []))
+
+// A pull request that is merged while this screen is open gets one quiet shimmer across its number.
+const { flagged: justMerged, flag: flagMerged } = useFlagged<number>(1600)
+const pullStatus = new Map<number, string>()
+watch(
+  pulls,
+  list => {
+    for (const p of list) {
+      if (pullStatus.get(p.pull.number) === 'open' && p.status === 'merged')
+        flagMerged(p.pull.number)
+      pullStatus.set(p.pull.number, p.status)
+    }
+  },
+  { immediate: true },
+)
 const PULL_DISPLAY = {
   merged: { intent: 'positive', label: 'Merged' },
   open: { intent: 'accent', label: 'Open' },
@@ -114,7 +130,12 @@ const PULL_DISPLAY = {
       />
       <ul v-else class="outputs__pulls" aria-label="Pull requests">
         <li v-for="p in pulls" :key="p.pull.number" class="outputs__pull">
-          <a :href="p.pull.url" target="_blank" rel="noopener noreferrer" class="outputs__title"
+          <a
+            :href="p.pull.url"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="outputs__title"
+            :class="{ 'iu-shimmer': justMerged.has(p.pull.number) }"
             >#{{ p.pull.number }}</a
           >
           <IuBadge :intent="PULL_DISPLAY[p.status].intent" dot>{{

@@ -21,6 +21,7 @@
 
   /* text */
   --iu-text: #eceae4;
+  --iu-text-bright: #ffffff; /* the pale band in the merged shimmer */
   --iu-text-2: #b4b2a9;
   --iu-text-muted: #96948c;
   --iu-text-disabled: #5c5b54;

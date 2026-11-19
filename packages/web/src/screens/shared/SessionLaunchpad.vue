@@ -15,6 +15,8 @@ import { isUnread, markAllSeen } from '@/app/seen'
 import { IuButton } from '@/components/Button'
 import { IuEmpty, IuErrorState, IuSkeleton } from '@/components/States'
 import { IuFlock } from '@/components/Spinner'
+import { IuRavenLanding } from '@/components/RavenLanding'
+import { useFlagged } from '@/composables/useFlagged'
 import { buildPerch, perchParts, type LaneSource, type Perch } from '@/screens/shared/lanes'
 import { SESSION_DISPLAY, plural, relativeTime } from './format'
 import StatusWord from './StatusWord.vue'
@@ -184,6 +186,21 @@ const unread = computed(() =>
 )
 const finishedText = (s: Session) => SESSION_DISPLAY[s.state].label
 
+// A session that finishes while Home is open gets a raven that lands on its row. Opening Home later just shows it perched.
+const { flagged: landed, flag: flagLanded } = useFlagged<string>()
+const lastStates = new Map<string, string>()
+watch(
+  () => sessions.data.value,
+  list => {
+    for (const s of list ?? []) {
+      const before = lastStates.get(s.id)
+      if ((before === 'running' || before === 'waiting') && s.state === 'ended') flagLanded(s.id)
+      lastStates.set(s.id, s.state)
+    }
+  },
+  { immediate: true },
+)
+
 // ── earlier ──
 const recent = computed(() => stopped.value.filter(s => !allUnread.value.includes(s)).slice(0, 5))
 
@@ -318,7 +335,10 @@ const title = (s: Session) =>
             data-state="finished"
           >
             <span class="launchpad__perch-glyph"
-              ><IuFlock size="xl" :state="s.state === 'failed' ? 'failed' : 'idle'"
+              ><IuRavenLanding v-if="s.state === 'ended'" :landing="landed.has(s.id)" /><IuFlock
+                v-else
+                size="xl"
+                :state="s.state === 'failed' ? 'failed' : 'idle'"
             /></span>
             <RouterLink
               :to="{ name: 'session', params: { id: s.id } }"

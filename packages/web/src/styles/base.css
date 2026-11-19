@@ -1,4 +1,5 @@
 @import './tokens.css';
+@import './raven-glyphs.css';
 @import './desktop-chrome.css';
 
 *,
@@ -56,4 +57,31 @@ select {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* A one-off pale band crossing a title, for the moment a pull request is merged. */
+.iu-shimmer {
+  background: linear-gradient(
+      100deg,
+      var(--iu-text) 40%,
+      var(--iu-text-bright) 50%,
+      var(--iu-text) 60%
+    )
+    120% 0 / 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: iu-shimmer-band 1.1s var(--iu-ease) 1 both;
+}
+@keyframes iu-shimmer-band {
+  to {
+    background-position: -20% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .iu-shimmer {
+    animation: none;
+    background: none;
+    -webkit-text-fill-color: currentcolor;
+  }
 }
