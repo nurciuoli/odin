@@ -3,6 +3,8 @@
 import type { Session } from '@odin/shared/api'
 import type { ServerEvent } from '@odin/shared/events'
 import type {
+  GitAction,
+  GitActionRun,
   GitBlame,
   GitBranch,
   GitChange,
@@ -38,6 +40,8 @@ type GitApi = Pick<
   | 'gitStashes'
   | 'gitStash'
   | 'gitStashAction'
+  | 'gitActions'
+  | 'gitRunAction'
 >
 
 interface MockHunk extends GitHunk {
@@ -351,7 +355,104 @@ export function mockGit(options: {
     if (!c) checkouts.set(key(t), (c = fresh(t)))
     return c
   }
-  const changed = (t: GitTarget) => options.emit({ type: 'git.changed', target: t })
+  const changed = (t: GitTarget) =>
+    options.emit({ type: 'git.changed', target: { kind: t.kind, id: t.id } })
+
+  // ── git actions: the tests fail until they've been run again ("fixed") ──
+  const TEST_FAIL = [
+    ' ✓ permissions › asks once by default',
+    ' ✓ permissions › allow-once expires',
+    ' ✕ permissions › persists allow-always',
+    "     expected 'always', got undefined",
+    '       at permissions.test.ts:48:12',
+    '',
+    'Tests: 1 failed, 11 passed',
+  ].join('\n')
+  const actionSets = new Map<string, GitAction[]>()
+  const run = (ok: boolean, msAgo: number, command: string[], output: string): GitActionRun => ({
+    ok,
+    at: at(msAgo),
+    durationMs: ok ? 3_400 : 14_200,
+    exitCode: ok ? 0 : 1,
+    timedOut: false,
+    command,
+    output,
+  })
+  function actionsOf(t: GitTarget): GitAction[] {
+    const k = `${t.kind}:${t.id}`
+    let list = actionSets.get(k)
+    if (list) return list
+    // the sample project's repo has some; the other sample projects have none
+    if (t.kind === 'project' && t.id !== 'odin') return []
+    const def = (
+      o: Partial<GitAction> & Pick<GitAction, 'id' | 'title' | 'on' | 'run'>,
+    ): GitAction => ({
+      description: '',
+      blocking: o.on === 'pre-commit',
+      timeoutSec: 120,
+      enabled: true,
+      file: `.odin/git-actions/${o.id}.json`,
+      error: null,
+      lastRun: null,
+      ...o,
+    })
+    const testCmd = ['yarn', 'test', '--changed', '$STAGED']
+    list = [
+      def({
+        id: 'test-before-commit',
+        title: 'Run tests before commit',
+        description: 'Runs the tests that cover the staged files. Blocks the commit on failure.',
+        on: 'pre-commit',
+        run: testCmd,
+        lastRun: run(
+          false,
+          2 * MIN,
+          ['yarn', 'test', '--changed', 'packages/core/src/permissions.ts'],
+          TEST_FAIL,
+        ),
+      }),
+      def({
+        id: 'format-staged',
+        title: 'Format staged files',
+        description: 'Prettier on the staged files.',
+        on: 'pre-commit',
+        blocking: false,
+        run: ['yarn', 'prettier', '--write', '$STAGED'],
+        lastRun: run(
+          true,
+          2 * MIN,
+          ['yarn', 'prettier', '--write', 'SessionSide.vue'],
+          'SessionSide.vue 41ms',
+        ),
+      }),
+      def({
+        id: 'changelog',
+        title: 'Check the changelog fragment',
+        description: 'Fails when changes/ has no fragment for this branch.',
+        on: 'manual',
+        run: ['node', 'scripts/check-changes.mjs'],
+      }),
+      def({
+        id: 'typecheck-before-push',
+        title: 'Typecheck before push',
+        description: "yarn typecheck. Warns, doesn't block.",
+        on: 'pre-push',
+        run: ['yarn', 'typecheck'],
+        lastRun: run(true, 26 * 60 * MIN, ['yarn', 'typecheck'], 'Done in 18.2s.'),
+      }),
+      def({
+        id: 'release',
+        title: 'Release notes',
+        on: 'manual',
+        run: [],
+        error: '"run" must be a non-empty array of strings (an argv; no shell)',
+        enabled: false,
+      }),
+    ]
+    actionSets.set(k, list)
+    return list
+  }
+  const fixed = new Set<string>()
   const counts = (hunks: MockHunk[]) => ({
     additions: hunks.reduce((n, h) => n + h.lines.filter(l => l.kind === 'add').length, 0),
     deletions: hunks.reduce((n, h) => n + h.lines.filter(l => l.kind === 'del').length, 0),
@@ -474,6 +575,11 @@ export function mockGit(options: {
       if (req.all) c.files.forEach(f => f.hunks.forEach(h => (h.staged = true)))
       const staged = c.files.flatMap(f => f.hunks.filter(h => h.staged))
       if (!staged.length) return fail(409, 'Nothing is staged to commit.', 'nothing-to-commit')
+      const tests = actionsOf(t).find(a => a.id === 'test-before-commit')!
+      if (!req.skipActions && tests.enabled && !fixed.has(`${t.kind}:${t.id}`)) {
+        tests.lastRun = run(false, 0, tests.lastRun!.command, TEST_FAIL)
+        return fail(409, `${tests.title} failed, so nothing was committed.`, 'action-failed')
+      }
       const [subject = '', ...rest] = req.message.trim().split('\n')
       const made = commit(subject, 'nick', 0, { body: rest.join('\n').trim(), ...counts(staged) })
       c.log.unshift(made)
@@ -631,6 +737,15 @@ export function mockGit(options: {
         message: n ? `Pushed ${n} ${n === 1 ? 'commit' : 'commits'}` : 'Pushed',
         status: status(t),
       })
+    },
+    gitActions: t => ok(actionsOf(t).map(a => ({ ...a }))),
+    gitRunAction: (t, id) => {
+      const a = actionsOf(t).find(x => x.id === id)
+      if (!a) return fail(404, `unknown git action "${id}"`)
+      if (a.error) return fail(400, `${a.file}: ${a.error}`)
+      if (a.id === 'test-before-commit') fixed.add(`${t.kind}:${t.id}`)
+      a.lastRun = run(true, 0, a.run, a.id === 'test-before-commit' ? 'Tests: 12 passed' : 'Done.')
+      return ok({ ...a.lastRun })
     },
     gitStashes: t => ok(co(t).stashes.map(({ files: _f, ...s }) => s)),
     gitStash: (t, req) => {

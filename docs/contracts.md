@@ -655,7 +655,8 @@ Status: implemented in core (`src/git`) with the Changes panel in the session's 
   timeout (15 s, 120 s for network and commit). Paths from the client are repo-relative, may not be absolute, contain
   `..` or start with `-`, and always follow `--`. Branch names follow `validBranchName`; shas are hex.
 - **Writes** (stage, unstage, discard, commit, checkout, fetch, pull, push, stash) are queued per checkout and each one
-  emits `git.changed { target }`. They happen only on an explicit user action; nothing here runs on its own.
+  emits `git.changed { target }`. They happen only on an explicit user action; nothing here runs on its own (git
+  actions included: they run inside a commit or push the user asked for, or when they press Run).
   The client also refetches status on the session's `checkpoint.updated` and `session.updated`, so agent edits show up.
 - **Status** is `git status --porcelain=v2 --branch` plus `--numstat` counts; a folder that isn't a repo answers
   `repo: false` (other routes: 409 `not-a-repo`).
@@ -676,6 +677,15 @@ Status: implemented in core (`src/git`) with the Changes panel in the session's 
   can't happen is 409 `diverged`. **Push** sets the upstream to `origin/<branch>` when there is none and only ever
   force-pushes with `--force-with-lease`. Network calls use the user's own credentials; failures to sign in are 409
   `auth`.
+- **Git actions** are commands a repo asks Odin to run, defined in `.odin/git-actions/<id>.json` (`GitAction`):
+  `on` is `pre-commit`, `pre-push` or `manual`, and `run` is an argv run with `execFile` in the checkout (no shell; an
+  argument `$STAGED` expands to the staged paths, and `ODIN_GIT_ACTION=<id>` is set). Before a commit or push made
+  through these routes, the enabled actions for that trigger run in file order; a `blocking` one that fails (default:
+  blocking before a commit, not before a push) stops it with 409 `action-failed` and nothing is committed or pushed,
+  while a non-blocking failure is named in the push message. `skipActions: true` skips them ("Commit anyway").
+  `GET …/actions` lists the definitions (a bad one has `error` and is skipped) with each one's latest run since core
+  started (in memory, last 16 KB of output); `POST …/actions/:id/run` runs one now. They are the repo's own commands,
+  like its git hooks, and run only when the user commits, pushes or presses Run.
 - **Errors** carry `code` next to `error` (`GitErrorCode`); other git failures are 400 with git's first line.
 
 ## Launch
@@ -1204,6 +1214,7 @@ The main routes; each module's `routes.ts` has the full list. All JSON. Errors: 
 | GET `…/git/branches` · POST `…/git/checkout` (`GitCheckoutRequest`) | `GitBranches` · `GitCheckoutResult` |
 | POST `…/git/fetch`, `…/git/pull` (`GitPullRequest`), `…/git/push` (`GitPushRequest`) | `GitSyncResult` |
 | GET `…/git/stashes` · POST `…/git/stash` (`GitStashRequest`) · POST `…/git/stash/{apply,pop,drop}` (`{ ref }`) | `GitStash[]` · `GitStatus` |
+| GET `…/git/actions` · POST `…/git/actions/:id/run` | `GitAction[]` · `GitActionRun` |
 | GET `/api/projects` | `ProjectSummary[]` |
 | POST `/api/projects` (`CreateProjectRequest`) | `ProjectDetail` (201) |
 | GET `/api/projects/:name` | `ProjectDetail` |

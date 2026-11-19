@@ -189,6 +189,8 @@ export function createHttpApi(options: HttpApiOptions = {}): Api {
     gitStashes: t => get(`${gitBase(t)}/stashes`),
     gitStash: (t, req) => send('POST', `${gitBase(t)}/stash`, req),
     gitStashAction: (t, action, ref) => send('POST', `${gitBase(t)}/stash/${action}`, { ref }),
+    gitActions: t => get(`${gitBase(t)}/actions`),
+    gitRunAction: (t, id) => send('POST', `${gitBase(t)}/actions/${seg(id)}/run`),
     listCheckpoints: id => get(`${session(id)}/checkpoints`),
     checkpointDiff: (id, checkpointId, against) =>
       get(

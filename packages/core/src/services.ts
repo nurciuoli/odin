@@ -370,6 +370,10 @@ export interface GitService {
   stashes(t: GitT): Promise<import("@odin/shared/git").GitStash[]>;
   stash(t: GitT, req: import("@odin/shared/git").GitStashRequest): Promise<import("@odin/shared/git").GitStatus>;
   stashAction(t: GitT, action: "apply" | "pop" | "drop", ref: string): Promise<import("@odin/shared/git").GitStatus>;
+  /** `.odin/git-actions/*.json` in the checkout, with each one's latest run. */
+  actions(t: GitT): Promise<import("@odin/shared/git").GitAction[]>;
+  /** Runs one action now (any trigger). A failed command is a run with `ok: false`, not an error. */
+  runAction(t: GitT, id: string): Promise<import("@odin/shared/git").GitActionRun>;
 }
 
 // ── checkpoints (src/checkpoints) ──────────────────────────────────────────

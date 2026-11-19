@@ -28,10 +28,15 @@ describe('mock api: git', () => {
 
   it('commits what is staged and refuses an empty commit', async () => {
     const { api, t } = setup()
-    const r = await api.gitCommit(t, { message: 'feat: prompt' })
+    await expect(api.gitCommit(t, { message: 'feat: prompt' })).rejects.toMatchObject({
+      code: 'action-failed',
+    })
+    const failed = (await api.gitActions(t)).find(a => a.id === 'test-before-commit')!
+    expect(failed.lastRun?.ok).toBe(false)
+    const r = await api.gitCommit(t, { message: 'feat: prompt', skipActions: true })
     expect(r.status.staged).toHaveLength(0)
     expect((await api.gitLog(t, { limit: 1 })).commits[0]!.subject).toBe('feat: prompt')
-    await expect(api.gitCommit(t, { message: 'again' })).rejects.toMatchObject({
+    await expect(api.gitCommit(t, { message: 'again', skipActions: true })).rejects.toMatchObject({
       code: 'nothing-to-commit',
     })
   })

@@ -4,7 +4,7 @@
 // the files to before one.
 import { computed, nextTick, ref, shallowRef, toRef, watch } from 'vue'
 import type { Checkpoint, CheckpointFileChange, SessionDetail } from '@odin/shared/api'
-import type { GitChange, GitFileDiff, GitTarget } from '@odin/shared/git'
+import type { GitAction, GitChange, GitFileDiff, GitTarget } from '@odin/shared/git'
 import { SESSION_TRAILER, TURNS_TRAILER } from '@odin/shared/git'
 import { useApi } from '@/api'
 import { IuButton } from '@/components/Button'
@@ -124,15 +124,83 @@ function draft(turns?: number[]) {
   ].join('\n')
 }
 const stagedCount = computed(() => status.value?.staged.length ?? 0)
-async function commit(opts: { all?: boolean; amend?: boolean } = {}) {
+type CommitOpts = { all?: boolean; amend?: boolean; skipActions?: boolean }
+// A pre-commit git action that failed and stopped the last commit, with the options to try it again.
+const blocked = ref<{ action: GitAction; opts: CommitOpts } | null>(null)
+watch(
+  () => `${props.target.kind}:${props.target.id}`,
+  () => (blocked.value = null),
+)
+async function findBlocker(): Promise<GitAction | null> {
+  try {
+    const failed = (await api.gitActions(props.target)).filter(
+      a => a.on === 'pre-commit' && a.blocking && a.lastRun && !a.lastRun.ok,
+    )
+    return failed.sort((a, b) => b.lastRun!.at.localeCompare(a.lastRun!.at))[0] ?? null
+  } catch {
+    return null
+  }
+}
+async function commit(opts: CommitOpts = {}) {
   if (!message.value.trim() && !opts.amend) {
     messageBox.value?.focus()
     return
   }
-  const r = await git.run('Commit', t => api.gitCommit(t, { message: message.value, ...opts }))
-  if (!r.ok) return
+  const r = await git.run('Commit', t => api.gitCommit(t, { message: message.value, ...opts }), {
+    quiet: ['action-failed'],
+  })
+  if (!r.ok) {
+    if (r.failure.code === 'action-failed') {
+      const action = await findBlocker()
+      if (action) blocked.value = { action, opts }
+      else toast({ title: 'Commit failed', description: r.failure.message, intent: 'danger' })
+    }
+    return
+  }
+  blocked.value = null
   message.value = ''
   toast({ title: `Committed ${r.value.sha.slice(0, 7)}`, intent: 'success', duration: 2500 })
+}
+const blockedTail = computed(() => {
+  const out = blocked.value?.action.lastRun?.output ?? ''
+  return out.trimEnd().split('\n').slice(-14).join('\n')
+})
+const rerunning = ref(false)
+async function rerun() {
+  const b = blocked.value
+  if (!b) return
+  rerunning.value = true
+  try {
+    const run = await api.gitRunAction(props.target, b.action.id)
+    if (run.ok) {
+      blocked.value = null
+      toast({ title: `${b.action.title} passes now`, description: 'Commit again when ready.' })
+    } else blocked.value = { ...b, action: { ...b.action, lastRun: run } }
+  } catch (e) {
+    toast({ title: "Couldn't run it", description: String(e), intent: 'danger' })
+  } finally {
+    rerunning.value = false
+  }
+}
+async function askToFix() {
+  const b = blocked.value
+  const s = props.session
+  if (!b || !s) return
+  const text = [
+    `The git action "${b.action.title}" (${b.action.file}) failed, so my commit was blocked. Please fix what it reports, then stop.`,
+    '',
+    `Command: ${b.action.lastRun?.command.join(' ') ?? b.action.run.join(' ')}`,
+    '',
+    '```',
+    blockedTail.value,
+    '```',
+  ].join('\n')
+  try {
+    await api.sendMessage(s.id, { text })
+    toast({ title: 'Asked Claude to fix it', description: 'Run it again once the turn ends.' })
+  } catch (e) {
+    toast({ title: "Couldn't send the message", description: String(e), intent: 'danger' })
+  }
 }
 const commitMenu: MenuItem[] = [
   { id: 'all', label: 'Stage everything and commit', icon: 'plus' },
@@ -451,6 +519,48 @@ async function rewind(c: Checkpoint) {
         </div>
 
         <form class="git-changes__commit" @submit.prevent="commit()">
+          <section
+            v-if="blocked"
+            class="git-changes__blocked"
+            role="alert"
+            :aria-label="`${blocked.action.title} failed`"
+          >
+            <header class="git-changes__blocked-head">
+              <IuIcon name="alert" :size="16" />
+              <span class="git-changes__blocked-title"
+                >{{ blocked.action.title }} failed. Nothing was committed.</span
+              >
+              <span class="git-changes__grow" />
+              <IuButton
+                size="sm"
+                variant="ghost"
+                icon-only
+                aria-label="Dismiss"
+                @click="blocked = null"
+              >
+                <template #icon><IuIcon name="close" :size="14" /></template>
+              </IuButton>
+            </header>
+            <pre class="git-changes__blocked-out">{{ blockedTail }}</pre>
+            <div class="git-changes__blocked-acts">
+              <IuButton v-if="session" size="sm" variant="primary" @click="askToFix">
+                <template #icon><IuIcon name="sparkle" :size="14" /></template>
+                Ask Claude to fix
+              </IuButton>
+              <IuButton size="sm" variant="secondary" :loading="rerunning" @click="rerun">
+                <template #icon><IuIcon name="retry" :size="14" /></template>
+                Run again
+              </IuButton>
+              <span class="git-changes__grow" />
+              <IuButton
+                size="sm"
+                variant="ghost"
+                :disabled="!!busy"
+                @click="commit({ ...blocked.opts, skipActions: true })"
+                >Commit anyway</IuButton
+              >
+            </div>
+          </section>
           <label class="git-changes__sr" for="git-commit-message">Commit message</label>
           <textarea
             id="git-commit-message"
@@ -573,11 +683,18 @@ async function rewind(c: Checkpoint) {
 @container (max-width: 760px) {
   .git-changes__body {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(200px, 45%) 1fr;
+    /* the list takes what it needs (its files scroll in a capped box), the diff the rest */
+    grid-template-rows: auto minmax(200px, 1fr);
   }
   .git-changes__list {
     border-right: 0;
     border-bottom: 1px solid var(--iu-hairline);
+  }
+  .git-changes__scroll {
+    max-height: 200px;
+  }
+  .git-changes__blocked-out {
+    max-height: 120px;
   }
 }
 .git-changes__list {
@@ -828,5 +945,45 @@ async function rewind(c: Checkpoint) {
   flex: 1;
   min-height: 0;
   overflow: auto;
+}
+.git-changes__blocked {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--iu-danger-border);
+  border-radius: var(--iu-radius-md);
+  background: var(--iu-danger-wash);
+}
+.git-changes__blocked-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--iu-danger);
+}
+.git-changes__blocked-title {
+  font-size: var(--iu-font-size-13);
+  font-weight: var(--iu-font-weight-medium);
+  color: var(--iu-text);
+}
+.git-changes__blocked-out {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: var(--iu-radius-sm);
+  background: var(--iu-well);
+  font-family: var(--iu-font-mono);
+  font-size: var(--iu-font-size-11-5);
+  line-height: var(--iu-leading-code);
+  color: var(--iu-text-2);
+  white-space: pre;
+}
+.git-changes__blocked-acts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 </style>

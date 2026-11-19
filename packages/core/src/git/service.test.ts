@@ -207,3 +207,44 @@ describe("git service", () => {
     assert.equal(rebased.status.behind, 0);
   });
 });
+
+describe("git actions", () => {
+  const define = (dir: string, id: string, def: object) => {
+    mkdirSync(join(dir, ".odin", "git-actions"), { recursive: true });
+    writeFileSync(join(dir, ".odin", "git-actions", `${id}.json`), JSON.stringify(def));
+  };
+  const node = process.execPath;
+
+  it("lists definitions, flags bad ones, and runs one with $STAGED expanded", async () => {
+    const { dir } = repo();
+    const { git } = setup(dir);
+    define(dir, "echo", { title: "Echo staged", on: "manual", run: [node, "-e", "console.log(process.argv.slice(1).join(','))", "$STAGED"] });
+    define(dir, "broken", { on: "sometimes", run: "rm -rf /" });
+    writeFileSync(join(dir, "b.txt"), "b\n");
+    g(dir, "add", "b.txt");
+    const actions = await git.actions(P);
+    assert.deepEqual(actions.map((a) => [a.id, a.error === null]), [["broken", false], ["echo", true]]);
+    assert.equal(await code(git.runAction(P, "broken")), "400");
+    const run = await git.runAction(P, "echo");
+    assert.equal(run.ok, true);
+    assert.equal(run.output.trim(), "b.txt");
+    assert.deepEqual(run.command.slice(-1), ["b.txt"]);
+    assert.equal((await git.actions(P)).find((a) => a.id === "echo")?.lastRun?.ok, true);
+  });
+
+  it("blocks a commit when a blocking pre-commit action fails, and commits anyway when asked", async () => {
+    const { dir } = repo();
+    const { git } = setup(dir);
+    define(dir, "tests", { title: "Run tests", on: "pre-commit", run: [node, "-e", "console.error('1 failed'); process.exit(1)"] });
+    define(dir, "lint", { title: "Lint", on: "pre-commit", blocking: false, enabled: false, run: [node, "-e", "process.exit(1)"] });
+    writeFileSync(join(dir, "a.txt"), "changed\n");
+    assert.equal(await code(git.commit(S, { message: "x", all: true })), "409 action-failed");
+    const tests = (await git.actions(S)).find((a) => a.id === "tests")!;
+    assert.equal(tests.lastRun?.ok, false);
+    assert.equal(tests.lastRun?.exitCode, 1);
+    assert.match(tests.lastRun!.output, /1 failed/);
+    assert.equal((await git.actions(S)).find((a) => a.id === "lint")?.lastRun, null);
+    const done = await git.commit(S, { message: "x", skipActions: true });
+    assert.equal(done.status.staged.length, 0);
+  });
+});

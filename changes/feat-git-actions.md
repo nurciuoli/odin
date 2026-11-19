@@ -1,0 +1,1 @@
+- Git actions: a repo can ask Odin to run commands before commits and pushes made from Odin, or on demand, with JSON files in `.odin/git-actions/`. A failing check before a commit shows its output in the Changes panel with "Ask Claude to fix", "Run again" and "Commit anyway". The Library has a Git actions tab listing every repo's actions, their last run and Run now.

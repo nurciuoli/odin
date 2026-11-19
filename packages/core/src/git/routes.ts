@@ -33,6 +33,8 @@ export const registerGitRoutes: RegisterRoutes = (router, _deps, services) => {
     router.post(`${prefix}/fetch`, ({ params }) => git.fetch(target(params)));
     router.post(`${prefix}/pull`, async ({ req, params }) => git.pull(target(params), await body(req)));
     router.post(`${prefix}/push`, async ({ req, params }) => git.push(target(params), await body(req)));
+    router.get(`${prefix}/actions`, ({ params }) => git.actions(target(params)));
+    router.post(`${prefix}/actions/:action/run`, ({ params }) => git.runAction(target(params), params.action ?? ""));
     router.get(`${prefix}/stashes`, ({ params }) => git.stashes(target(params)));
     router.post(`${prefix}/stash`, async ({ req, params }) => git.stash(target(params), await body(req)));
     for (const action of ["apply", "pop", "drop"] as const) {

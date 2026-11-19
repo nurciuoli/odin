@@ -23,6 +23,7 @@ import { useResource, useServerEvents } from '@/screens/shared/useResource'
 import { assetDetail, isAssetKind, KIND_INFO, kindNoun } from './assetForm'
 import { assetMenu, copyId, type RowAction } from './libraryActions'
 import McpPanel from '@/screens/mcp/McpPanel.vue'
+import GitActionsPanel from '@/screens/git/GitActionsPanel.vue'
 import DeleteAssetDialog, { type Target } from './DeleteAssetDialog.vue'
 import ExportPluginModal from './ExportPluginModal.vue'
 import ImportPluginModal from './ImportPluginModal.vue'
@@ -46,6 +47,17 @@ const kind = computed<AssetKind>({
   },
 })
 const selected = ref(new Set<string | number>())
+// Git actions aren't library assets (they live in each repo), but they get a tab here so they're found with the rest.
+const GIT_TAB = 'git-actions'
+const tab = computed<string>({
+  get: () => (route.query.kind === GIT_TAB ? GIT_TAB : kind.value),
+  set: t => {
+    if (t === GIT_TAB) void router.replace({ query: { ...route.query, kind: GIT_TAB } })
+    else kind.value = t as AssetKind
+  },
+})
+const onGitTab = computed(() => tab.value === GIT_TAB)
+const gitActionCount = ref<number | undefined>(undefined)
 
 // ── data ────────────────────────────────────────────────────────────────────
 const res = useResource<LibraryAsset[]>(() => api.listLibrary())
@@ -85,13 +97,14 @@ watch(
 )
 
 const all = computed(() => res.data.value ?? [])
-const tabs = computed(() =>
-  LIBRARY_KINDS.map(k => ({
-    id: k,
+const tabs = computed(() => [
+  ...LIBRARY_KINDS.map(k => ({
+    id: k as string,
     label: KIND_INFO[k].plural,
-    badge: all.value.filter(a => a.kind === k).length,
+    badge: all.value.filter(a => a.kind === k).length as number | undefined,
   })),
-)
+  { id: GIT_TAB, label: 'Git actions', badge: gitActionCount.value },
+])
 
 type Row = {
   key: string
@@ -277,11 +290,13 @@ async function globalInstructions() {
     >
       <template #actions>
         <IuButton variant="secondary" @click="globalInstructions">Global instructions</IuButton>
-        <IuButton v-if="kind === 'plugin'" variant="secondary" @click="importing = true"
-          >Import…</IuButton
-        >
-        <IuButton variant="ghost" @click="rescan">Rescan</IuButton>
-        <IuButton variant="primary" @click="creating = true">New {{ kindNoun(kind) }}</IuButton>
+        <template v-if="!onGitTab">
+          <IuButton v-if="kind === 'plugin'" variant="secondary" @click="importing = true"
+            >Import…</IuButton
+          >
+          <IuButton variant="ghost" @click="rescan">Rescan</IuButton>
+          <IuButton variant="primary" @click="creating = true">New {{ kindNoun(kind) }}</IuButton>
+        </template>
       </template>
     </IuPageHeader>
 
@@ -293,9 +308,14 @@ async function globalInstructions() {
       :trace-id="`library.load.${res.error.value?.status ?? 0}`"
       @retry="res.load()"
     />
-    <IuTabs v-else v-model="kind" :tabs="tabs" :lazy="false" overflow="wrap">
+    <IuTabs v-else v-model="tab" :tabs="tabs" :lazy="false" overflow="wrap">
+      <template #[`panel:${GIT_TAB}`]>
+        <div v-if="onGitTab" class="library__panel">
+          <GitActionsPanel @count="gitActionCount = $event" />
+        </div>
+      </template>
       <template v-for="k in LIBRARY_KINDS" :key="k" #[`panel:${k}`]>
-        <div v-if="k === kind" class="library__panel">
+        <div v-if="k === tab" class="library__panel">
           <p v-if="rows.length && KIND_INFO[k].blurb" class="library__blurb">
             {{ KIND_INFO[k].blurb }}
           </p>

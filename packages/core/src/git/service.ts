@@ -4,7 +4,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, join, resolve, sep } from "node:path";
 import type {
   GitBlame, GitBranches, GitChange, GitCheckoutRequest, GitCheckoutResult, GitCommitDetail, GitCommitRequest, GitCommitResult,
-  GitFileDiff, GitLog, GitPatchRequest, GitPullRequest, GitPushRequest, GitStash, GitStashRequest, GitStatus, GitSyncResult, GitTarget,
+  GitAction, GitActionRun, GitFileDiff, GitLog, GitPatchRequest, GitPullRequest, GitPushRequest, GitStash, GitStashRequest, GitStatus, GitSyncResult, GitTarget,
 } from "@odin/shared/git";
 import { AUTO_STASH_PREFIX } from "@odin/shared/git";
 import { validBranchName } from "../git-policy.ts";
@@ -16,6 +16,7 @@ import {
   parseStashes, parseStatusV2, publicDiff, STASH_FORMAT, trailers, ZERO_SHA, type RawFileDiff,
 } from "./parse.ts";
 import { classify, gitConflict, gitOut, NETWORK_TIMEOUT_MS, runGit } from "./run.ts";
+import { loadActions, runAction, runTrigger } from "./actions.ts";
 
 const MAX_UNTRACKED_BYTES = 1024 * 1024;
 const LOG_LIMIT_MAX = 200;
@@ -73,6 +74,11 @@ export function createGitService(deps: Deps, services: Services): GitService {
   async function read<T>(t: GitTarget, fn: (cwd: string) => Promise<T>): Promise<T> {
     const cwd = repoDir(t);
     try { return await fn(cwd); } catch (err) { throw classify(err); }
+  }
+
+  async function stagedPaths(cwd: string): Promise<string[]> {
+    const out = await gitOut(cwd, ["diff", "--cached", "--name-only", "-z"]).catch(() => "");
+    return out.split("\0").filter(Boolean);
   }
 
   // ── status ────────────────────────────────────────────────────────────────
@@ -189,6 +195,10 @@ export function createGitService(deps: Deps, services: Services): GitService {
       const message = typeof req?.message === "string" ? req.message.trim() : "";
       if (!message && !req?.amend) throw new HttpError(400, "message required");
       if (req.all) await runGit(cwd, ["add", "-A"]);
+      if (!req.skipActions) {
+        const { blocked } = await runTrigger(cwd, "pre-commit", () => stagedPaths(cwd));
+        if (blocked) throw gitConflict("action-failed", `${blocked.title} failed, so nothing was committed.`);
+      }
       const args = ["commit", "--quiet", "--cleanup=strip", "-F", "-"];
       if (req.amend) args.push("--amend");
       await runGit(cwd, args, { input: message + "\n", timeoutMs: NETWORK_TIMEOUT_MS });
@@ -339,8 +349,25 @@ export function createGitService(deps: Deps, services: Services): GitService {
         args.push("-u", "origin", before.branch);
         pushed = Number((await gitOut(cwd, ["rev-list", "--count", "HEAD", "--not", "--remotes"]).catch(() => "0")).trim()) || 0;
       }
+      let warned: GitAction[] = [];
+      if (!req?.skipActions) {
+        const result = await runTrigger(cwd, "pre-push", async () => []);
+        if (result.blocked) throw gitConflict("action-failed", `${result.blocked.title} failed, so nothing was pushed.`);
+        warned = result.warned;
+      }
       await runGit(cwd, args, { timeoutMs: NETWORK_TIMEOUT_MS });
-      return { message: pushed ? `Pushed ${pushed} ${pushed === 1 ? "commit" : "commits"}` : "Pushed", status: await statusOf(cwd) };
+      const message = pushed ? `Pushed ${pushed} ${pushed === 1 ? "commit" : "commits"}` : "Pushed";
+      const warning = warned.length ? ` (${warned.map((a) => a.title).join(", ")} failed)` : "";
+      return { message: message + warning, status: await statusOf(cwd) };
+    }),
+
+    actions: (t) => read(t, async (cwd): Promise<GitAction[]> => loadActions(cwd)),
+
+    runAction: (t, id) => read(t, async (cwd): Promise<GitActionRun> => {
+      const action = loadActions(cwd).find((a) => a.id === id);
+      if (!action) throw new HttpError(404, `unknown git action ${JSON.stringify(id)}`);
+      if (action.error) throw new HttpError(400, `${action.file}: ${action.error}`);
+      return runAction(cwd, action, await stagedPaths(cwd));
     }),
 
     stashes: (t) => read(t, async (cwd): Promise<GitStash[]> => parseStashes(await gitOut(cwd, ["stash", "list", `--format=${STASH_FORMAT}`]))),

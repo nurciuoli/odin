@@ -240,6 +240,9 @@ export interface Api {
     action: 'apply' | 'pop' | 'drop',
     ref: string,
   ): Promise<import('@odin/shared/git').GitStatus>
+  /** `.odin/git-actions/*.json` with each one's latest run. */
+  gitActions(t: GitTarget): Promise<import('@odin/shared/git').GitAction[]>
+  gitRunAction(t: GitTarget, id: string): Promise<import('@odin/shared/git').GitActionRun>
 
   // checkpoints (docs/contracts.md#checkpoints)
   listCheckpoints(id: string): Promise<import('@odin/shared/api').Checkpoint[]>

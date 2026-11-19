@@ -90,6 +90,8 @@ export interface GitCommitRequest {
   message: string;
   amend?: boolean;
   all?: boolean;
+  /** Skip the pre-commit git actions ("Commit anyway"). */
+  skipActions?: boolean;
 }
 
 export interface GitCommitResult {
@@ -194,6 +196,8 @@ export interface GitPullRequest {
   strategy?: "ff-only" | "rebase" | "merge";
 }
 export interface GitPushRequest {
+  /** Skip the pre-push git actions. */
+  skipActions?: boolean;
   /** Sets the upstream to origin/<branch> when there is none (default true). */
   setUpstream?: boolean;
   forceWithLease?: boolean;
@@ -222,7 +226,50 @@ export interface GitStashRequest {
 }
 
 /** Codes on a 409 from git routes, in the JSON body's `code`. */
-export type GitErrorCode = "dirty-tree" | "conflict" | "diverged" | "no-upstream" | "auth" | "checked-out-elsewhere" | "nothing-to-commit" | "not-a-repo";
+export type GitErrorCode = "dirty-tree" | "conflict" | "diverged" | "no-upstream" | "auth" | "checked-out-elsewhere" | "nothing-to-commit" | "not-a-repo" | "action-failed";
+
+/** When a git action runs: before a commit or push made from Odin, or only when asked. */
+export type GitActionTrigger = "pre-commit" | "pre-push" | "manual";
+
+/** One run of a git action. `output` is the last 16 KB of stdout and stderr together. */
+export interface GitActionRun {
+  ok: boolean;
+  at: string;
+  durationMs: number;
+  /** Null when it was killed (timeout) or couldn't start. */
+  exitCode: number | null;
+  timedOut: boolean;
+  /** The argv as run, with `$STAGED` expanded. */
+  command: string[];
+  output: string;
+}
+
+/**
+ * A git action: a command the repo asks Odin to run around its git writes, defined in `.odin/git-actions/<id>.json`:
+ * `{ "title", "description"?, "on": "pre-commit" | "pre-push" | "manual", "run": ["argv", "…"], "blocking"?,
+ * "timeoutSec"?, "enabled"? }`. `run` is an argv (no shell); an argument `$STAGED` expands to the staged paths.
+ * A blocking action that fails stops the commit or push (409 `action-failed`); a non-blocking one is reported.
+ */
+export interface GitAction {
+  id: string;
+  title: string;
+  description: string;
+  on: GitActionTrigger;
+  run: string[];
+  /** Default: true before a commit, false before a push. */
+  blocking: boolean;
+  timeoutSec: number;
+  enabled: boolean;
+  /** Repo-relative path of the definition. */
+  file: string;
+  /** Why the definition can't be used (bad JSON, missing fields); the action is then skipped. */
+  error: string | null;
+  /** The latest run since Odin started, or null. */
+  lastRun: GitActionRun | null;
+}
+
+/** Folder of git action definitions, relative to the checkout. */
+export const GIT_ACTIONS_DIR = ".odin/git-actions";
 
 /** Trailer keys Odin adds to commit messages drafted from a session. */
 export const SESSION_TRAILER = "Odin-Session";
