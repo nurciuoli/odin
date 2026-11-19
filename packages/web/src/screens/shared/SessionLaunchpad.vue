@@ -24,12 +24,15 @@ import StatusWord from './StatusWord.vue'
 import { useQuickAnswer } from './useQuickAnswer'
 import { useResource, useServerEvents } from './useResource'
 import NewSessionForm from './NewSessionForm.vue'
+import StormSky from './StormSky.vue'
+import { useStormSignal } from './useStormSignal'
 
 const api = useApi()
 const route = useRoute()
 const projects = useProjects()
 const live = useSessions()
 const form = ref<InstanceType<typeof NewSessionForm> | null>(null)
+const sky = useStormSignal()
 const sessions = useResource<Session[]>(() => api.listSessions({ archived: false }))
 void sessions.load()
 
@@ -220,6 +223,7 @@ const title = (s: Session) =>
 
 <template>
   <div class="launchpad">
+    <StormSky :active="sky.active.value" :signal="sky.signal.value" />
     <IuEmpty
       v-if="empty"
       title="Your next project starts here"
@@ -231,6 +235,7 @@ const title = (s: Session) =>
         <NewSessionForm
           ref="form"
           visual
+          :stormy="sky.active.value"
           :project="typeof route.query.project === 'string' ? route.query.project : undefined"
           :autofocus="!!route.query.launch"
         />
@@ -405,6 +410,8 @@ const title = (s: Session) =>
 
 <style>
 .launchpad {
+  /* the sky is a fixed canvas behind the page: keep it inside Home's own layer */
+  isolation: isolate;
   width: 100%;
   max-width: 800px;
   box-sizing: border-box;
