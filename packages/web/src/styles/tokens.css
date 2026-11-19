@@ -112,6 +112,7 @@
   /* type */
   --iu-font-sans: 'IBM Plex Sans', system-ui, sans-serif;
   --iu-font-brand: 'Space Grotesk', var(--iu-font-sans);
+  --iu-font-serif: 'Fraunces', Georgia, serif; /* the one italic proverb line in an empty state; nowhere else */
   --iu-font-mono: 'IBM Plex Mono', monospace;
 
   /* type scale — UI text runs 10–14px in half-pixel steps; names are the px value
