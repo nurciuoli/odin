@@ -40,6 +40,7 @@ import type {
 import { useApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import { registerCommand } from '@/app/commands'
+import { keyLabel, registerShortcut } from '@/app/shortcuts'
 import { markSeen } from '@/app/seen'
 import { IuBadge } from '@/components/Badge'
 import { IuButton } from '@/components/Button'
@@ -58,6 +59,8 @@ import { handoffCard } from './handoff'
 import { CHAT_MIN, PREVIEW_MIN, detailsFit, setLayoutDemand } from '@/app/layout'
 import SessionSide from './SessionSide.vue'
 import SessionThread from './SessionThread.vue'
+import SessionTimeline from './SessionTimeline.vue'
+import { buildTimeline } from './timeline'
 import RewindPrompt from './RewindPrompt.vue'
 import { useCheckpoints } from './useCheckpoints'
 import type { CellRef } from './fileActivity'
@@ -480,6 +483,14 @@ function onAside(s: Session) {
 const withdraw: (() => void)[] = []
 onMounted(() => {
   withdraw.push(
+    registerShortcut({
+      id: 'session-timeline',
+      keys: TIMELINE_KEYS,
+      label: 'Show the session timeline',
+      group: 'Session',
+      whileTyping: true,
+      run: toggleTimeline,
+    }),
     registerCommand({
       id: 'session-toggle-files',
       label: 'Show files',
@@ -493,6 +504,13 @@ onMounted(() => {
       run: () => (sideOpen.value = !sideOpen.value),
     }),
     registerCommand({
+      id: 'session-timeline',
+      label: 'Show timeline',
+      icon: 'clock',
+      hint: keyLabel(TIMELINE_KEYS),
+      run: () => void nextTick(openTimeline),
+    }),
+    registerCommand({
       id: 'session-side-threads',
       label: 'Show side threads',
       icon: 'message',
@@ -501,6 +519,90 @@ onMounted(() => {
   )
 })
 onBeforeUnmount(() => withdraw.splice(0).forEach(off => off()))
+
+// ── timeline (⌥T) ──
+// Steps down the thread's gutter; moving through them scrolls the thread, ↵ stays, Esc returns to where you were.
+const timelineSteps = computed(() => buildTimeline(session.value?.transcript ?? []))
+const timelineOpen = ref(false)
+const timelineAt = ref(0)
+const mainEl = useTemplateRef<HTMLElement>('mainEl')
+let timelineBack: { scrollTop: number; focus: HTMLElement | null } | null = null
+const threadScroller = () => mainEl.value?.querySelector<HTMLElement>('[role="log"]') ?? null
+function turnEl(id: string) {
+  return [...(mainEl.value?.querySelectorAll<HTMLElement>('[data-turn]') ?? [])].find(
+    el => el.dataset.turn === id,
+  )
+}
+function peekStep(index: number) {
+  const step = timelineSteps.value[index]
+  const el = step && turnEl(step.id)
+  const sc = threadScroller()
+  if (!el || !sc) return
+  sc.scrollTop += el.getBoundingClientRect().top - sc.getBoundingClientRect().top - 24
+  mainEl.value?.querySelectorAll('.timeline-peek').forEach(e => e.classList.remove('timeline-peek'))
+  el.classList.add('timeline-peek')
+}
+function openTimeline() {
+  if (timelineSteps.value.length < 2) {
+    toast({ title: 'The timeline needs a second message', intent: 'info', duration: 2500 })
+    return
+  }
+  const focus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  timelineBack = { scrollTop: threadScroller()?.scrollTop ?? 0, focus }
+  // start on the step the reader is looking at: the last one that has scrolled past the top of the thread
+  const sc = threadScroller()
+  const top = sc ? sc.getBoundingClientRect().top + 48 : 0
+  let at = 0
+  timelineSteps.value.forEach((s, i) => {
+    const el = turnEl(s.id)
+    if (el && el.getBoundingClientRect().top <= top) at = i
+  })
+  timelineAt.value = at
+  timelineOpen.value = true
+}
+function closeTimeline(stay: boolean) {
+  if (!timelineOpen.value) return
+  timelineOpen.value = false
+  const back = timelineBack
+  timelineBack = null
+  const sc = threadScroller()
+  if (!stay && back && sc) sc.scrollTop = back.scrollTop
+  mainEl.value?.querySelectorAll('.timeline-peek').forEach(e => e.classList.remove('timeline-peek'))
+  if (stay) {
+    const el = turnEl(timelineSteps.value[timelineAt.value]?.id ?? '')
+    el?.classList.add('timeline-flash')
+    setTimeout(() => el?.classList.remove('timeline-flash'), 1200)
+  }
+  void nextTick(() => back?.focus?.focus({ preventScroll: true }))
+}
+const toggleTimeline = () => (timelineOpen.value ? closeTimeline(false) : openTimeline())
+watch(timelineAt, i => timelineOpen.value && peekStep(i))
+async function copyStep(
+  what: 'prompt' | 'reply',
+  step: { n: number; prompt: string; reply: string },
+) {
+  const text = what === 'prompt' ? step.prompt : step.reply
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+    toast({
+      title: `Copied ${what === 'prompt' ? 'your message' : "Claude's reply"} from step ${step.n}`,
+      intent: 'info',
+      duration: 1800,
+    })
+  } catch {
+    toast({ title: 'Could not copy', intent: 'danger', duration: 2500 })
+  }
+}
+// leaving the session, or the thread changing under it, ends the timeline
+watch(
+  () => props.id,
+  () => {
+    timelineOpen.value = false
+    timelineBack = null
+  },
+)
+const TIMELINE_KEYS = 'Alt+T'
 
 // ── rewind ──
 const rewindOpen = ref(false)
@@ -680,7 +782,7 @@ function onDeleted() {
         </SessionHeader>
 
         <div class="session-screen__body">
-          <div class="session-screen__main">
+          <div ref="mainEl" class="session-screen__main">
             <IuCallout
               v-if="recordError"
               intent="danger"
@@ -712,6 +814,14 @@ function onDeleted() {
               @open-task="openTask"
               @open-file="openFile"
               @open-cell="openCell"
+            />
+            <SessionTimeline
+              v-if="timelineOpen"
+              v-model="timelineAt"
+              :steps="timelineSteps"
+              @commit="closeTimeline(true)"
+              @cancel="closeTimeline(false)"
+              @copy="copyStep"
             />
             <div class="session-screen__dock">
               <NativeControls
@@ -911,6 +1021,8 @@ html.is-desktop-shell .session-screen--docked .session-header > .iu-header {
   overflow: hidden;
 }
 .session-screen__main {
+  position: relative;
+  container: session-main / inline-size;
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -938,5 +1050,25 @@ html.is-desktop-shell .session-screen--docked .session-header > .iu-header {
   /* an open prompt scrolls inside the composer's slot; the dock itself must not clip, or the composer's slash
      menu, which floats above it, disappears */
   min-height: 0;
+}
+/* the thread message the timeline is on (peek) or just landed on (flash) */
+.timeline-peek,
+.timeline-flash {
+  outline: 1px solid var(--iu-info-border);
+  outline-offset: 6px;
+  border-radius: var(--iu-radius-lg);
+}
+.timeline-flash {
+  animation: timeline-flash 1.2s var(--iu-ease) forwards;
+}
+@keyframes timeline-flash {
+  to {
+    outline-color: transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .timeline-flash {
+    animation: none;
+  }
 }
 </style>
