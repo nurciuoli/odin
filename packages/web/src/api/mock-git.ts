@@ -484,7 +484,20 @@ export function mockGit(options: {
       return ok({ sha: made.sha, status: status(t) })
     },
     gitLog: (t, opts = {}) => {
-      const all = co(t).log
+      const c = co(t)
+      const incoming = () =>
+        Array.from({ length: c.behind }, (_, i) =>
+          commit('fix(core): close the SSE stream when a client aborts', 'rick', (40 + i) * MIN, {
+            additions: 9,
+            deletions: 2,
+          }),
+        )
+      const all =
+        opts.ref === 'HEAD..@{u}'
+          ? incoming()
+          : opts.ref === '@{u}..HEAD'
+            ? c.log.slice(0, c.ahead)
+            : c.log
       const skip = opts.skip ?? 0
       const limit = opts.limit ?? 50
       return ok({ commits: all.slice(skip, skip + limit), more: all.length > skip + limit })

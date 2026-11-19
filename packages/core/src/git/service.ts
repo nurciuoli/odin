@@ -31,6 +31,12 @@ export function cleanRelPath(p: unknown): string {
 }
 
 const SHA_RE = /^[0-9a-f]{4,40}$/i;
+const oneRef = (r: string) => r === "HEAD" || r === "@{u}" || SHA_RE.test(r) || validBranchName(r);
+/** A branch, a sha, HEAD, `@{u}`, or a range of two of them (`HEAD..@{u}` lists incoming commits). */
+function validLogRef(ref: string): boolean {
+  const parts = ref.split("..");
+  return parts.length <= 2 && parts.every((p) => p.length > 0 && oneRef(p));
+}
 const STASH_RE = /^stash@\{\d{1,4}\}$/;
 
 export function createGitService(deps: Deps, services: Services): GitService {
@@ -195,7 +201,7 @@ export function createGitService(deps: Deps, services: Services): GitService {
       const skip = Math.max(Number(opts.skip) || 0, 0);
       const args = ["log", `--format=${LOG_FORMAT}`, "--numstat", `-n${limit + 1}`, `--skip=${skip}`];
       if (opts.ref) {
-        if (!validBranchName(opts.ref) && !SHA_RE.test(opts.ref)) throw new HttpError(400, "invalid ref");
+        if (!validLogRef(opts.ref)) throw new HttpError(400, "invalid ref");
         args.push(opts.ref);
       }
       if (opts.path) args.push("--follow", "--", cleanRelPath(opts.path));

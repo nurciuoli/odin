@@ -1200,7 +1200,7 @@ The main routes; each module's `routes.ts` has the full list. All JSON. Errors: 
 | GET `…/git/diff?path=&staged=1` | `GitFileDiff` |
 | POST `…/git/stage`, `…/git/unstage`, `…/git/discard` (`GitPatchRequest`) | `GitStatus` |
 | POST `…/git/commit` (`GitCommitRequest`) | `GitCommitResult` |
-| GET `…/git/log?path=&ref=&limit=&skip=` · `…/git/show?sha=&path=` · `…/git/blame?path=&rev=` | `GitLog` · `GitCommitDetail` · `GitBlame` |
+| GET `…/git/log?path=&ref=&limit=&skip=` (`ref` may be a range such as `HEAD..@{u}`) · `…/git/show?sha=&path=` · `…/git/blame?path=&rev=` | `GitLog` · `GitCommitDetail` · `GitBlame` |
 | GET `…/git/branches` · POST `…/git/checkout` (`GitCheckoutRequest`) | `GitBranches` · `GitCheckoutResult` |
 | POST `…/git/fetch`, `…/git/pull` (`GitPullRequest`), `…/git/push` (`GitPushRequest`) | `GitSyncResult` |
 | GET `…/git/stashes` · POST `…/git/stash` (`GitStashRequest`) · POST `…/git/stash/{apply,pop,drop}` (`{ ref }`) | `GitStash[]` · `GitStatus` |

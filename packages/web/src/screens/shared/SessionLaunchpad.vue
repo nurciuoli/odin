@@ -240,6 +240,7 @@ const title = (s: Session) =>
           visual
           :stormy="sky.active.value"
           :project="typeof route.query.project === 'string' ? route.query.project : undefined"
+          :branch="typeof route.query.branch === 'string' ? route.query.branch : undefined"
           :autofocus="!!route.query.launch"
         />
       </section>

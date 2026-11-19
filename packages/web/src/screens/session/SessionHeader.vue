@@ -24,6 +24,7 @@ import { statusIntent } from '@/styles/status'
 import { needYouCount, SESSION_DISPLAY } from '@/screens/shared/format'
 import { useQuickAnswer } from '@/screens/shared/useQuickAnswer'
 import SaveToLibraryModal from '@/screens/library/SaveToLibraryModal.vue'
+import BranchChip from '@/screens/git/BranchChip.vue'
 import ForkModal from './ForkModal.vue'
 import { openHandoff } from './handoff'
 import SessionStatusBand from './SessionStatusBand.vue'
@@ -38,6 +39,8 @@ const emit = defineEmits<{
   updated: [session: Session]
   forked: [session: Session]
   deleted: []
+  /** The branch switcher's "Commit first": show the Changes tab. */
+  changes: []
 }>()
 
 const api = useApi()
@@ -299,6 +302,7 @@ async function confirmDelete() {
           >
           <IuBadge v-if="session.pinned" variant="tag" size="xs">Pinned</IuBadge>
           <IuBadge v-if="session.archived" variant="tag" size="xs">Archived</IuBadge>
+          <BranchChip :session="session" @changes="emit('changes')" />
         </div>
       </template>
       <template #actions>

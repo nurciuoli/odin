@@ -196,6 +196,11 @@ describe("git service", () => {
     writeFileSync(join(dir, "mine.txt"), "m\n");
     await git.commit(S, { message: "mine", all: true });
     await git.fetch(S);
+    const incoming = await git.log(S, { ref: "HEAD..@{u}" });
+    assert.deepEqual(incoming.commits.map((c) => c.subject), ["z"]);
+    const outgoing = await git.log(S, { ref: "@{u}..HEAD" });
+    assert.deepEqual(outgoing.commits.map((c) => c.subject), ["mine"]);
+    assert.equal(await code(git.log(S, { ref: "HEAD...--all" })), "400");
     assert.equal(await code(git.pull(S, { strategy: "ff-only" })), "409 diverged");
     const rebased = await git.pull(S, { strategy: "rebase" });
     assert.equal(rebased.status.ahead, 1);
