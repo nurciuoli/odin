@@ -19,6 +19,7 @@ import type { IngestResponse } from "@odin/shared/ingest";
 import type { Config } from "./config.ts";
 import type { EventBus } from "./events.ts";
 import type { Router } from "./http/router.ts";
+import type { AgentContextService } from "./context/agent-context.ts";
 import type { Harnesses, HostTool, McpServerStart } from "./harness/types.ts";
 
 export interface Deps {
@@ -332,6 +333,7 @@ export interface Services {
   launch: LaunchService;
   artifacts: ArtifactsService;
   library: LibraryService;
+  agentContext: AgentContextService;
   sync: SyncService;
   ingest: IngestService;
   metrics: MetricsService;
@@ -341,7 +343,7 @@ export interface Services {
 }
 
 export type ServiceName = keyof Services;
-export const SERVICE_NAMES: ServiceName[] = ["checkpoints", "notebooks", "files", "projects", "sessions", "launch", "artifacts", "library", "sync", "ingest", "metrics", "settings", "secrets", "mcpOAuth"];
+export const SERVICE_NAMES: ServiceName[] = ["checkpoints", "notebooks", "files", "projects", "sessions", "launch", "artifacts", "library", "agentContext", "sync", "ingest", "metrics", "settings", "secrets", "mcpOAuth"];
 
 // ── checkpoints (src/checkpoints) ──────────────────────────────────────────
 

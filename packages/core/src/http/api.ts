@@ -1,6 +1,7 @@
 // Every /api route. Modules register their own here, in a fixed order; this file only adds the ones that span modules.
 import { Router } from "./router.ts";
 import type { Deps, Services } from "../services.ts";
+import { registerAgentContextRoutes } from "../context/routes.ts";
 import { registerProjectsRoutes } from "../projects/routes.ts";
 import { registerSessionsRoutes } from "../sessions/routes.ts";
 import { registerCheckpointsRoutes } from "../checkpoints/routes.ts";
@@ -33,6 +34,7 @@ export function apiRouter(deps: Deps, services: Services): Router {
   }));
   for (const register of [
     registerProjectsRoutes,
+    registerAgentContextRoutes,
     registerSessionsRoutes,
     registerCheckpointsRoutes,
     registerFilesRoutes,

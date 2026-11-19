@@ -184,6 +184,14 @@ export function createHttpApi(options: HttpApiOptions = {}): Api {
     deleteAsset: (kind, id) => send('DELETE', asset(kind, id)),
     setAssetEnabled: (kind, id, enabled) => send('PATCH', asset(kind, id), { enabled }),
     rescanLibrary: () => send('POST', '/api/library/rescan'),
+    getAgentContext: name => get(`${project(name)}/agent-context`),
+    getAgentContextFiles: (name, kind, id) =>
+      get(`${project(name)}/agent-context/${seg(kind)}/${seg(id)}`),
+    setAgentContextEnabled: (name, req) => send('PATCH', `${project(name)}/agent-context`, req),
+    writeAgentContext: (name, kind, id, files) =>
+      send('PUT', `${project(name)}/agent-context/${seg(kind)}/${seg(id)}`, { files }),
+    deleteAgentContext: (name, kind, id) =>
+      send('DELETE', `${project(name)}/agent-context/${seg(kind)}/${seg(id)}`),
     listInstallations: name => get(`${project(name)}/library`),
     install: (name, req) => send('POST', `${project(name)}/library`, req),
     previewPluginImport: req => send('POST', '/api/library/import', req),

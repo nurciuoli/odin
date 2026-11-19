@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// A project's resources: library installs (with drift), its subagents, and its docs.
+// A project's resources: agent context, library installs (with drift), its subagents, and its docs.
 import { computed } from 'vue'
 import { hasDesktop, openPath } from '@/app/desktop'
 import { IuBadge } from '@/components/Badge'
@@ -7,6 +7,7 @@ import { IuButton } from '@/components/Button'
 import { IuEmpty } from '@/components/States'
 import { useToast } from '@/components/Toast'
 import { useProject } from '../useProject'
+import ProjectContextPanel from './ProjectContextPanel.vue'
 import ProjectLibraryScreen from './ProjectLibraryScreen.vue'
 
 const { detail } = useProject()
@@ -31,6 +32,11 @@ async function open(file: string) {
 
 <template>
   <div class="resources">
+    <section aria-labelledby="resources-context" class="resources__section">
+      <h2 id="resources-context" class="resources__heading">Agent context</h2>
+      <ProjectContextPanel />
+    </section>
+
     <section aria-labelledby="resources-library" class="resources__section">
       <h2 id="resources-library" class="resources__heading">Library</h2>
       <ProjectLibraryScreen />

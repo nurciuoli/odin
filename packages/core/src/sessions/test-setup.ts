@@ -13,6 +13,7 @@ import type { Harnesses } from "../harness/types.ts";
 import { Router } from "../http/router.ts";
 import { SseHub } from "../http/sse.ts";
 import { HttpError, send, sendError } from "../http/util.ts";
+import { createAgentContextService } from "../context/agent-context.ts";
 import { createLaunchService } from "../launch/service.ts";
 import { createLibraryService } from "../library/service.ts";
 import { DEFAULT_APP_SETTINGS } from "../settings/service.ts";
@@ -88,6 +89,7 @@ export function setup(o: SetupOptions = {}) {
   services.artifacts = { forSession: () => [], hostTools: () => [], get: () => null, html: () => null } as unknown as Services["artifacts"];
   services.library = createLibraryService(deps, services);
   services.launch = createLaunchService(deps, services);
+  services.agentContext = createAgentContextService(deps, services);
   services.notebooks = createNotebooksService(deps, services);
   services.checkpoints = o.checkpoints ? createCheckpointsService(deps, services) : noopCheckpoints;
   services.sessions = createSessionsService(deps, services, o);

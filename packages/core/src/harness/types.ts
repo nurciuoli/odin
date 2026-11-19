@@ -68,6 +68,17 @@ export interface StartOptions {
   /** Subagents available for delegation. The main thread always uses the native default agent. */
   agents?: Record<string, AgentSpec>;
   mcpServers?: Record<string, McpServerStart>;
+  /**
+   * Skills and settings profiles for this session, already merged (project wins, disabled globals omitted).
+   * Set by the session service. Harness adapters that cannot read the repo themselves consume this instead of
+   * installation rows.
+   */
+  agentContext?: {
+    skills: { name: string; description: string; path: string; files?: import("@odin/shared/api").AssetFiles }[];
+    settings: import("@odin/shared/api").SettingsProfileSpec[];
+  };
+  /** A Claude Code plugin directory with the skills, agents and hooks Claude would not load from the project. */
+  claudePluginPath?: string;
   hostTools?: HostTool[];
   /** Extra directories the session may access. */
   additionalDirectories?: string[];

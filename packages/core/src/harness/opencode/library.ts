@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { NativePermissionRule, SettingsProfileSpec } from "@odin/shared/api";
 import { filesHash } from "../../hash.ts";
@@ -21,7 +21,27 @@ export interface OpenCodeLibrary {
 export function adaptOpenCodeLibrary(services: Services, home: string, project: string, options: StartOptions): OpenCodeLibrary {
   const out: OpenCodeLibrary = { instructions: options.instructions ?? "", agents: [], skills: [], mcpServers: { ...options.mcpServers } };
   const instructions: string[] = [out.instructions];
-  for (const installation of services.library.installations(project)) {
+  if (options.agentContext) {
+    const nativeTools: Record<string, string> = { Read: "read", Grep: "grep", Glob: "glob", Bash: "shell", WebFetch: "webfetch", WebSearch: "websearch", Agent: "subagent", Task: "subagent" };
+    for (const [id, spec] of Object.entries(options.agents ?? {})) {
+      if (spec.model) continue;
+      if (spec.tools?.some((tool) => !nativeTools[tool])) continue;
+      const permissionRules = spec.tools?.length
+        ? [{ action: "*", resource: "*", effect: "deny" as const }, ...spec.tools.map((tool) => ({ action: nativeTools[tool]!, resource: "*", effect: "allow" as const }))]
+        : undefined;
+      out.agents.push({ name: id, description: spec.description, prompt: spec.prompt, permissionRules });
+    }
+    for (const skill of options.agentContext.skills) {
+      const raw = skill.files?.["SKILL.md"] ?? readFileSync(skill.path, "utf8");
+      const parsed = parseFrontmatter(raw);
+      out.skills.push({ name: skill.name, description: skill.description || String(parsed.data?.description ?? skill.name), path: skill.path, content: parsed.body });
+    }
+    for (const spec of options.agentContext.settings) {
+      if (spec.opencode?.permissionRules && !out.permissionRules) out.permissionRules = spec.opencode.permissionRules;
+      if (spec.opencode?.instructions) instructions.push(spec.opencode.instructions);
+    }
+  }
+  for (const installation of options.agentContext ? [] : services.library.installations(project)) {
     const { kind, id } = installation;
     const files = services.library.projectFiles(project, kind, id);
     if (!files) throw new Error(`Installed ${kind} ${id} is missing; update or forget it before starting OpenCode`);

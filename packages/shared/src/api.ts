@@ -370,6 +370,61 @@ export interface ProjectAgent {
   error: string | null;
 }
 
+/** Kinds that make up agent context: global library assets plus files in the project. */
+export const AGENT_CONTEXT_KINDS = ["instruction", "skill", "agent", "mcp", "settings"] as const;
+export type AgentContextKind = (typeof AGENT_CONTEXT_KINDS)[number];
+
+/** One skill, MCP server, subagent, instruction or settings profile in a project's agent context. */
+export interface AgentContextItem {
+  kind: AgentContextKind;
+  id: string;
+  name: string;
+  description: string;
+  /** `library`: a global library asset. `project`: a file in the repo. */
+  origin: "library" | "project";
+  /** Repo-relative path for a project file, otherwise null. */
+  path: string | null;
+  /** A project file with the same kind and id is what sessions use. */
+  overridden: boolean;
+  /**
+   * Library items are false when this project has turned them off. Project items stay true;
+   * delete the file to drop them.
+   */
+  enabled: boolean;
+  /** False when the library asset itself is switched off. The project switch cannot turn that back on. */
+  libraryEnabled: boolean;
+  error: string | null;
+}
+
+/** GET /api/projects/:name/agent-context */
+export interface ProjectAgentContext {
+  /** Global library items, including ones this project has turned off or that a project file overrides. */
+  global: AgentContextItem[];
+  /** Files detected in the project. */
+  project: AgentContextItem[];
+}
+
+/** PATCH /api/projects/:name/agent-context. Turns a global item on or off for this project only. */
+export interface SetAgentContextEnabledRequest {
+  kind: AgentContextKind;
+  id: string;
+  enabled: boolean;
+}
+
+/** PUT /api/projects/:name/agent-context/:kind/:id. Same file map as a library save. */
+export interface WriteAgentContextRequest {
+  files: AssetFiles;
+}
+
+/** GET /api/projects/:name/agent-context/:kind/:id. The files to edit. */
+export interface AgentContextFiles {
+  /** Repo-relative path of the item. */
+  path: string;
+  /** The file the editor should show. */
+  entry: string;
+  files: AssetFiles;
+}
+
 // ── Sessions ────────────────────────────────────────────────────────────────
 
 /** Harness ids. A session keeps the id it started with. */

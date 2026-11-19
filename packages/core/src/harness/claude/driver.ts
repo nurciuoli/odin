@@ -299,6 +299,7 @@ export function createClaudeHarness(options: ClaudeHarnessOptions = {}): Harness
       ...(opts.instructions ? { systemPrompt: { type: "preset" as const, preset: "claude_code" as const, append: opts.instructions } } : {}),
       ...(agents ? { agents } : {}),
       ...(Object.keys(mcpServers).length ? { mcpServers } : {}),
+      ...(opts.claudePluginPath ? { plugins: [{ type: "local" as const, path: opts.claudePluginPath }] } : {}),
       ...(opts.additionalDirectories?.length ? { additionalDirectories: opts.additionalDirectories } : {}),
       ...(opts.title ? { title: opts.title } : {}),
       env: process.env,

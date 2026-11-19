@@ -258,9 +258,56 @@ function matches(s: Session, f: SessionFilter, firstPrompt: string): boolean {
   return true
 }
 
+function seedAgentContext(project: string): import('@odin/shared/api').ProjectAgentContext {
+  if (project !== 'odin') return { global: [], project: [] }
+  return {
+    global: [
+      {
+        kind: 'skill',
+        id: 'notes',
+        name: 'Notes',
+        description: 'Take notes.',
+        origin: 'library',
+        path: null,
+        overridden: false,
+        enabled: true,
+        libraryEnabled: true,
+        error: null,
+      },
+    ],
+    project: [
+      {
+        kind: 'skill',
+        id: 'ship',
+        name: 'Ship',
+        description: 'Ship the project.',
+        origin: 'project',
+        path: '.claude/skills/ship',
+        overridden: false,
+        enabled: true,
+        libraryEnabled: true,
+        error: null,
+      },
+    ],
+  }
+}
+
 export function createMockApi(options: MockApiOptions = {}): MockApi {
   const db = options.fixtures ?? createFixtures()
   const latency = options.latency ?? 0
+  const agentContexts = new Map<string, import('@odin/shared/api').ProjectAgentContext>()
+  const agentFiles = new Map<
+    string,
+    { entry: string; files: import('@odin/shared/api').AssetFiles }
+  >()
+  const agentContextOf = (project: string) => {
+    let view = agentContexts.get(project)
+    if (!view) {
+      view = seedAgentContext(project)
+      agentContexts.set(project, view)
+    }
+    return view
+  }
   const replyDelay =
     options.replyDelayMs !== undefined ? options.replyDelayMs : latency > 0 ? 600 : null
   const listeners = new Set<(e: ServerEvent) => void>()
@@ -2023,6 +2070,95 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
       respond(() => {
         oauthServer(id)
         signedIn.delete(id)
+      }),
+    getAgentContext: project => respond(() => (projectOf(project), agentContextOf(project))),
+    getAgentContextFiles: (project, kind, id) =>
+      respond(() => {
+        projectOf(project)
+        const view = agentContextOf(project)
+        const item = [...view.project, ...view.global].find(
+          row => row.kind === kind && row.id === id,
+        )
+        if (!item) throw new ApiRequestError(404, `no ${kind} ${id} in this project`)
+        const entry =
+          kind === 'skill'
+            ? 'SKILL.md'
+            : kind === 'agent'
+              ? `${id}.md`
+              : kind === 'mcp' || kind === 'settings'
+                ? `${id}.json`
+                : id === 'claude-md'
+                  ? 'CLAUDE.md'
+                  : 'AGENTS.md'
+        const stored = agentFiles.get(`${project}/${kind}/${id}`)
+        return {
+          path: item.path ?? entry,
+          entry: stored?.entry ?? entry,
+          files: stored?.files ?? { [entry]: item.description || '' },
+        }
+      }),
+    setAgentContextEnabled: (project, req) =>
+      respond(() => {
+        projectOf(project)
+        const view = agentContextOf(project)
+        const item = view.global.find(row => row.kind === req.kind && row.id === req.id)
+        if (!item) throw new ApiRequestError(404, `unknown library ${req.kind} ${req.id}`)
+        if (req.enabled && !item.libraryEnabled)
+          throw new ApiRequestError(409, `${req.kind} ${req.id} is off in the library`)
+        item.enabled = req.enabled
+        return view
+      }),
+    writeAgentContext: (project, kind, id, files) =>
+      respond(() => {
+        projectOf(project)
+        const view = agentContextOf(project)
+        const entry = Object.keys(files)[0] ?? 'file'
+        agentFiles.set(`${project}/${kind}/${id}`, { entry, files })
+        if (!view.project.some(row => row.kind === kind && row.id === id)) {
+          view.project.push({
+            kind,
+            id,
+            name: id,
+            description: '',
+            origin: 'project',
+            path:
+              kind === 'skill'
+                ? `.claude/skills/${id}`
+                : kind === 'agent'
+                  ? `.claude/agents/${id}.md`
+                  : kind === 'mcp'
+                    ? '.mcp.json'
+                    : kind === 'settings'
+                      ? id === 'claude-settings-local'
+                        ? '.claude/settings.local.json'
+                        : id === 'claude-settings'
+                          ? '.claude/settings.json'
+                          : `.odin/settings/${id}.json`
+                      : id === 'claude-md'
+                        ? 'CLAUDE.md'
+                        : 'AGENTS.md',
+            overridden: false,
+            enabled: true,
+            libraryEnabled: true,
+            error: null,
+          })
+        }
+        const global = view.global.find(row => row.kind === kind && row.id === id)
+        if (global) global.overridden = true
+        return view
+      }),
+    deleteAgentContext: (project, kind, id) =>
+      respond(() => {
+        projectOf(project)
+        const view = agentContextOf(project)
+        const next = view.project.filter(row => !(row.kind === kind && row.id === id))
+        if (next.length === view.project.length)
+          throw new ApiRequestError(404, `no ${kind} ${id} in this project`)
+        view.project = next
+        agentFiles.delete(`${project}/${kind}/${id}`)
+        const global = view.global.find(row => row.kind === kind && row.id === id)
+        if (global) global.overridden = false
+        return view
       }),
     listInstallations: project =>
       respond(

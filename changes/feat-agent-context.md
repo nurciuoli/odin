@@ -1,0 +1,2 @@
+- Sessions pick up skills, MCP servers, subagents, instructions and settings from the global library and from the project directory. A file in the project wins when both define the same name, and a project can turn a global item off.
+- The project Resources page lists that context and can add, edit or remove the project's own files.

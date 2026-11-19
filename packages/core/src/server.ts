@@ -19,6 +19,7 @@ import { createOpenCodeHarness } from "./harness/opencode/driver.ts";
 import { createOpenCodeRuntime } from "./harness/opencode/runtime.ts";
 import { adaptOpenCodeLibrary } from "./harness/opencode/library.ts";
 import { createAntigravityHarness } from "./harness/antigravity/driver.ts";
+import { createAgentContextService } from "./context/agent-context.ts";
 import { adaptLibrary } from "./harness/codex/library.ts";
 import { demoScript, fakeHarness } from "./harness/fake.ts";
 import { createProjectsService } from "./projects/service.ts";
@@ -103,6 +104,7 @@ export function createApp(options: AppOptions): App {
   services.secrets = createSecretsService(deps, services);
   services.mcpOAuth = createMcpOAuthService(deps, services);
   services.launch = createLaunchService(deps, services);
+  services.agentContext = createAgentContextService(deps, services);
   services.ingest = createIngestService(deps, services);
   services.metrics = createMetricsService(deps, services);
   services.checkpoints = createCheckpointsService(deps, services);

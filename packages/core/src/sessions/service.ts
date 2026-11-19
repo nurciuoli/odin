@@ -406,13 +406,12 @@ export function createSessionsService(deps: Deps, services: Services, options: S
     return abs.startsWith(root) && branch ? { kind: "worktree", path: abs, branch } : { kind: "checkout" };
   }
 
-  function applyInstructions(s: Session, opts: StartOptions): void {
+  async function applyInstructions(s: Session, opts: StartOptions): Promise<void> {
     opts.runtimeOptions = s.runtimeOptions;
     if (s.projects.length > 1 && harnessFor(s).capabilities?.additionalDirectories === false) bad(`${s.harness} does not support additional project directories`);
     if (opts.prompt?.attachments?.length && harnessFor(s).capabilities?.attachments === false) bad(`${s.harness} does not support attachments`);
-    const global = services.library.get("instruction", "global");
-    if (global?.error) throw new HttpError(400, "Global AGENTS.md has errors: " + global.error);
-    const parts = [global?.enabled === false ? "" : (services.library.files("instruction", "global")?.["AGENTS.md"] ?? "")];
+    const context = await services.agentContext.resolve(s.project, opts.cwd, s.harness);
+    const parts = [context.libraryInstructions];
     const additional = s.projects.filter(name => name !== s.project).map(name => {
       const project = services.projects.get(name);
       if (!project || project.missing) throw new HttpError(409, `project ${name} is unavailable`);
@@ -427,11 +426,9 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         if (instructions) parts.push(`Instructions for ${p.name} (${p.path}):\n${instructions}`);
       }
     }
-    // Codex reads project AGENTS.md natively. Claude keeps native CLAUDE.md and receives AGENTS.md as well.
-    if (s.harness === "claude") {
-      const project = readRegularFile(resolveInside(opts.cwd, "AGENTS.md"));
-      if (project) parts.push(project);
-    }
+    // Codex reads project AGENTS.md natively. The others receive it here, and Claude also keeps CLAUDE.md.
+    if (s.harness !== "codex" && s.harness !== "codex-wsl" && context.projectAgentsMd) parts.push(context.projectAgentsMd);
+    if (context.skillNote) parts.push(context.skillNote);
     parts.push(
       "Odin analysis instructions: use notebook_list, notebook_open (existing .ipynb) or notebook_create (new .ipynb at a project-relative path) to get a notebook backed by an ordinary project file, " +
       "notebook_execute to run code as persistent notebook cells, and notebook_status/notebook_wait/notebook_interrupt for long runs. " +
@@ -450,6 +447,11 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       "If post_artifact is unavailable, explain that the preview cannot be displayed in this session and provide the saved file path instead."
     );
     opts.instructions = parts.filter(Boolean).join("\n\n");
+    if (Object.keys(context.agents).length) opts.agents = context.agents;
+    const mcpServers = { ...context.mcpServers, ...opts.mcpServers };
+    if (Object.keys(mcpServers).length) opts.mcpServers = mcpServers;
+    opts.agentContext = { skills: context.skills, settings: context.settings };
+    if (context.claudePluginPath) opts.claudePluginPath = context.claudePluginPath;
   }
 
   function hostTools(id: string) {
@@ -719,10 +721,10 @@ export function createSessionsService(deps: Deps, services: Services, options: S
     return l;
   }
 
-  function startHandle(id: string, harness: Harness, opts: StartOptions): Live {
+  async function startHandle(id: string, harness: Harness, opts: StartOptions): Promise<Live> {
     let handle: SessionHandle;
     try {
-      applyInstructions(mustGet(id), opts);
+      await applyInstructions(mustGet(id), opts);
       handle = harness.start(opts);
     } catch (err) {
       const message = errorMessage(err);
@@ -770,7 +772,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
           opts.effort = s.effort;
           if (s.permissionMode) opts.permissionMode = s.permissionMode;
           write(id, { state: "running", waitingFor: null, error: null, endedAt: null });
-          startHandle(id, harnessFor(s), opts);
+          await startHandle(id, harnessFor(s), opts);
           emitUpdated(mustGet(id));
         }
         if (repause) outbox.pause(id);
@@ -1114,7 +1116,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       if (plan.permissionMode) opts.permissionMode = plan.permissionMode;
       if (Object.keys(plan.mcpServers).length) opts.mcpServers = plan.mcpServers;
       if (plan.prompt) await services.checkpoints.capture(id, "turn.prepare", null);
-      startHandle(id, harness, opts);
+      await startHandle(id, harness, opts);
       return mustGet(id);
     },
 
@@ -1370,7 +1372,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         if (model) opts.model = model;
         opts.effort = effort;
         if (permissionMode) opts.permissionMode = permissionMode;
-        startHandle(newId, harness, opts);
+        await startHandle(newId, harness, opts);
       } else if (title !== parent.title) {
         try {
           await harness.rename(newId, title, cwd);
@@ -1440,7 +1442,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       if (model) opts.model = model;
       if (permissionMode) opts.permissionMode = permissionMode;
       if (mcpServers && Object.keys(mcpServers).length) opts.mcpServers = mcpServers;
-      startHandle(newId, target, opts);
+      await startHandle(newId, target, opts);
       if (req.endSource !== false && mustGet(newId).state !== "failed") {
         try {
           await service.end(id);

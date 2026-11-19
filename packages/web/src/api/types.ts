@@ -17,6 +17,8 @@ import type {
   FileTrashEntry,
   ProjectFileMap,
   ForkSessionRequest,
+  AgentContextFiles,
+  AgentContextKind,
   Installation,
   InstallRequest,
   InstallResult,
@@ -30,6 +32,7 @@ import type {
   ModelInfo,
   PermissionAnswer,
   ProjectActivity,
+  ProjectAgentContext,
   ProjectBranch,
   ProjectDetail,
   ProjectFolders,
@@ -41,6 +44,7 @@ import type {
   SessionDetail,
   SessionFileListing,
   SessionFilter,
+  SetAgentContextEnabledRequest,
   SessionTextFile,
   ShellRunResult,
   ReadinessResponse,
@@ -210,6 +214,27 @@ export interface Api {
   /** Switch a library asset on or off without deleting it. */
   setAssetEnabled(kind: AssetKind, id: string, enabled: boolean): Promise<LibraryAsset>
   rescanLibrary(): Promise<void>
+  getAgentContext(project: string): Promise<ProjectAgentContext>
+  getAgentContextFiles(
+    project: string,
+    kind: AgentContextKind,
+    id: string,
+  ): Promise<AgentContextFiles>
+  setAgentContextEnabled(
+    project: string,
+    req: SetAgentContextEnabledRequest,
+  ): Promise<ProjectAgentContext>
+  writeAgentContext(
+    project: string,
+    kind: AgentContextKind,
+    id: string,
+    files: AssetFiles,
+  ): Promise<ProjectAgentContext>
+  deleteAgentContext(
+    project: string,
+    kind: AgentContextKind,
+    id: string,
+  ): Promise<ProjectAgentContext>
   listInstallations(project: string): Promise<Installation[]>
   install(project: string, req: InstallRequest): Promise<InstallResult>
   /** Reads a Claude Code plugin from a git address or local folder; writes nothing. */

@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import type { DatabaseSync } from "node:sqlite";
 import type { ModelInfo, PermissionAnswer, PermissionMode, UserMessage } from "@odin/shared/api";
 import type { HarnessEvent, SlashCommand, TranscriptEntry, TaskActivity } from "@odin/shared/harness";
+import { grokRules } from "../grok/map.ts";
 import type { Harness, HarnessSessionInfo, SessionHandle, StartOptions } from "../types.ts";
 import { startHostBridge, type HostBridge } from "./bridge.ts";
 import { defaultHistoryRoot, listSessions, readMessages, sessionInfo } from "./history.ts";
@@ -50,6 +51,12 @@ export interface AntigravityOptions {
 }
 
 const HARNESS_ID = "antigravity";
+
+function withRules<T extends Record<string, unknown>>(body: T, opts: StartOptions): T {
+  const rules = grokRules(opts.instructions, opts.agents);
+  if (!rules) return body;
+  return { ...body, _meta: { ...((body._meta as Record<string, unknown> | undefined) ?? {}), rules } };
+}
 
 export function createAntigravityHarness(options: AntigravityOptions): Harness {
   const historyRoot = options.historyRoot ?? defaultHistoryRoot();
@@ -330,15 +337,19 @@ export function createAntigravityHarness(options: AntigravityOptions): Harness {
 
         if (opts.resume) {
           native = nativeOf(opts.resume);
-          await rpc.request("session/load", { sessionId: native, cwd: opts.cwd, mcpServers: servers }, TURN_TIMEOUT_MS);
+          await rpc.request(
+            "session/load",
+            withRules({ sessionId: native, cwd: opts.cwd, mcpServers: servers }, opts),
+            TURN_TIMEOUT_MS,
+          );
         } else {
           const created = await rpc.request(
             "session/new",
-            {
+            withRules({
               cwd: opts.cwd,
               mcpServers: servers,
               additionalDirectories: opts.additionalDirectories ?? [],
-            },
+            }, opts),
             TURN_TIMEOUT_MS,
           );
           native = typeof created.sessionId === "string" ? created.sessionId : randomUUID();

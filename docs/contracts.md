@@ -658,14 +658,42 @@ the library; the native default agent can delegate to them.
 - Title: explicit title ?? first message line (up to 60 characters).
 - First-message substitutions remain supported for API callers: project, branch and caller
   variables. There is no template or variable-picker UI.
-- Instructions: `instructions/global/AGENTS.md` in the library applies to every Odin start, resume and fork
-  that opens a handle. Other instruction assets apply when installed in a project. Claude receives the project
-  workspace's root AGENTS.md appended to its native default system prompt, while continuing to load CLAUDE.md
-  and native user/project/local settings. Codex receives global instructions and reads project AGENTS.md natively.
-  Existing project instruction files are never rewritten during launch. Global instruction errors fail launch.
+- Instructions and the rest of agent context: see [Agent context](#agent-context). Global instruction errors
+  fail launch. Launch does not rewrite project files.
 - New records have null agent, agentVersion and templateId; historical/imported attribution remains readable
   for history/metrics. `LaunchPlan` carries no primary-agent/template fields. `StartOptions.agents` means
   available subagents only; `StartOptions.instructions` augments the native default agent.
+
+## Agent context
+
+A session's skills, MCP servers, subagents, instructions and settings are the **global** library plus what the
+**project** already has on disk. Global items apply to every start, resume, fork and handoff unless the library
+asset is switched off or this project has turned that item off. A project file with the same kind and id wins.
+Launch reads the session's working directory (the checkout or its worktree) and does not rewrite it.
+
+- **Project files**: skills in `.claude/skills`, `.codex/skills`, `.agents/skills`, `.opencode/skills` and
+  `.grok/skills`; subagents in `.claude/agents`, `.codex/agents`, `.opencode/agents` and `.grok/agents`; MCP
+  servers in `.mcp.json`, `.grok/mcp.json` and `.opencode/mcp.json`; `AGENTS.md` (the whole file, plus each
+  `<!-- odin:<id> -->` fragment); `CLAUDE.md`; `.claude/settings.json`, `.claude/settings.local.json` and
+  `.odin/settings/<id>.json`. The harness's own directory wins when the same id is in more than one of these.
+- **Adding and editing** writes the canonical file: skills under `.claude/skills/<id>/`, subagents under
+  `.claude/agents/<id>.md`, MCP merged into `.mcp.json`, instruction fragments merged into `AGENTS.md`, and
+  settings profiles under `.odin/settings/<id>.json`. Nothing is committed.
+- **Disabled globals** live in `projects.context_disabled` (not in the repo). Turning one off leaves project
+  files in place. A library asset that is off globally cannot be turned on for a single project.
+- **Harnesses**: Claude keeps loading user, project and local settings, and receives anything it would not
+  load from those files as a local plugin (skills, subagents, hooks) plus MCP servers that are not already in
+  `.mcp.json`. Codex and OpenCode receive the merged skills, subagents, MCP servers and native settings policy.
+  Grok and Antigravity receive the merged instructions, subagents, MCP servers and skill paths. An MCP server
+  that is missing a secret is left out of that session instead of failing launch. Codex skips legacy SSE servers.
+- Plugin own members count as global context when the plugin is on and the library does not already have that
+  kind and id.
+
+`GET /api/projects/:name/agent-context` → `ProjectAgentContext`. `GET …/:kind/:id` → `AgentContextFiles`.
+`PATCH` (`SetAgentContextEnabledRequest`) turns a global item on or off for the project.
+`PUT …/:kind/:id` (`WriteAgentContextRequest`) writes a project file. `DELETE …/:kind/:id` removes the project
+files for that id. 404 unknown project or item, 400 bad files, 409 a missing project directory or a library
+asset that is off globally.
 
 ## Library
 
@@ -1173,6 +1201,11 @@ The main routes; each module's `routes.ts` has the full list. All JSON. Errors: 
 | POST `/api/library/import` (`ImportRequest`) | `ImportPreview` |
 | POST `/api/library/import/:previewId` | `LibraryAsset` (201) |
 | POST `/api/library/plugin/:id/export` (`ExportRequest`) | `ExportResult` |
+| GET `/api/projects/:name/agent-context` | `ProjectAgentContext` |
+| GET `/api/projects/:name/agent-context/:kind/:id` | `AgentContextFiles` |
+| PATCH `/api/projects/:name/agent-context` (`SetAgentContextEnabledRequest`) | `ProjectAgentContext` |
+| PUT `/api/projects/:name/agent-context/:kind/:id` (`WriteAgentContextRequest`) | `ProjectAgentContext` |
+| DELETE `/api/projects/:name/agent-context/:kind/:id` | `ProjectAgentContext` |
 | GET `/api/projects/:name/library` | `Installation[]` |
 | POST `/api/projects/:name/library` (`InstallRequest`) | `InstallResult` |
 | GET `/api/projects/:name/library/:kind/:id/files` | `AssetFiles` (404 when missing) |

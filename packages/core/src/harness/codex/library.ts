@@ -76,7 +76,32 @@ export function adaptLibrary(
       config_file: nativePath(join(dir, `${id}.toml`)),
     };
   }
-  for (const installation of services.library.installations(project)) {
+  if (options.agentContext) {
+    for (const [id, spec] of Object.entries(options.agents ?? {})) {
+      if (!ASSET_ID_PATTERN.test(id)) continue;
+      const readOnly = !!spec.tools?.length && !spec.tools.some((tool) => ["Write", "Edit", "MultiEdit", "NotebookEdit"].includes(tool));
+      const hints = spec.tools?.length ? `\nTool preferences: ${spec.tools.join(", ")}. Use the equivalent Codex tools; Codex sandbox and approvals govern access.` : "";
+      const native = `developer_instructions = ${JSON.stringify(spec.prompt + hints)}\nsandbox_mode = ${JSON.stringify(readOnly ? "read-only" : "workspace-write")}\n`;
+      const dir = materialize({ [`${id}.toml`]: native });
+      agents[id] = { description: spec.description, config_file: nativePath(join(dir, `${id}.toml`)) };
+    }
+    for (const skill of options.agentContext.skills) {
+      out.skills.push({ name: skill.name, path: nativePath(skill.path) });
+    }
+    for (const [id, spec] of Object.entries(options.mcpServers ?? {})) {
+      if (spec.type === "sse") continue;
+      servers[id] = spec.type === "stdio"
+        ? { command: spec.command, args: spec.args ?? [], env: spec.env ?? {} }
+        : { url: spec.url, http_headers: spec.headers ?? {} };
+    }
+    for (const spec of options.agentContext.settings) {
+      if (!spec.codex) continue;
+      if (out.permissionMode && out.permissionMode !== spec.codex.permissionMode) continue;
+      out.permissionMode = spec.codex.permissionMode;
+      if (spec.codex.instructions) instructions.push(spec.codex.instructions);
+    }
+  }
+  for (const installation of options.agentContext ? [] : services.library.installations(project)) {
     if (!ASSET_ID_PATTERN.test(installation.id))
       throw new Error("Invalid installed library id");
     const files = services.library.projectFiles(
