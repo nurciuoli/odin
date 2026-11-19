@@ -1,0 +1,1 @@
+- The app icon is the raven again, and empty states keep their short Norse line.
