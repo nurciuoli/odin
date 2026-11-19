@@ -94,6 +94,8 @@ export const icons = {
     '<rect x="3.5" y="3.5" width="17" height="17" rx="3.3"></rect><path d="M12 8v8M8 12h8"></path>',
   gitBranch:
     '<circle cx="7" cy="5.5" r="2"></circle><circle cx="7" cy="18.5" r="2"></circle><circle cx="17" cy="7.5" r="2"></circle><path d="M7 7.5v9M17 9.5c0 4-10 2.5-10 7"></path>',
+  history:
+    '<path d="M4 12a8 8 0 1 0 2.4-5.7"></path><path d="M4 4v4.5h4.5"></path><path d="M12 8v4l3 2"></path>',
   gitCommit: '<circle cx="12" cy="12" r="3.5"></circle><path d="M3.5 12h5M15.5 12h5"></path>',
   gitPullRequest:
     '<circle cx="6.5" cy="5.5" r="2"></circle><circle cx="6.5" cy="18.5" r="2"></circle><circle cx="17.5" cy="18.5" r="2"></circle><path d="M6.5 7.5v9M17.5 16.5V9a2.5 2.5 0 0 0-2.5-2.5h-4"></path><polyline points="13,4 10.5,6.5 13,9"></polyline>',
@@ -175,6 +177,7 @@ export const iconOrder: IconName[] = [
   'documentSearch',
   'squarePlus',
   'gitBranch',
+  'history',
   'gitCommit',
   'gitPullRequest',
   'gitMerge',

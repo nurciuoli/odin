@@ -9,7 +9,6 @@ import OverviewPanel from './OverviewPanel.vue'
 import type { Settled } from './settled'
 
 const props = defineProps<{
-  project: string
   models: Settled<MetricsRow[]> | null
   harnesses: Settled<MetricsRow[]> | null
   loading: boolean
@@ -62,11 +61,6 @@ const failed = computed(() => (props.models && !props.models.ok ? props.models.e
 
 <template>
   <OverviewPanel id="overview-models" title="Models">
-    <template #actions>
-      <RouterLink :to="{ name: 'compare', query: { project } }" class="ov-models__more"
-        >Open in Compare</RouterLink
-      >
-    </template>
     <IuSkeleton v-if="loading && !models" shape="table" :rows="3" />
     <IuErrorState
       v-else-if="failed"
@@ -115,15 +109,6 @@ const failed = computed(() => (props.models && !props.models.ok ? props.models.e
 </template>
 
 <style>
-.ov-models__more {
-  font-size: var(--iu-font-size-12);
-  color: var(--iu-text-2);
-  font-weight: var(--iu-font-weight-medium);
-}
-.ov-models__more:focus-visible {
-  outline: 2px solid var(--iu-accent);
-  outline-offset: 2px;
-}
 .ov-models__group {
   display: flex;
   flex-direction: column;

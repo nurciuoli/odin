@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import { resolve, sep } from "node:path";
 import type { SQLInputValue } from "node:sqlite";
 import type {
-  ForkSessionRequest, PermissionAnswer, PermissionMode, Session, SessionCounts, SessionDetail, SessionFilter, SessionMetrics,
+  Checkpoint, ForkSessionRequest, PermissionAnswer, PermissionMode, Session, SessionCounts, SessionDetail, SessionFilter, SessionMetrics,
   SessionState, StartSessionRequest, Todo, UpdateSessionRequest, UserMessage, Workspace,
 } from "@odin/shared/api";
 import type { HarnessEvent, PermissionRequest, SessionGoal, SlashCommand, TranscriptEntry } from "@odin/shared/harness";
@@ -557,6 +557,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         break;
       case "entry":
         if (e.entry.kind !== "user") l.acted = true;
+        else if (!e.entry.parentToolUseId) void services.checkpoints.capture(l.id, "turn.start", e.entry.id);
         l.streaming.delete(e.entry.id);
         l.tail = applyHarnessEvent(l.tail, e);
         patchAndEmit(l.id, { updatedAt: now() });
@@ -576,6 +577,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         patchAndEmit(l.id, { permissionMode: e.mode });
         break;
       case "turn.end":
+        void services.checkpoints.capture(l.id, "turn.end", null);
         l.streaming.clear();
         l.turnActive = false;
         l.settled = l.tail.length;
@@ -750,6 +752,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       const repause = !!l?.pauseAfterRelease;
       if (l) l.pauseAfterRelease = false;
       try {
+        await services.checkpoints.capture(id, "turn.prepare", null);
         if (l) {
           l.turnActive = true;
           l.acted = false;
@@ -1084,6 +1087,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       opts.effort = req.effort;
       if (plan.permissionMode) opts.permissionMode = plan.permissionMode;
       if (Object.keys(plan.mcpServers).length) opts.mcpServers = plan.mcpServers;
+      if (plan.prompt) await services.checkpoints.capture(id, "turn.prepare", null);
       startHandle(id, harness, opts);
       return mustGet(id);
     },
@@ -1252,8 +1256,12 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       if (req.aside !== undefined && typeof req.aside !== "boolean") bad("aside must be a boolean");
       if (req.model !== undefined && (typeof req.model !== "string" || !req.model.trim())) bad("model must be a non-empty string");
       if (req.permissionMode !== undefined && !PERMISSION_MODES.includes(req.permissionMode)) bad("unknown permission mode");
+      if (req.atMessageId !== undefined && (typeof req.atMessageId !== "string" || !req.atMessageId)) bad("atMessageId must be a non-empty string");
+      if (req.restoreFiles !== undefined && typeof req.restoreFiles !== "boolean") bad("restoreFiles must be a boolean");
+      if (req.restoreFiles && (!req.atMessageId || !req.worktree)) bad("restoreFiles needs atMessageId and worktree: true");
       const aside = req.aside === true;
       if (aside && req.prompt === undefined) bad("a side thread needs a prompt");
+      if (aside && (req.atMessageId || req.restoreFiles)) bad("a side thread can't be cut at a message");
       if (aside && req.worktree) bad("a side thread can't have a worktree");
       const prompt = req.prompt !== undefined ? messageFor(id, req.prompt) : null;
       const harness = harnessFor(parent);
@@ -1271,11 +1279,19 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       if (parent.projects.length > 1 && harness.capabilities?.additionalDirectories === false) bad(`${parent.harness} does not support additional project directories`);
       const mcpServers = await savedMcp(id);
 
+      // Fork cut before a message: the harness must support it, and the cut's checkpoint (if any) gives the files.
+      let cut: Checkpoint | null = null;
+      if (req.atMessageId) {
+        if (typeof harness.forkAt !== "function" || harness.capabilities?.checkpoints?.forkAt === false) bad(`${parent.harness} cannot fork a session at a message`);
+        cut = services.checkpoints.list(id).find(c => c.kind === "turn" && c.messageId === req.atMessageId) ?? null;
+        if (req.restoreFiles && (!cut || cut.snapshot !== "ok")) throw new HttpError(409, "there is no saved working tree for that message");
+      }
+
       let newId: string;
-      if (prompt) newId = randomUUID();
+      if (prompt && !req.atMessageId) newId = randomUUID();
       else {
         try {
-          newId = await harness.fork(id, parent.cwd);
+          newId = req.atMessageId ? await harness.forkAt!(id, req.atMessageId, parent.cwd) : await harness.fork(id, parent.cwd);
         } catch (err) {
           throw new HttpError(502, `the harness could not fork the session: ${errorMessage(err)}`);
         }
@@ -1290,6 +1306,13 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         cwd = wt.path;
         branch = wt.branch;
         workspace = { kind: "worktree", path: wt.path, branch: wt.branch };
+        if (req.restoreFiles && cut) {
+          try {
+            await services.checkpoints.materialize(id, cut.id, wt.path);
+          } catch (err) {
+            throw new HttpError(502, `the worktree was created at ${wt.path} but its files could not be restored: ${errorMessage(err)}`);
+          }
+        }
       }
 
       const parentRow = row(id)!;
@@ -1306,9 +1329,18 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       } catch (err) {
         console.error(`ingest.recordBaseline(${newId}) failed:`, errorMessage(err));
       }
+      try {
+        services.checkpoints.inherit(id, newId, cut?.id ?? null);
+      } catch (err) {
+        console.error(`checkpoints.inherit(${newId}) failed:`, errorMessage(err));
+      }
 
       if (prompt) {
-        const opts: StartOptions = { cwd, resume: id, fork: true, sessionId: newId, prompt, title, hostTools: hostTools(newId), mcpServers };
+        // Cut at a message: the harness already made the stored fork, so resume it; otherwise fork while starting.
+        const opts: StartOptions = req.atMessageId
+          ? { cwd, resume: newId, prompt, title, hostTools: hostTools(newId), mcpServers }
+          : { cwd, resume: id, fork: true, sessionId: newId, prompt, title, hostTools: hostTools(newId), mcpServers };
+        await services.checkpoints.capture(newId, "turn.prepare", null);
         if (model) opts.model = model;
         opts.effort = effort;
         if (permissionMode) opts.permissionMode = permissionMode;
@@ -1349,6 +1381,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
           throw new HttpError(502, `the harness could not delete the session; its record was preserved: ${errorMessage(err)}`);
         }
       }
+      void services.checkpoints.forget(id).catch((err: unknown) => console.error(`checkpoints.forget(${id}) failed:`, errorMessage(err)));
       db.prepare("DELETE FROM sessions WHERE id = ?").run(id);
       bus.emit({ type: "session.removed", sessionId: id });
     },

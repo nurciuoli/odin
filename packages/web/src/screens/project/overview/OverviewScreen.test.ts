@@ -100,7 +100,7 @@ it('keeps the other panels when the activity call fails', async () => {
   expect(wrapper.text()).toContain("Couldn't load the activity")
   expect(headings(wrapper)).toContain('Latest outputs')
   expect(headings(wrapper)).toContain('Models')
-  expect(wrapper.text()).toContain('Open in Compare')
+  expect(wrapper.text()).not.toContain('Open in Compare')
   wrapper.unmount()
 })
 

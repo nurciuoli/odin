@@ -3,6 +3,7 @@
 // scripted reply (streamed text; a permission prompt when the message mentions "run" or "delete") so the Session
 // screen can be built and demoed without a server.
 import type {
+  Checkpoint,
   FileMatch,
   FileSearchResult,
   FileTrashEntry,
@@ -676,6 +677,10 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
     })
     ev({ type: 'turn.end', durationMs: Date.now() - started, ok: true, error: null })
     ev({ type: 'state', state: 'idle' })
+    const ended = checkpointsOf(sessionId)
+      .filter(c => c.kind === 'turn')
+      .at(-1)
+    if (ended) emit({ type: 'checkpoint.updated', sessionId, checkpoint: ended })
   }
 
   function userTurn(sessionId: string, message: UserMessage) {
@@ -690,6 +695,10 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
         parentToolUseId: null,
       },
     })
+    const started = checkpointsOf(sessionId)
+      .filter(c => c.kind === 'turn')
+      .at(-1)
+    if (started) emit({ type: 'checkpoint.updated', sessionId, checkpoint: started })
     void scriptedTurn(sessionId, message)
   }
 
@@ -726,6 +735,66 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
     }
     db.sessions.unshift(s)
     db.transcripts[id] ??= []
+    return s
+  }
+
+  // ── checkpoints: one per user message of the transcript, with made-up but stable file counts ──
+  const undoCheckpoints = new Map<string, Checkpoint[]>()
+  function checkpointsOf(id: string): Checkpoint[] {
+    const users = (db.transcripts[id] ?? []).filter(e => e.kind === 'user' && !e.parentToolUseId)
+    const turns = users.map((e, i): Checkpoint => {
+      const n = i + 1
+      return {
+        id: `${id}:${n}`,
+        sessionId: id,
+        kind: 'turn',
+        messageId: e.id,
+        turn: n,
+        at: e.at ?? nowIso(),
+        files:
+          i === users.length - 1 && sessionOf(id).state === 'running'
+            ? null
+            : { changed: (n * 3) % 5, added: n % 3, removed: n % 4 === 0 ? 1 : 0 },
+        snapshot: 'ok',
+      }
+    })
+    return [...turns, ...(undoCheckpoints.get(id) ?? [])]
+  }
+  const MOCK_FILES = [
+    'packages/core/src/sessions/service.ts',
+    'packages/web/src/screens/session/SessionThread.vue',
+    'docs/contracts.md',
+    'packages/shared/src/api.ts',
+    'packages/core/src/checkpoints/store.ts',
+    'changes/feat-example.md',
+    'packages/web/src/api/mock.ts',
+  ]
+  function mockDiffFiles(turn: number, current: boolean) {
+    const count = Math.max(1, ((turn * 3) % 5) + (current ? 2 : 1))
+    return Array.from({ length: Math.min(count, MOCK_FILES.length) }, (_, i) => ({
+      path: MOCK_FILES[(turn + i) % MOCK_FILES.length]!,
+      status: (['modified', 'added', 'removed'] as const)[(turn + i) % 3]!,
+    })).sort((a, b) => a.path.localeCompare(b.path))
+  }
+  function forkAtMessage(parent: Session, messageId: string, o: { title: string }): Session {
+    const at = (db.transcripts[parent.id] ?? []).findIndex(
+      e => e.id === messageId && e.kind === 'user',
+    )
+    if (at < 0) throw new ApiRequestError(400, 'that is not a user message of the session')
+    const s = newSession(projectOf(parent.project), {
+      title: o.title,
+      harness: parent.harness,
+      projects: [...parent.projects],
+      parentId: parent.id,
+      model: parent.model,
+      permissionMode: parent.permissionMode,
+      tags: [...parent.tags],
+      workspace: parent.workspace,
+      cwd: parent.cwd,
+      branch: parent.branch,
+    })
+    db.transcripts[s.id] = clone(db.transcripts[parent.id]!.slice(0, at))
+    emit({ type: 'session.updated', session: s })
     return s
   }
 
@@ -1428,6 +1497,59 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
         harnessEvent(id, { type: 'exit', outcome: 'closed', error: null })
         return sessionOf(id)
       }),
+    listCheckpoints: id => respond(() => checkpointsOf(sessionOf(id).id)),
+    checkpointDiff: (id, checkpointId, against) =>
+      respond(() => {
+        const cp = checkpointsOf(sessionOf(id).id).find(c => c.id === checkpointId)
+        if (!cp) throw new ApiRequestError(404, `unknown checkpoint ${checkpointId}`)
+        return {
+          checkpointId,
+          against: against ?? 'turn',
+          files: mockDiffFiles(cp.turn, against === 'current'),
+          truncated: false,
+        }
+      }),
+    restoreCheckpoint: (id, checkpointId, req) =>
+      respond(() => {
+        const parent = sessionOf(id)
+        const cp = checkpointsOf(parent.id).find(c => c.id === checkpointId)
+        if (!cp) throw new ApiRequestError(404, `unknown checkpoint ${checkpointId}`)
+        if (!req.files && !req.conversation)
+          throw new ApiRequestError(400, 'restore files, the conversation, or both')
+        if (parent.state === 'running' || parent.state === 'waiting')
+          throw new ApiRequestError(
+            409,
+            'rewinding needs an idle session with an empty message queue',
+          )
+        let session = parent
+        if (req.conversation) {
+          if (!cp.messageId || cp.turn === 1)
+            throw new ApiRequestError(400, 'there is nothing before the first message to rewind to')
+          session = forkAtMessage(parent, cp.messageId, { title: `${parent.title} (rewound)` })
+        }
+        let undoCheckpointId: string | null = null
+        if (req.files) {
+          undoCheckpointId = `${parent.id}:undo:${(undoCheckpoints.get(parent.id)?.length ?? 0) + 1}`
+          const undo: Checkpoint = {
+            id: undoCheckpointId,
+            sessionId: parent.id,
+            kind: 'pre-restore',
+            messageId: null,
+            turn: cp.turn,
+            at: nowIso(),
+            files: null,
+            snapshot: 'ok',
+          }
+          undoCheckpoints.set(parent.id, [...(undoCheckpoints.get(parent.id) ?? []), undo])
+        }
+        let archivedSessionId: string | null = null
+        if (req.conversation) {
+          parent.archived = true
+          emit({ type: 'session.updated', session: parent })
+          archivedSessionId = parent.id
+        }
+        return { session, archivedSessionId, undoCheckpointId }
+      }),
     forkSession: (id, req) =>
       respond(() => {
         const parent = sessionOf(id)
@@ -1461,6 +1583,20 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
           branch: parent.branch,
         })
         db.transcripts[s.id] = clone(db.transcripts[parent.id] ?? [])
+        if (req.atMessageId) {
+          const at = db.transcripts[s.id]!.findIndex(
+            e => e.id === req.atMessageId && e.kind === 'user',
+          )
+          if (at < 0) throw new ApiRequestError(400, 'that is not a user message of the session')
+          db.transcripts[s.id] = db.transcripts[s.id]!.slice(0, at)
+        }
+        if (req.worktree && !aside) {
+          const branch = sessionBranch(title, s.id)
+          const path = `/home/me/.odin/worktrees/${project.name}/${slugify(branch)}`
+          s.workspace = { kind: 'worktree', path, branch }
+          s.cwd = path
+          s.branch = branch
+        }
         emit({ type: 'session.updated', session: s })
         if (req.prompt) userTurn(s.id, req.prompt)
         return s
