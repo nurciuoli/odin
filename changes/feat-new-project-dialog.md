@@ -1,0 +1,1 @@
+- New project dialog (⌘K → "New project…", ⌘⌥N or the sidebar +): start from a new folder, an existing folder or a clone, with the location as a chip you can change.

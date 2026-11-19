@@ -1,3 +1,4 @@
+import { openNewProject } from './newProject'
 import {
   createRouter,
   createWebHistory,
@@ -63,7 +64,12 @@ export const routes: RouteRecordRaw[] = [
     path: '/projects/new',
     name: 'add-project',
     meta: { crumb: 'Add project' },
-    component: () => import('@/screens/projects/AddProjectScreen.vue'),
+    // The dialog is app-wide; this address (old links, bookmarks) just opens it where you are.
+    component: () => import('@/screens/projects/ProjectsScreen.vue'),
+    beforeEnter: (_to, from) => {
+      openNewProject()
+      return from.name ? false : { name: 'projects' }
+    },
   },
   {
     path: '/p/:name',
