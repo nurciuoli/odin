@@ -1,0 +1,1 @@
+- Home's clouds stay below the app bar and sit lower in the pane. They are a quieter grey, with a faint grid that brightens in a slow wave.

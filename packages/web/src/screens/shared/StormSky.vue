@@ -3,7 +3,8 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { createStorm, type FlashKind } from './storm'
 
 // The sky across the top of Home, the full width of the main pane (behind the sidebar): an endless stream of clouds while there is weather,
-// a flash of light when a session finishes or needs you. It sits behind the page and never takes the pointer.
+// a flash of light when a session finishes or needs you. Clouds are painted below the app bar. The canvas sits behind
+// the page and never takes the pointer.
 const props = withDefaults(
   defineProps<{
     /** there is weather: clouds drift in from both sides while true and drift away once it ends */
@@ -32,13 +33,24 @@ onMounted(() => {
   const css = getComputedStyle(el)
   const colors = {
     cloud: css.getPropertyValue('--iu-text-muted').trim(),
+    ground: css.getPropertyValue('--iu-ground').trim(),
     glow: css.getPropertyValue('--iu-info').trim(),
     lit: css.getPropertyValue('--iu-text').trim(),
+  }
+  const pane = el.closest('.iu-shell__main')
+  const header = pane?.querySelector<HTMLElement>(':scope > .iu-shell__header')
+  function barHeight() {
+    const h = header?.getBoundingClientRect().height ?? 0
+    return h > 0 ? h : 48
   }
   function paint() {
     ctx!.setTransform(scale, 0, 0, scale, 0, 0)
     ctx!.clearRect(0, 0, width, height)
-    storm.draw(ctx!, time, colors, { drift: !motion.matches, calm: motion.matches })
+    storm.draw(ctx!, time, colors, {
+      drift: !motion.matches,
+      calm: motion.matches,
+      bar: barHeight(),
+    })
   }
   function tick(now: number) {
     frame = 0
@@ -61,7 +73,6 @@ onMounted(() => {
     } else if (visible && !document.hidden) frame = requestAnimationFrame(tick)
   }
   // the sky fills the main pane, edge to edge, and stays behind the sidebar: follow the pane's left edge and width
-  const pane = el.closest('.iu-shell__main')
   function fit() {
     const box = pane?.getBoundingClientRect()
     el!.style.left = box ? `${box.left}px` : '0'
@@ -71,7 +82,10 @@ onMounted(() => {
     fit()
     const rect = el!.getBoundingClientRect()
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
-    if (width === rect.width && height === rect.height && scale === dpr) return
+    if (width === rect.width && height === rect.height && scale === dpr) {
+      if (motion.matches) paint()
+      return
+    }
     width = rect.width
     height = rect.height
     scale = dpr
@@ -119,6 +133,7 @@ onMounted(() => {
   })
   resize.observe(el)
   if (pane) resize.observe(pane)
+  if (header) resize.observe(header)
   intersection.observe(el)
   motion.addEventListener('change', sync)
   document.addEventListener('visibilitychange', sync)
