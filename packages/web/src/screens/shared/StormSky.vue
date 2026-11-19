@@ -2,7 +2,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { createStorm, type FlashKind } from './storm'
 
-// The sky across the top of Home, the full width of the screen: an endless stream of clouds while there is weather,
+// The sky across the top of Home, the full width of the main pane (behind the sidebar): an endless stream of clouds while there is weather,
 // a flash of light when a session finishes or needs you. It sits behind the page and never takes the pointer.
 const props = withDefaults(
   defineProps<{
@@ -60,7 +60,15 @@ onMounted(() => {
       paint()
     } else if (visible && !document.hidden) frame = requestAnimationFrame(tick)
   }
+  // the sky fills the main pane, edge to edge, and stays behind the sidebar: follow the pane's left edge and width
+  const pane = el.closest('.iu-shell__main')
+  function fit() {
+    const box = pane?.getBoundingClientRect()
+    el!.style.left = box ? `${box.left}px` : '0'
+    el!.style.width = box ? `${box.width}px` : '100vw'
+  }
   function size() {
+    fit()
     const rect = el!.getBoundingClientRect()
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
     if (width === rect.width && height === rect.height && scale === dpr) return
@@ -110,6 +118,7 @@ onMounted(() => {
     sync()
   })
   resize.observe(el)
+  if (pane) resize.observe(pane)
   intersection.observe(el)
   motion.addEventListener('change', sync)
   document.addEventListener('visibilitychange', sync)
@@ -137,7 +146,7 @@ onBeforeUnmount(() => dispose())
   top: 0;
   left: 0;
   z-index: -1;
-  width: 100vw;
+  width: 100vw; /* narrowed to the main pane once mounted */
   height: min(100vh, 460px);
   pointer-events: none;
 }
