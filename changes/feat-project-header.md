@@ -1,0 +1,1 @@
+- The project page header is one compact row: title with sync and uncommitted dots, a branch chip that copies the branch name, quick actions to copy the path, open the repository and open the folder (desktop), and Start chat, with the tabs on their own row below. Hovering the title shows the folder, repository, branch, sync and working-tree details.
