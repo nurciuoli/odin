@@ -43,6 +43,8 @@ import {
 const props = withDefaults(
   defineProps<{
     project?: string
+    /** Opens in a new worktree on this branch (an existing branch is checked out there). */
+    branch?: string
     /** Opens on this harness instead of the remembered one (when it is installed). */
     harness?: string
     autofocus?: boolean
@@ -57,6 +59,7 @@ const props = withDefaults(
   }>(),
   {
     project: undefined,
+    branch: undefined,
     harness: undefined,
     autofocus: false,
     visual: false,
@@ -154,7 +157,7 @@ onMounted(async () => {
   try {
     const response = await api.getSettings()
     harnesses.value = response.harnesses
-    if (form.worktree === initialWorktree)
+    if (form.worktree === initialWorktree && !props.branch)
       form.worktree = worktreeDefault(currentProject(), response.settings)
     const remembered = props.harness ?? lastRuntime().harness
     form.harness = response.harnesses.some(h => h.id === remembered)
@@ -284,8 +287,18 @@ watch(
     const before = worktreeDefault(null, settings.value)
     projectDefault.value = { defaultWorktree: detail.value.settings.defaultWorktree }
     // only move the toggle if the user hasn't changed it from the default they were shown
-    if (form.worktree === before)
+    if (form.worktree === before && !props.branch)
       form.worktree = worktreeDefault(projectDefault.value, settings.value)
+  },
+  { immediate: true },
+)
+watch(
+  () => props.branch,
+  branch => {
+    if (!branch) return
+    form.worktree = true
+    form.branch = branch
+    whereOpen.value = true
   },
   { immediate: true },
 )

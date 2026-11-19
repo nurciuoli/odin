@@ -357,6 +357,12 @@ function openCell(cell: CellRef) {
   workbench.value?.openCell(cell)
   if (!detailsFits.value) setSide(false)
 }
+function openChanges() {
+  previewDismissed.value = false
+  filesOpen.value = true
+  workbenchTab.value = 'files'
+  workbench.value?.openChanges()
+}
 function toggleFiles() {
   previewDismissed.value = false
   filesOpen.value = true
@@ -721,6 +727,7 @@ function onDeleted() {
           @updated="setRecord"
           @forked="onForked"
           @deleted="onDeleted"
+          @changes="openChanges"
         >
           <template #actions>
             <IuButton size="sm" variant="ghost" :aria-pressed="filesOpen" @click="toggleFiles"

@@ -16,6 +16,7 @@
     "./library": "./src/library.ts",
     "./pricing": "./src/pricing.ts",
     "./agents": "./src/agents.ts",
-    "./notebooks": "./src/notebooks.ts"
+    "./notebooks": "./src/notebooks.ts",
+    "./git": "./src/git.ts"
   }
 }

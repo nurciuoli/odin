@@ -5,6 +5,7 @@ import { registerAgentContextRoutes } from "../context/routes.ts";
 import { registerProjectsRoutes } from "../projects/routes.ts";
 import { registerSessionsRoutes } from "../sessions/routes.ts";
 import { registerCheckpointsRoutes } from "../checkpoints/routes.ts";
+import { registerGitRoutes } from "../git/routes.ts";
 import { registerArtifactsRoutes } from "../artifacts/routes.ts";
 import { registerArtifactPrintRoutes } from "../artifacts/print.ts";
 import { registerLibraryRoutes } from "../library/routes.ts";
@@ -37,6 +38,7 @@ export function apiRouter(deps: Deps, services: Services): Router {
     registerAgentContextRoutes,
     registerSessionsRoutes,
     registerCheckpointsRoutes,
+    registerGitRoutes,
     registerFilesRoutes,
     registerNotebookRoutes,
     registerNotebookOutputRoutes,

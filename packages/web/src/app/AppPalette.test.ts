@@ -4,6 +4,7 @@ import { FIXTURE_SESSION_IDS } from '@/api/fixtures'
 import { mountScreen } from '@/screens/shared/testSupport'
 import AppPalette from './AppPalette.vue'
 import QuickLaunch from './QuickLaunch.vue'
+import { onGitIntent, type GitIntent } from '@/screens/git/gitIntents'
 
 afterEach(() => {
   document.body.innerHTML = ''
@@ -130,5 +131,32 @@ describe('QuickLaunch', () => {
     wrapper.unmount()
     sessions.stop()
     projects.stop()
+  })
+})
+
+describe('AppPalette: git', () => {
+  it("lists the session's branches and stashes after @ and hands the choice to the branch chip", async () => {
+    const asked: GitIntent[] = []
+    const off = onGitIntent(i => asked.push(i))
+    const ctx = await mountScreen(AppPalette, `/s/${FIXTURE_SESSION_IDS.waiting}`, undefined, {
+      open: false,
+    })
+    await ctx.wrapper.setProps({ open: true })
+    await flushPromises()
+    const input = ctx.wrapper.find('input')
+    await input.setValue('@')
+    await vi.waitFor(() => expect(labels(ctx.wrapper)).toContain('main'))
+    expect(groups(ctx.wrapper)).toEqual(expect.arrayContaining(['Branches', 'Sync']))
+    await input.setValue('@perf')
+    await vi.waitFor(() => expect(labels(ctx.wrapper)[0]).toBe('feat/perf-history-search'))
+    expect(labels(ctx.wrapper)).toContain('New session on feat/perf-history-search')
+    await input.trigger('keydown', { key: 'Enter' })
+    await vi.waitFor(() =>
+      expect(asked).toEqual([{ kind: 'switch', branch: 'feat/perf-history-search' }]),
+    )
+    off()
+    ctx.wrapper.unmount()
+    ctx.sessions.stop()
+    ctx.projects.stop()
   })
 })

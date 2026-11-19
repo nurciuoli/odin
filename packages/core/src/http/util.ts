@@ -3,9 +3,12 @@ import { timingSafeEqual } from "node:crypto";
 
 export class HttpError extends Error {
   readonly status: number;
-  constructor(status: number, message: string) {
+  /** A machine-readable reason sent as `code` next to `error` (git routes use GitErrorCode). */
+  readonly code: string | undefined;
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -50,8 +53,8 @@ export function send(res: ServerResponse, status: number, body?: unknown): void 
   res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }).end(JSON.stringify(body));
 }
 
-export function sendError(res: ServerResponse, status: number, error: string): void {
-  send(res, status, { error });
+export function sendError(res: ServerResponse, status: number, error: string, code?: string): void {
+  send(res, status, code ? { error, code } : { error });
 }
 
 /** Constant-time compare for the ingest token. */

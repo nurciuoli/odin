@@ -10,6 +10,7 @@ import {
   provide,
   ref,
   toRaw,
+  watch,
 } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import type { SessionDetail, SessionFileListing, SessionTextFile } from '@odin/shared/api'
@@ -33,6 +34,8 @@ const IuMarkdownEditor = defineAsyncComponent(
 import { IuCsvViewer } from '@/components/CsvViewer'
 import { IuDiff, diffLines } from '@/components/CodeBlock'
 import DocumentHeader from './DocumentHeader.vue'
+import BlameView from '@/screens/git/BlameView.vue'
+import FileHistory from '@/screens/git/FileHistory.vue'
 const NotebookCellView = defineAsyncComponent(() => import('./NotebookCell.vue'))
 const NotebookDocument = defineAsyncComponent(() => import('./NotebookDocument.vue'))
 import {
@@ -71,6 +74,10 @@ type Draft = SessionTextFile & {
   draft: string
   mode: 'preview' | 'live' | 'source'
   remote?: SessionTextFile
+  /** The file itself, who changed each line, or its commits. */
+  view: 'code' | 'blame' | 'history'
+  /** The commit History opens on (from a blame line). */
+  historySha?: string | null
 }
 /** A notebook document: its kernel once opened, and the file as read from disk until then (or if opening fails). */
 interface NotebookState {
@@ -160,6 +167,7 @@ async function openText(path: string) {
       ...file,
       draft: file.content,
       mode: /\.md$/i.test(path) ? 'preview' : 'source',
+      view: 'code',
     }
     docs.value = openDoc(docs.value, target, request === openRequest)
   } catch (e) {
@@ -392,6 +400,29 @@ function close(doc: OpenDoc) {
   docs.value = closeDoc(docs.value, doc.key)
   if (doc.ref.kind === 'file') delete drafts.value[doc.ref.path]
   else delete notebooks.value[doc.ref.path]
+}
+// ── git views: blame and history, offered when the session's folder is a git checkout ──
+const gitTarget = computed(() => ({ kind: 'session' as const, id: props.session.id }))
+const inRepo = ref(false)
+watch(
+  () => props.session.id,
+  async () => {
+    try {
+      inRepo.value = (await api.gitStatus(gitTarget.value)).repo
+    } catch {
+      inRepo.value = false
+    }
+  },
+  { immediate: true },
+)
+const VIEW_OPTIONS = [
+  { value: 'code', label: 'Code' },
+  { value: 'blame', label: 'Blame' },
+  { value: 'history', label: 'History' },
+]
+function blameCommit(d: Draft, sha: string) {
+  d.historySha = sha
+  d.view = 'history'
 }
 const MODE_LABELS = {
   preview: 'Rendered view',
@@ -688,7 +719,15 @@ defineExpose({ open, openCell })
               @close="close(doc)"
             >
               <template #actions>
+                <IuSegmented
+                  v-if="inRepo"
+                  :model-value="d.view"
+                  :options="VIEW_OPTIONS"
+                  label="File view"
+                  @update:model-value="d.view = $event as Draft['view']"
+                />
                 <IuButton
+                  v-if="d.view === 'code'"
                   size="sm"
                   variant="primary"
                   :disabled="busy || d.draft === d.content || !!d.remote"
@@ -705,8 +744,21 @@ defineExpose({ open, openCell })
               <IuButton size="sm" @click="useDisk">Load disk version</IuButton>
               <IuDiff :hunks="diffLines(d.remote.content, d.draft)" :filename="d.path" />
             </div>
+            <BlameView
+              v-if="d.view === 'blame'"
+              :target="gitTarget"
+              :path="d.path"
+              :source="d.content"
+              @commit="blameCommit(d, $event)"
+            />
+            <FileHistory
+              v-else-if="d.view === 'history'"
+              :target="gitTarget"
+              :path="d.path"
+              :sha="d.historySha"
+            />
             <IuCsvViewer
-              v-if="fileKind(d.path) === 'table'"
+              v-else-if="fileKind(d.path) === 'table'"
               :source="d.content"
               :filename="d.path"
               @selection="selectRows(d.path, $event)"
