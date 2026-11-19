@@ -1,16 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BACKUPS_KEPT, openDb, schemaVersion } from "./db.ts";
+import { tempDir, removeTempDir } from "../test-helpers.ts";
 
 function scratch(): { dir: string; path: string; migrations: string; done: () => void } {
-  const dir = mkdtempSync(join(tmpdir(), "db-backup-"));
+  const dir = tempDir("db-backup-");
   const migrations = join(dir, "migrations");
   mkdirSync(migrations);
-  return { dir, path: join(dir, "state.db"), migrations, done: () => rmSync(dir, { recursive: true, force: true }) };
+  return { dir, path: join(dir, "state.db"), migrations, done: () => removeTempDir(dir) };
 }
 
 const backups = (dir: string): string[] => (existsSync(join(dir, "backups")) ? readdirSync(join(dir, "backups")).sort() : []);

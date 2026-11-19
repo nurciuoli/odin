@@ -1,14 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HttpError, send, sendError } from "../http/util.ts";
 import { Router } from "../http/router.ts";
 import type { Services } from "../services.ts";
-import { startApp, testDeps } from "../test-helpers.ts";
+import { startApp, testDeps, tempDir, removeTempDir } from "../test-helpers.ts";
 import { registerTrackingRoutes } from "./routes.ts";
 
 const SETTINGS = ".claude/settings.local.json";
@@ -41,7 +40,7 @@ async function fakeApp(projects: Record<string, string>, adapterDir?: string) {
 }
 
 test("tracking routes install and remove the hooks, keeping the rest of settings.local.json", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "odin-tracking-"));
+  const dir = tempDir("odin-tracking-");
   mkdirSync(join(dir, ".claude"));
   writeFileSync(join(dir, SETTINGS), JSON.stringify({ permissions: { allow: ["Bash(ls)"] } }));
   const app = await fakeApp({ demo: dir });
@@ -63,13 +62,13 @@ test("tracking routes install and remove the hooks, keeping the rest of settings
     assert.deepEqual(JSON.parse(readFileSync(join(dir, SETTINGS), "utf8")), { permissions: { allow: ["Bash(ls)"] } });
   } finally {
     await app.close();
-    rmSync(dir, { recursive: true, force: true });
+    removeTempDir(dir);
   }
 });
 
 test("tracking routes install the hook from config.adapterDir, preferring a bundled odin-hook.js", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "odin-tracking-"));
-  const adapterDir = mkdtempSync(join(tmpdir(), "odin-adapter-"));
+  const dir = tempDir("odin-tracking-");
+  const adapterDir = tempDir("odin-adapter-");
   writeFileSync(join(adapterDir, "odin-hook.js"), "");
   const app = await fakeApp({ demo: dir }, adapterDir);
   try {
@@ -79,13 +78,13 @@ test("tracking routes install the hook from config.adapterDir, preferring a bund
     assert.equal(script?.replace(/\\+/g, "/"), join(adapterDir, "odin-hook.js").replace(/\\+/g, "/"));
   } finally {
     await app.close();
-    rmSync(dir, { recursive: true, force: true });
-    rmSync(adapterDir, { recursive: true, force: true });
+    removeTempDir(dir);
+    removeTempDir(adapterDir);
   }
 });
 
 test("tracking routes: 404 for an unknown project, 400 for a bad body, 409 for unreadable settings", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "odin-tracking-"));
+  const dir = tempDir("odin-tracking-");
   mkdirSync(join(dir, ".claude"));
   writeFileSync(join(dir, SETTINGS), "{ nope");
   const app = await fakeApp({ demo: dir });
@@ -99,7 +98,7 @@ test("tracking routes: 404 for an unknown project, 400 for a bad body, 409 for u
     assert.deepEqual(await (await app.get("demo")).json(), { enabled: false, settingsPath: SETTINGS });
   } finally {
     await app.close();
-    rmSync(dir, { recursive: true, force: true });
+    removeTempDir(dir);
   }
 });
 

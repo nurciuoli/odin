@@ -1,11 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { HarnessInfo } from "@odin/shared/api";
 import { claudeLoginPresent, readiness, type ReadinessInput } from "./readiness.ts";
-import { startApp } from "../test-helpers.ts";
+import { startApp, tempDir, removeTempDir } from "../test-helpers.ts";
 
 const claude = (available: boolean): HarnessInfo => ({ id: "claude", name: "Claude Code", available, note: available ? null : "no binary" });
 
@@ -50,7 +49,7 @@ test("no runtime or no git blocks; login, GitHub and projects only advise", () =
 });
 
 test("claudeLoginPresent looks at env names and the credentials file, never values", () => {
-  const home = mkdtempSync(join(tmpdir(), "odin-ready-"));
+  const home = tempDir("odin-ready-");
   try {
     assert.equal(claudeLoginPresent({}, home, "win32"), false);
     assert.equal(claudeLoginPresent({}, home, "darwin"), null);
@@ -60,12 +59,12 @@ test("claudeLoginPresent looks at env names and the credentials file, never valu
     assert.equal(claudeLoginPresent({}, home, "win32"), true);
     assert.equal(claudeLoginPresent({ CLAUDE_CONFIG_DIR: join(home, "elsewhere") }, home, "win32"), false);
   } finally {
-    rmSync(home, { recursive: true, force: true });
+    removeTempDir(home);
   }
 });
 
 test("GET /api/readiness reports the fake runtime and no projects", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "odin-ready-cfg-"));
+  const dir = tempDir("odin-ready-cfg-");
   const saved = process.env.CLAUDE_CONFIG_DIR;
   process.env.CLAUDE_CONFIG_DIR = dir;
   const t = await startApp();
@@ -78,6 +77,6 @@ test("GET /api/readiness reports the fake runtime and no projects", async () => 
     await t.close();
     if (saved === undefined) delete process.env.CLAUDE_CONFIG_DIR;
     else process.env.CLAUDE_CONFIG_DIR = saved;
-    rmSync(dir, { recursive: true, force: true });
+    removeTempDir(dir);
   }
 });

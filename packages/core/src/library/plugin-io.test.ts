@@ -1,15 +1,14 @@
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ExportResult, ImportPreview, LibraryAsset } from "@odin/shared/api";
-import { startApp } from "../test-helpers.ts";
+import { startApp, tempDir, removeTempDir } from "../test-helpers.ts";
 import { convertClaudePlugin, exportClaudePlugin } from "./plugin-io.ts";
 import { gitSourceError } from "./plugin-source.ts";
 
-const root = realpathSync(mkdtempSync(join(tmpdir(), "odin-plugin-io-")));
-after(() => rmSync(root, { recursive: true, force: true }));
+const root = tempDir("odin-plugin-io-");
+after(() => removeTempDir(root));
 
 const SKILL = "---\nname: notes\ndescription: Notes\n---\nDo it.\n";
 const CLAUDE: Record<string, string> = {
@@ -72,10 +71,11 @@ test("export: Claude Code layout, secrets stay placeholders, OAuth dropped, unpo
 test("git sources: only https, ssh and git@ addresses and plain ref names", () => {
   assert.equal(gitSourceError("https://github.com/a/b.git", "v1.2"), null);
   assert.equal(gitSourceError("git@github.com:a/b.git"), null);
-  assert.ok(gitSourceError("file:///etc"));
-  assert.ok(gitSourceError("--upload-pack=x"));
-  assert.ok(gitSourceError("https://a.test/r", "--evil"));
-  assert.ok(gitSourceError("https://a.test/r", "a..b"));
+  assert.equal(gitSourceError("file:///etc"), "git url must be an https, ssh or git@ address");
+  assert.equal(gitSourceError("--upload-pack=x"), "git url must be an https, ssh or git@ address");
+  assert.equal(gitSourceError("https://a.test/r", "--evil"), "rev must be a branch, tag or commit name");
+  assert.equal(gitSourceError("https://a.test/r", "a..b"), "rev must be a branch, tag or commit name");
+  assert.equal(gitSourceError("https://a.test/r", "v1.2/rc"), null);
 });
 
 function writeTree(dir: string, files: Record<string, string>) {

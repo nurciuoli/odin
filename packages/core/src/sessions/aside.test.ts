@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Session } from "@odin/shared/api";
-import { collectEvents } from "../test-helpers.ts";
+import { watchEvents } from "../test-helpers.ts";
 import { HttpError } from "../http/util.ts";
 import { parseSessionFilter } from "./routes.ts";
 import { sideTitle } from "./service.ts";
@@ -156,12 +156,12 @@ test("routes: aside fork, GET filters, PATCH promote with session.updated, 400s"
 
     const patch = (body: unknown) => app.api(`/api/sessions/${side.id}`, { method: "PATCH", body: JSON.stringify(body) });
     assert.equal((await patch({ aside: true })).status, 400);
-    const sse = collectEvents(app.base, (evs) => evs.some((e) => e.type === "session.updated" && e.session.id === side.id && !e.session.aside), 3000);
-    await new Promise((r) => setTimeout(r, 50)); // let the SSE stream connect
+    const sse = watchEvents(app.base, (evs) => evs.some((e) => e.type === "session.updated" && e.session.id === side.id && !e.session.aside), 3000);
+    await sse.connected;
     const promoted = await patch({ aside: false });
     assert.equal(promoted.status, 200);
     assert.equal((await promoted.json()).aside, false);
-    await sse;
+    await sse.events;
     assert.deepEqual((await list("")).sort(), [st.id, side.id].sort());
   } finally {
     await app.close();

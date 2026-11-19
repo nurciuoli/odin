@@ -1,21 +1,21 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { hostMcpScript } from "./driver.ts";
 import { handleMcp } from "./host-mcp.ts";
+import { tempDir, removeTempDir } from "../../test-helpers.ts";
 
 test("hostMcpScript: host-mcp.js beside the bundle wins, else the .ts source", () => {
-  const dir = mkdtempSync(join(tmpdir(), "odin-hostmcp-"));
+  const dir = tempDir("odin-hostmcp-");
   try {
     const base = pathToFileURL(join(dir, "index.js")).href;
     assert.equal(hostMcpScript(base), join(dir, "host-mcp.ts"));
     writeFileSync(join(dir, "host-mcp.js"), "");
     assert.equal(hostMcpScript(base), join(dir, "host-mcp.js"));
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTempDir(dir);
   }
 });
 

@@ -2,16 +2,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, normalize } from "node:path";
 import { HttpError } from "../http/util.ts";
 import type { PullInfo, SyncService } from "../services.ts";
-import { stubServices, testDeps } from "../test-helpers.ts";
+import { stubServices, testDeps, tempDir } from "../test-helpers.ts";
 import { parseWorktreeList } from "./git.ts";
 import { createProjectsService } from "./service.ts";
 
-const root = realpathSync(mkdtempSync(join(tmpdir(), "odin-branches-")));
+const root = tempDir("odin-branches-");
 const GIT_ENV = { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" };
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, env: GIT_ENV, encoding: "utf8" });
 const status = async (p: Promise<unknown>) => p.then(() => 0, (e) => (e instanceof HttpError ? e.status : -1));

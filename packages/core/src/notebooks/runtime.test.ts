@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ChildProcess, SpawnOptions } from "node:child_process";
 import type { KernelLocation } from "@odin/shared/notebooks";
 import { createNotebookRuntime, decodeKernelMessage, encodeKernelMessage, type NotebookSocket, type JupyterOutput, type NotebookComm } from "./runtime.ts";
+import { tempDir, removeTempDir } from "../test-helpers.ts";
 
 class Socket extends EventEmitter implements NotebookSocket {
   readyState = 1;
@@ -20,7 +20,7 @@ class Socket extends EventEmitter implements NotebookSocket {
   }
 }
 function setup(location: KernelLocation = { kind: "native" }) {
-  const home = mkdtempSync(join(tmpdir(), "odin-notebook-runtime-"));
+  const home = tempDir("odin-notebook-runtime-");
   const requests: { path: string; init?: RequestInit }[] = [];
   const launches: { command: string; args: string[]; options: SpawnOptions }[] = [];
   const statuses: { id: string; state: string }[] = [];
@@ -37,7 +37,7 @@ function setup(location: KernelLocation = { kind: "native" }) {
     }) as typeof fetch,
     webSocket: () => { socket = new Socket(); return socket; }, onStatus: (id, state) => { statuses.push({ id, state }); },
   });
-  return { home, requests, launches, statuses, runtime, socket: () => socket!, async cleanup() { await runtime.close(); rmSync(home, { recursive: true, force: true }); } };
+  return { home, requests, launches, statuses, runtime, socket: () => socket!, async cleanup() { await runtime.close(); removeTempDir(home); } };
 }
 test("managed host keeps token out of argv/env and kernels retain cwd/interpreter", async () => {
   const s = setup();

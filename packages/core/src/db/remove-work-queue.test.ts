@@ -1,13 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { listMigrations, migrate, schemaVersion, SCHEMA_FILE, MIGRATIONS_DIR } from "./db.ts";
+import { tempDir, removeTempDir } from "../test-helpers.ts";
 
 test("work queue migration drops work/backlog tables and sessions.item_id, keeps sessions, pulls and files", () => {
-  const dir = mkdtempSync(join(tmpdir(), "odin-remove-work-"));
+  const dir = tempDir("odin-remove-work-");
   const workFile = join(dir, ".odin", "work", "w-1.md");
   mkdirSync(join(dir, ".odin", "work"), { recursive: true });
   writeFileSync(workFile, "# keep me\n");
@@ -37,6 +37,6 @@ test("work queue migration drops work/backlog tables and sessions.item_id, keeps
     assert.ok(existsSync(workFile), "work files stay on disk");
   } finally {
     db.close();
-    rmSync(dir, { recursive: true, force: true });
+    removeTempDir(dir);
   }
 });

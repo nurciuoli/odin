@@ -69,6 +69,8 @@ class FakeRpc implements Rpc {
   }
 }
 
+const PROJECT_DIR = join(tmpdir(), "odin-agy-project");
+
 async function take(events: AsyncIterable<HarnessEvent>, stop: (event: HarnessEvent) => boolean) {
   const out: HarnessEvent[] = [];
   for await (const event of events) {
@@ -99,7 +101,7 @@ function setup(overrides: Partial<import("./driver.ts").AntigravityOptions> = {}
 test("a new Antigravity session links native id and streams a turn", async () => {
   const { db, connections, harness } = setup();
   const handle = harness.start({
-    cwd: "C:\\project",
+    cwd: PROJECT_DIR,
     sessionId: "odin-agy-1",
     prompt: { text: "Hello Antigravity" },
     permissionMode: "plan",
@@ -201,7 +203,7 @@ test("a new Antigravity session links native id and streams a turn", async () =>
 test("Antigravity permission prompt handling", async () => {
   const { connections, harness } = setup();
   const handle = harness.start({
-    cwd: "C:\\project",
+    cwd: PROJECT_DIR,
     sessionId: "odin-agy-perm",
     model: "gemini-3.8-flash",
   });

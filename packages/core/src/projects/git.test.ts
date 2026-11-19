@@ -1,10 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { commitAll, initRepo, isGitRepo, parseStatusZ, readGitState, repoFromRemoteUrl, statusPaths } from "./git.ts";
+import { tempDir, removeTempDir } from "../test-helpers.ts";
 
 test("parseStatusZ reads modified, untracked and renamed entries", () => {
   assert.deepEqual(parseStatusZ(" M a.txt\0?? dir/new file.md\0R  new.txt\0old.txt\0A  b\0"), ["a.txt", "dir/new file.md", "new.txt", "b"]);
@@ -19,7 +19,7 @@ test("repoFromRemoteUrl understands https and ssh remotes", () => {
 });
 
 test("readGitState on a real repo: branch, head, dirty, and ahead/behind origin", async () => {
-  const root = mkdtempSync(join(tmpdir(), "odin-git-"));
+  const root = tempDir("odin-git-");
   try {
     const origin = join(root, "origin.git");
     const clone = join(root, "clone");
@@ -51,15 +51,15 @@ test("readGitState on a real repo: branch, head, dirty, and ahead/behind origin"
     assert.deepEqual(dirtyPaths.sort(), ["a.txt", "sub/d.txt"]);
     assert.deepEqual((await statusPaths(clone)).sort(), ["a.txt", "sub/d.txt"]);
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    removeTempDir(root);
   }
 });
 
 test("readGitState for a folder that isn't a repo is empty", async () => {
-  const root = mkdtempSync(join(tmpdir(), "odin-git-"));
+  const root = tempDir("odin-git-");
   try {
     assert.deepEqual((await readGitState(root, "main")).state, { branch: null, headSha: null, dirty: false, ahead: 0, behind: 0 });
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    removeTempDir(root);
   }
 });

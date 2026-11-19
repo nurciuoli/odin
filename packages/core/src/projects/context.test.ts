@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { documentIntro, readProject, repoFromRemote } from "./context.ts";
+import { tempDir } from "../test-helpers.ts";
 
 test("a remote URL becomes owner/name and a heading is not the package name", () => {
   assert.equal(repoFromRemote("git@github.com:acme/widgets.git"), "acme/widgets");
@@ -16,7 +16,7 @@ test("a remote URL becomes owner/name and a heading is not the package name", ()
 });
 
 test("discovery fills empty fields and a saved selection wins", () => {
-  const root = mkdtempSync(join(tmpdir(), "odin-context-"));
+  const root = tempDir("odin-context-");
   mkdirSync(join(root, "docs", "plans"), { recursive: true });
   writeFileSync(join(root, "README.md"), "# Yes Chef\n\nCooks things.\n");
   writeFileSync(join(root, "package.json"), JSON.stringify({ name: "chefai", scripts: { test: "vitest", build: "vite build" } }));

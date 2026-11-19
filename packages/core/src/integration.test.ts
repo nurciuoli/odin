@@ -5,36 +5,29 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ArtifactDetail, LibraryAsset, Session, SessionDetail } from "@odin/shared/api";
 import type { ServerEvent } from "@odin/shared/events";
 import { fakeHarness, type FakeScript } from "./harness/fake.ts";
 import { FakeGitHub } from "./sync/fake-github.ts";
-import { collectEvents, startApp, type TestApp } from "./test-helpers.ts";
+import { watchEvents, startApp, waitFor, type TestApp, tempDir, removeTempDir } from "./test-helpers.ts";
 
 const git = (cwd: string, ...args: string[]) =>
   execFileSync("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", ...args], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 
 function tempRepo(): { path: string; cleanup: () => void } {
-  const root = mkdtempSync(join(tmpdir(), "odin-it-"));
+  const root = tempDir("odin-it-");
   const path = join(root, "demo");
   mkdirSync(path);
   git(path, "init", "-q", "-b", "main");
   writeFileSync(join(path, "README.md"), "# demo\n");
   git(path, "add", ".");
   git(path, "commit", "-qm", "init");
-  return { path, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+  return { path, cleanup: () => removeTempDir(root) };
 }
 
-async function until(cond: () => Promise<boolean>, what: string, timeoutMs = 3000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!(await cond())) {
-    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
-    await new Promise((r) => setTimeout(r, 10));
-  }
-}
+const until = (cond: () => Promise<boolean>, what: string, timeoutMs = 3000) => waitFor(cond, timeoutMs, what);
 
 const session = (app: TestApp, id: string) => app.json<SessionDetail>(`/api/sessions/${id}`);
 const stateIs = (app: TestApp, id: string, state: Session["state"]) => async () => (await session(app, id)).state === state;
@@ -73,12 +66,12 @@ test("seams: register → discover, start → prompt → answer, resume, fork; m
     await until(async () => (await app.json<Session[]>("/api/sessions?origin=external")).length === 1, "discovery on registration");
 
     // Start: 201 with the record; a Write prompt; SSE carries session.updated and session.event frames.
-    const sse = collectEvents(app.base, (evs) => evs.some((e) => e.type === "session.event" && e.event.type === "permission.request"), 3000);
-    await new Promise((r) => setTimeout(r, 50));
+    const sse = watchEvents(app.base, (evs) => evs.some((e) => e.type === "session.event" && e.event.type === "permission.request"), 3000);
+    await sse.connected;
     const res = await post(app, "/api/sessions", { project: "demo", harness: "claude", prompt: { text: "please write notes" } });
     assert.equal(res.status, 201);
     const s1 = (await res.json()) as Session;
-    const frames: ServerEvent[] = await sse;
+    const frames: ServerEvent[] = await sse.events;
     assert.ok(frames.some((e) => e.type === "session.updated" && e.session.id === s1.id));
     await until(stateIs(app, s1.id, "waiting"), "waiting");
     const waiting = await session(app, s1.id);

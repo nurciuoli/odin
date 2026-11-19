@@ -1,14 +1,13 @@
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AssetDetail, Installation, InstallResult, LibraryAsset } from "@odin/shared/api";
-import { startApp } from "../test-helpers.ts";
+import { startApp, waitFor, tempDir, removeTempDir } from "../test-helpers.ts";
 
-const root = realpathSync(mkdtempSync(join(tmpdir(), "odin-library-routes-")));
-after(() => rmSync(root, { recursive: true, force: true }));
+const root = tempDir("odin-library-routes-");
+after(() => removeTempDir(root));
 
 const AGENT = (d: string) => `---\nname: helper\ndescription: ${d}\n---\nHelp.\n`;
 
@@ -77,10 +76,7 @@ test("project library routes: install, list, files, forget", async () => {
     // The projects service sees the install: the agent carries its libraryId, and the file is dirty. noteWritten
     // re-reads the project in the background, so wait for that read to land.
     let detail = await t.json("/api/projects/proj");
-    for (let i = 0; i < 200 && !detail.agents.some((a: { id: string }) => a.id === "helper"); i++) {
-      await new Promise((r) => setTimeout(r, 10));
-      detail = await t.json("/api/projects/proj");
-    }
+    await waitFor(async () => (detail = await t.json("/api/projects/proj")).agents.some((a: { id: string }) => a.id === "helper"), 2000, "the install to show in the project");
     assert.equal(detail.agents.find((a: { id: string }) => a.id === "helper")?.libraryId, "helper");
     assert.ok(detail.dirtyFiles.includes(".claude/agents/helper.md"));
 

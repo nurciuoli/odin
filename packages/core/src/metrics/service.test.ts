@@ -1,11 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fakeSessions, makeSession, routeApp } from "../ingest/fakes.ts";
-import { stubServices, testDeps } from "../test-helpers.ts";
+import { stubServices, testDeps, tempDir, removeTempDir } from "../test-helpers.ts";
 import { createMetricsService, parseNumstat } from "./service.ts";
 import { registerMetricsRoutes } from "./routes.ts";
 import type { Services } from "../services.ts";
@@ -14,7 +13,7 @@ const git = (cwd: string, ...args: string[]) =>
   execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", ...args], { cwd, encoding: "utf8" });
 
 function repo() {
-  const dir = mkdtempSync(join(tmpdir(), "odin-metrics-"));
+  const dir = tempDir("odin-metrics-");
   git(dir, "init", "-q", "-b", "main");
   writeFileSync(join(dir, "a.txt"), "one\ntwo\n");
   git(dir, "add", ".");
@@ -53,7 +52,7 @@ test("refreshOutput uses a configured nonstandard default even when main exists"
     git(dir, "branch", "-D", "main");
     await createMetricsService(deps, stubServices({ sessions, projects })).refreshOutput("s");
     assert.equal(sessions.records.get("s")!.metrics.commits, 1);
-  } finally { deps.db.close(); rmSync(dir, { recursive: true, force: true }); }
+  } finally { deps.db.close(); removeTempDir(dir); }
 });
 
 test("refreshOutput writes diff and commits against the merge base, and leaves the repo alone", async () => {
@@ -74,7 +73,7 @@ test("refreshOutput writes diff and commits against the merge base, and leaves t
     await metrics.refreshOutput("s");
     assert.equal(sessions.patches.length, patches);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTempDir(dir);
   }
 });
 
@@ -87,7 +86,7 @@ test("refreshOutput prefers origin/<default> when it exists", async () => {
     await createMetricsService(deps, stubServices({ sessions, projects: { get: () => ({ settings: { defaultBranch: "main" } }) } as unknown as Services["projects"] })).refreshOutput("s");
     assert.equal(sessions.records.get("s")!.metrics.commits, 2);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTempDir(dir);
   }
 });
 
@@ -105,14 +104,14 @@ test("refreshOutput skips sessions without a branch, with a missing path or an u
     const metrics = createMetricsService(deps, stubServices({ sessions, projects: { get: () => ({ settings: { defaultBranch: "main" } }) } as unknown as Services["projects"] }));
     for (const id of ["nobranch", "nopath", "nobranchref", "--oops", "unknown"]) await metrics.refreshOutput(id);
     assert.equal(sessions.patches.length, 0);
-    const notRepo = mkdtempSync(join(tmpdir(), "odin-notrepo-"));
+    const notRepo = tempDir("odin-notrepo-");
     mkdirSync(join(notRepo, "x"));
     sessions.records.set("nopath", { ...sessions.records.get("nopath")!, cwd: notRepo });
     await metrics.refreshOutput("nopath");
     assert.equal(sessions.patches.length, 0);
-    rmSync(notRepo, { recursive: true, force: true });
+    removeTempDir(notRepo);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTempDir(dir);
   }
 });
 

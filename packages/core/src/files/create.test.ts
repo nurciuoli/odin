@@ -2,12 +2,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Session, SessionTextFile } from "@odin/shared/api";
 import { fakeHarness } from "../harness/fake.ts";
-import { removeTempDir, startApp, testDeps, stubServices } from "../test-helpers.ts";
+import { removeTempDir, startApp, testDeps, stubServices, tempDir } from "../test-helpers.ts";
 import { createFilesService, MAX_FILE_BYTES } from "./service.ts";
 
 function workspace(t: { after(fn: () => void): void }) {
@@ -72,7 +71,7 @@ test("create never writes through a symbolic link", (t) => {
 });
 
 test("POST /api/sessions/:id/files creates files in the session folder over HTTP", async (t) => {
-  const root = mkdtempSync(join(tmpdir(), "odin-create-"));
+  const root = tempDir("odin-create-");
   const repo = join(root, "demo");
   mkdirSync(repo);
   execFileSync("git", ["init", "-q", "-b", "main"], { cwd: repo });

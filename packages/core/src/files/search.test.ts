@@ -1,10 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildIndex, createFileSearch, fuzzyScore, rank } from "./search.ts";
+import { tempDir, removeTempDir } from "../test-helpers.ts";
 
 function tree(root: string, files: string[]) {
   for (const f of files) {
@@ -24,7 +24,7 @@ test("fuzzy ranking prefers basename and contiguous matches", () => {
 });
 
 test("the git index honours .gitignore; the fallback walk skips dot folders and node_modules; results are cached", () => {
-  const root = mkdtempSync(join(tmpdir(), "odin-search-"));
+  const root = tempDir("odin-search-");
   try {
     const plain = join(root, "plain");
     tree(plain, ["a/one.ts", ".hidden/secret.ts", "node_modules/dep/index.js", "top.md"]);
@@ -48,6 +48,6 @@ test("the git index honours .gitignore; the fallback walk skips dot folders and 
     assert.equal(search(plain, "one").matches.length, 2);
     assert.equal(search(plain, 42).query, "");
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    removeTempDir(root);
   }
 });

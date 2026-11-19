@@ -1,11 +1,11 @@
 import { loadConfig } from "../config.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runInNewContext } from "node:vm";
 import { bridgeScript, injectBridge, loadTheme, parseThemeTokens, scriptJson, SUBMIT_MAX_BYTES } from "./bridge.ts";
+import { tempDir, removeTempDir } from "../test-helpers.ts";
 
 /** Runs the bridge in a fresh realm with a fake window/parent; returns window.odin and the posted messages. */
 function runBridge(script: string) {
@@ -73,13 +73,13 @@ test("theme: --iu-* properties from :root, comments ignored; the real tokens.css
 });
 
 test("theme: a configured path (ODIN_ARTIFACT_THEME) is read; a missing one gives an empty theme", () => {
-  const dir = mkdtempSync(join(tmpdir(), "odin-theme-"));
+  const dir = tempDir("odin-theme-");
   try {
     const file = join(dir, "tokens.css");
     writeFileSync(file, ":root { --iu-accent: #123456; }");
     assert.deepEqual(loadTheme(file), { "--iu-accent": "#123456" });
     assert.deepEqual(loadTheme(join(dir, "missing.css")), {});
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTempDir(dir);
   }
 });

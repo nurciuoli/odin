@@ -1,17 +1,16 @@
 import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { AssetKind, InstallRequest } from "@odin/shared/api";
 import { filesHash } from "../hash.ts";
 import { HttpError } from "../http/util.ts";
 import type { ProjectRef, ProjectsService } from "../services.ts";
-import { FIXED_NOW, stubServices, tempConfig, testDeps } from "../test-helpers.ts";
+import { FIXED_NOW, stubServices, tempConfig, testDeps, tempDir, removeTempDir } from "../test-helpers.ts";
 import { createLibraryService } from "./service.ts";
 
-const root = realpathSync(mkdtempSync(join(tmpdir(), "odin-library-")));
-after(() => rmSync(root, { recursive: true, force: true }));
+const root = tempDir("odin-library-");
+after(() => removeTempDir(root));
 let counter = 0;
 
 const AGENT = (desc = "Reviews diffs.") => `---\nname: reviewer\ndescription: ${desc}\ntools: Read, Grep\n---\n\nYou review.\n`;

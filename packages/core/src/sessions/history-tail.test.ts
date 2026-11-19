@@ -50,9 +50,10 @@ test("detail for a history-replaces-tail harness: finished turn comes from histo
     await waitFor(() => s.sessions.get(st.id)?.state === "idle", 2000, "idle");
     const ids = (await s.sessions.detail(st.id))!.transcript.filter((e) => e.kind === "tool").map((e) => e.id);
     h.messages = async () => [user("grok-0", "go"), think("grok-1", "hm"), tool(ids[0]!, "ok"), tool(ids[1]!, "ok"), asst("grok-4", "done")];
-    await new Promise((r) => setTimeout(r, 20));
+    const want = ["grok-0", "grok-1", ids[0], ids[1], "grok-4"];
+    await waitFor(async () => JSON.stringify((await s.sessions.detail(st.id))!.transcript.map((e) => e.id)) === JSON.stringify(want), 2000, "history to replace the live tail");
     const out = (await s.sessions.detail(st.id))!.transcript;
-    assert.deepEqual(out.map((e) => e.id), ["grok-0", "grok-1", ids[0], ids[1], "grok-4"]);
+    assert.deepEqual(out.map((e) => e.id), want);
   } finally { await s.sessions.close(); }
 });
 

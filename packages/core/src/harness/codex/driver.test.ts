@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDb } from "../../db/db.ts";
@@ -8,6 +8,7 @@ import { createCodexHarness } from "./driver.ts";
 import { itemEntry, policy } from "./map.ts";
 import { wslPath, type Rpc, type Wire } from "./transport.ts";
 import type { HarnessEvent } from "@odin/shared/harness";
+import { tempDir, removeTempDir } from "../../test-helpers.ts";
 
 class FakeRpc implements Rpc {
   onMessage: (message: Wire) => void = () => {};
@@ -155,7 +156,7 @@ test("Codex command output deltas stay bounded and final output replaces the str
 });
 
 test("native child rollout reads validate parent on every refresh without starting an app-server", async () => {
-  const root = mkdtempSync(join(tmpdir(), "odin-native-child-"));
+  const root = tempDir("odin-native-child-");
   const db = openDb(":memory:");
   const child = "11111111-1111-4111-8111-111111111111";
   db.prepare("INSERT INTO harness_session_links (harness, session_id, native_id) VALUES ('codex', 'parent', 'native-parent')").run();
@@ -171,7 +172,7 @@ test("native child rollout reads validate parent on every refresh without starti
     for (let i = 0; i < 2; i++) assert.equal((await harness.taskMessages!("parent", task)).status, "available");
     save("unrelated-parent");
     assert.equal((await harness.taskMessages!("parent", task)).status, "unavailable");
-  } finally { db.close(); rmSync(root, { recursive: true, force: true }); }
+  } finally { db.close(); removeTempDir(root); }
 });
 
 test("Codex usage exhaustion preserves the handle and pauses queued work until a user retries", async () => {
@@ -195,7 +196,7 @@ test("Codex usage exhaustion preserves the handle and pauses queued work until a
 });
 
 test("Codex recovers stored usage, turn timing and tool counts without resuming a thread", async () => {
-  const root = mkdtempSync(join(tmpdir(), "odin-native-metrics-"));
+  const root = tempDir("odin-native-metrics-");
   const s = setup();
   try {
     const path = join(root, "rollout.jsonl");
@@ -217,7 +218,7 @@ test("Codex recovers stored usage, turn timing and tool counts without resuming 
     assert.equal(facts!.find(f => f.kind === "turn")!.data.durationMs, 5000);
     assert.ok(!rpc.calls.some(c => c.method === "thread/resume" || c.method === "turn/start"));
     assert.equal(rpc.closed, true);
-  } finally { s.db.close(); rmSync(root, { recursive: true, force: true }); }
+  } finally { s.db.close(); removeTempDir(root); }
 });
 
 test("Codex handshake, native ID binding and restart resume; history uses identical item IDs", async () => {

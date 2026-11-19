@@ -2,8 +2,7 @@
 process.env.TZ = "America/New_York";
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -11,7 +10,7 @@ import type { Session } from "@odin/shared/api";
 import { fakeSessions, makeSession, routeApp } from "../ingest/fakes.ts";
 import { createSettingsService } from "../settings/service.ts";
 import type { ProjectsService, SessionsService } from "../services.ts";
-import { stubServices, testDeps } from "../test-helpers.ts";
+import { stubServices, testDeps, tempDir, removeTempDir } from "../test-helpers.ts";
 import { countCommitsByDay, createMetricsService, localDay } from "./service.ts";
 import { registerMetricsRoutes } from "./routes.ts";
 
@@ -109,8 +108,8 @@ test("countCommitsByDay buckets author times by local day", () => {
 });
 
 test("activity: commits from every local branch, once each, per local day; null for non-git folders", async () => {
-  const repo = mkdtempSync(join(tmpdir(), "odin-activity-git-"));
-  const plain = mkdtempSync(join(tmpdir(), "odin-activity-plain-"));
+  const repo = tempDir("odin-activity-git-");
+  const plain = tempDir("odin-activity-plain-");
   try {
     execFileSync("git", ["init", "-q", "-b", "main"], { cwd: repo });
     commitAt(repo, "old", "2026-01-01T12:00:00Z");
@@ -129,8 +128,8 @@ test("activity: commits from every local branch, once each, per local day; null 
     assert.deepEqual((await metrics.activity("demo", 1)).days.map((d) => d.commits), [3]);
     assert.deepEqual((await metrics.activity("other", 2)).days.map((d) => d.commits), [null, null]);
   } finally {
-    rmSync(repo, { recursive: true, force: true });
-    rmSync(plain, { recursive: true, force: true });
+    removeTempDir(repo);
+    removeTempDir(plain);
   }
 });
 

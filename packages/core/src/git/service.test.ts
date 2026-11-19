@@ -1,18 +1,17 @@
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Session } from "@odin/shared/api";
 import type { GitTarget } from "@odin/shared/git";
 import { HttpError } from "../http/util.ts";
 import type { ProjectRef } from "../services.ts";
-import { stubServices, testDeps } from "../test-helpers.ts";
+import { stubServices, testDeps, tempDir, removeTempDir } from "../test-helpers.ts";
 import { cleanRelPath, createGitService } from "./service.ts";
 
-const root = realpathSync(mkdtempSync(join(tmpdir(), "odin-git-")));
-after(() => rmSync(root, { recursive: true, force: true }));
+const root = tempDir("odin-git-");
+after(() => removeTempDir(root));
 
 // Commits need an identity; the test process never reads the user's global git config.
 const ENV = { GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t", GIT_CONFIG_GLOBAL: join(root, "no-gitconfig"), GIT_CONFIG_NOSYSTEM: "1" };

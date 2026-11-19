@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { encodedCwd, listSessions, readMessages, readOwnedChild } from "./history.ts";
+import { tempDir, removeTempDir } from "../../test-helpers.ts";
 
 test("history skips the system prompt and titles from the first user line", () => {
-  const root = mkdtempSync(join(tmpdir(), "odin-grok-history-"));
+  const root = tempDir("odin-grok-history-");
   const cwd = join(root, "project");
   const dir = join(root, "sessions", encodedCwd(cwd), "native-1");
   mkdirSync(dir, { recursive: true });
@@ -67,6 +67,6 @@ test("history skips the system prompt and titles from the first user line", () =
     assert.equal(owned?.some((entry) => entry.kind === "assistant" && entry.text === "from the child"), true);
     assert.equal(readOwnedChild(join(root, "sessions"), cwd, "native-1", "stranger"), null);
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    removeTempDir(root);
   }
 });

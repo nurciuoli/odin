@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { rolloutMeasurements } from "./measurements.ts";
+import { tempDir, removeTempDir } from "../../test-helpers.ts";
 
 test("rollout usage separates cache, deduplicates mirrored records and keeps model changes", async () => {
-  const root = mkdtempSync(join(tmpdir(), "odin-codex-stats-"));
+  const root = tempDir("odin-codex-stats-");
   try {
     const file = join(root, "rollout.jsonl");
     const at = "2026-11-10T12:00:00Z";
@@ -29,11 +29,11 @@ test("rollout usage separates cache, deduplicates mirrored records and keeps mod
     assert.equal(latest?.kind === "usage" && latest.data.contextWindow, 300000);
     assert.equal(await rolloutMeasurements(file, "different-session"), null);
     assert.equal(await rolloutMeasurements(join(root, "missing.jsonl"), "native"), null);
-  } finally { rmSync(root, { recursive: true, force: true }); }
+  } finally { removeTempDir(root); }
 });
 
 test("native and legacy cumulative counters can diverge after compaction without inflating totals", async () => {
-  const root = mkdtempSync(join(tmpdir(), "odin-codex-counters-"));
+  const root = tempDir("odin-codex-counters-");
   try {
     const file = join(root, "rollout.jsonl");
     const timestamp = "2026-11-10T12:00:00Z";
@@ -54,5 +54,5 @@ test("native and legacy cumulative counters can diverge after compaction without
     assert.equal(legacy!.length, 1);
     const first = legacy![0]!;
     assert.equal(first.kind === "usage" && first.data.output, 10);
-  } finally { rmSync(root, { recursive: true, force: true }); }
+  } finally { removeTempDir(root); }
 });

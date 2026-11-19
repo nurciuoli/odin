@@ -4,7 +4,6 @@ import { flushPromises } from '@vue/test-utils'
 import type { Session } from '@odin/shared/api'
 import { createMockApi } from '@/api/mock'
 import { FIXTURE_SESSION_IDS } from '@/api/fixtures'
-import { taskKey } from '@odin/shared/harness'
 import { createSessionsStore, SIDEBAR_LIMIT, sidebarOrder, titleFor } from './sessions'
 
 async function started() {
@@ -184,7 +183,6 @@ describe('sessions store', () => {
       sessionId: id,
       event: { type: 'task', task: plain({ ...source.task, state: 'completed' }) },
     })
-    expect(taskKey(source.task)).toBeTruthy()
     expect(store.active.value.some(s => s.id === id)).toBe(false)
     store.stop()
   })

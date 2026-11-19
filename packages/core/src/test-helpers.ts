@@ -1,5 +1,5 @@
 // Shared test scaffolding: an app on a random port with temp dirs and no network.
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ServerEvent } from "@odin/shared/events";
@@ -98,36 +98,75 @@ export function removeTempDir(path: string): void {
   }
 }
 
-/** Reads SSE frames from /api/events until `until` returns true or the timeout passes. */
-export async function collectEvents(base: string, until: (events: ServerEvent[]) => boolean, timeoutMs = 2000): Promise<ServerEvent[]> {
+/** A fresh temp folder (symlinks resolved, so paths compare equal on macOS), removed by `removeTempDir`. */
+export function tempDir(prefix = "odin-test-"): string {
+  return realpathSync(mkdtempSync(join(tmpdir(), prefix)));
+}
+
+/** Runs `fn` with a fresh temp folder and removes it afterwards, even when `fn` throws. */
+export async function withTempDir<T>(prefix: string, fn: (dir: string) => T | Promise<T>): Promise<T> {
+  const dir = tempDir(prefix);
+  try {
+    return await fn(dir);
+  } finally {
+    removeTempDir(dir);
+  }
+}
+
+/** Polls until `cond` holds (real time), failing with `what` after `timeoutMs`. Use instead of a fixed sleep. */
+export async function waitFor(cond: () => boolean | Promise<boolean>, timeoutMs = 2000, what = "condition"): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!(await cond())) {
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+    await new Promise((r) => setTimeout(r, 5));
+  }
+}
+
+/**
+ * Opens /api/events and collects frames until `until` returns true or the timeout passes. `connected` resolves once
+ * the server has registered the stream, so a test can act without sleeping first.
+ */
+export function watchEvents(base: string, until: (events: ServerEvent[]) => boolean, timeoutMs = 2000): { connected: Promise<void>; events: Promise<ServerEvent[]> } {
+  let markConnected!: () => void;
+  const connected = new Promise<void>((r) => { markConnected = r; });
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   const events: ServerEvent[] = [];
-  try {
-    const res = await fetch(`${base}/api/events`, { signal: ctrl.signal });
-    const reader = res.body!.getReader();
-    const decoder = new TextDecoder();
-    let buf = "";
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      let i;
-      while ((i = buf.indexOf("\n\n")) >= 0) {
-        const chunk = buf.slice(0, i);
-        buf = buf.slice(i + 2);
-        const data = chunk.split("\n").find((l) => l.startsWith("data: "));
-        if (data) events.push(JSON.parse(data.slice(6)));
+  const done = (async () => {
+    try {
+      const res = await fetch(`${base}/api/events`, { signal: ctrl.signal });
+      markConnected();
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let i;
+        while ((i = buf.indexOf("\n\n")) >= 0) {
+          const chunk = buf.slice(0, i);
+          buf = buf.slice(i + 2);
+          const data = chunk.split("\n").find((l) => l.startsWith("data: "));
+          if (data) events.push(JSON.parse(data.slice(6)));
+        }
+        if (until(events)) break;
       }
-      if (until(events)) break;
+    } catch (err) {
+      if (!ctrl.signal.aborted) throw err;
+    } finally {
+      markConnected();
+      clearTimeout(timer);
+      ctrl.abort();
     }
-  } catch (err) {
-    if (!ctrl.signal.aborted) throw err;
-  } finally {
-    clearTimeout(timer);
-    ctrl.abort();
-  }
-  return events;
+    return events;
+  })();
+  return { connected, events: done };
+}
+
+/** Reads SSE frames from /api/events until `until` returns true or the timeout passes. */
+export function collectEvents(base: string, until: (events: ServerEvent[]) => boolean, timeoutMs = 2000): Promise<ServerEvent[]> {
+  return watchEvents(base, until, timeoutMs).events;
 }
 
 /** A full Services object for route/unit tests: the given fakes, and loud stubs for everything else. */

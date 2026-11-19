@@ -33,7 +33,8 @@ test("commands and prompts: frontmatter optional; prompts list their {{variables
   assert.equal(promptBody("---\nname: x\n---\nBody {{a}}\n"), "Body {{a}}\n");
   assert.equal(promptBody("Body"), "Body");
   const broken = parseAsset("prompt", "broken", { "broken.md": "---\nname: [a, b\n---\nx" });
-  assert.ok(broken.error);
+  assert.match(broken.error ?? "", /./, "a front-matter syntax error is reported on the asset");
+  assert.equal(parseAsset("prompt", "fine", { "fine.md": "ok" }).error, null);
 });
 
 test("templates validate into a full TemplateSpec with clear errors", () => {
@@ -82,7 +83,8 @@ test("settings profiles: permission lists and hook entries", () => {
 
 test("file keys: no absolute paths, no .., at most 64 files of 1 MB, layout per kind", () => {
   assert.equal(pathError("a/b.md"), null);
-  for (const bad of ["/etc/passwd", "../x", "a/../b", "a//b", "./a", "C:/x", "a\\b", "a\u0000b", ""]) assert.ok(pathError(bad), bad);
+  for (const bad of ["/etc/passwd", "../x", "a/../b", "a//b", "./a", "C:/x", "a\\b", "a\u0000b", ""]) assert.equal(typeof pathError(bad), "string", bad);
+  assert.equal(pathError("ok/nested/file.md"), null);
   assert.equal(filesError("agent", "r", { "r.md": "x" }), null);
   assert.match(filesError("agent", "r", { "other.md": "x" })!, /one file named r.md/);
   assert.match(filesError("agent", "r", { "r.md": "x", "s.md": "y" })!, /one file/);
