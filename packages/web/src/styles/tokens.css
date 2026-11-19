@@ -93,6 +93,8 @@
   /* motion */
   --iu-ease: cubic-bezier(0.2, 0, 0, 1);
   --iu-dur-fast: 80ms;
+  --iu-dur-micro: 120ms; /* things arriving: a popover, dialog, row or panel; always with --iu-ease, never bounces */
+  --iu-rise: 4px; /* how far an arriving thing travels */
   --iu-dur: 160ms;
   /* tempo is the status: each state has its own speed, readable from the corner of the eye.
      running = quick and even (linear, never stops); awaiting the user = a slow breath;

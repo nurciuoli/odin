@@ -517,6 +517,7 @@ onMounted(() => {
   max-width: min(320px, calc(100vw - 16px));
   max-height: calc(100dvh - 16px);
   z-index: 1000;
+  animation: iu-settle var(--iu-dur-micro) var(--iu-ease);
 }
 
 /* Placement variants */
@@ -662,5 +663,10 @@ onMounted(() => {
   text-transform: uppercase;
   color: var(--iu-text-muted);
   padding: 7px 10px 4px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .iu-menu__panel {
+    animation: none;
+  }
 }
 </style>

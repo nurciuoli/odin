@@ -254,7 +254,13 @@ const title = (s: Session) =>
           <IuFlock state="idle" size="lg" />
           <p class="launchpad__quiet">All quiet. Sessions you start gather here.</p>
         </div>
-        <ul v-else class="launchpad__perches" aria-label="Sessions in progress">
+        <TransitionGroup
+          v-else
+          tag="ul"
+          name="launchpad-perch"
+          class="launchpad__perches"
+          aria-label="Sessions in progress"
+        >
           <li v-for="p in perches" :key="p.id" class="launchpad__perch" :data-state="p.state">
             <span class="launchpad__perch-glyph" role="img" :aria-label="p.description"
               ><IuFlock size="xl" tone="neutral" :state="p.flock" :agents="p.agents"
@@ -334,7 +340,7 @@ const title = (s: Session) =>
             </div>
             <div class="launchpad__perch-state" />
           </li>
-        </ul>
+        </TransitionGroup>
       </section>
 
       <section class="launchpad__section" aria-labelledby="launchpad-recent">
@@ -515,6 +521,20 @@ const title = (s: Session) =>
 }
 .launchpad__perch-label > .launchpad__perch-activity {
   min-width: 0;
+}
+.launchpad-perch-enter-active {
+  animation: iu-settle var(--iu-dur-micro) var(--iu-ease);
+}
+.launchpad-perch-move {
+  transition: transform var(--iu-dur-micro) var(--iu-ease);
+}
+@media (prefers-reduced-motion: reduce) {
+  .launchpad-perch-enter-active {
+    animation: none;
+  }
+  .launchpad-perch-move {
+    transition: none;
+  }
 }
 .launchpad-update-enter-active,
 .launchpad-update-leave-active {

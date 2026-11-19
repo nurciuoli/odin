@@ -205,13 +205,7 @@ const cardStyle = computed(() => ({ ...style.value, width: `${props.width}px` })
   border-radius: var(--iu-radius-lg);
   box-shadow: var(--iu-shadow-popover);
   font-size: var(--iu-font-size-13);
-  animation: iu-hovercard-in 120ms ease-out;
-}
-@keyframes iu-hovercard-in {
-  from {
-    opacity: 0;
-    transform: translateY(2px);
-  }
+  animation: iu-settle var(--iu-dur-micro) var(--iu-ease);
 }
 @media (prefers-reduced-motion: reduce) {
   .iu-hovercard {
