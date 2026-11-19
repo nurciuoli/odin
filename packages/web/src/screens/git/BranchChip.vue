@@ -14,6 +14,7 @@ import { IuIcon } from '@/components/Icon'
 import { useToast } from '@/components/Toast'
 import DirtySwitchDialog, { type DirtyChoice } from './DirtySwitchDialog.vue'
 import SyncDialog from './SyncDialog.vue'
+import { onGitIntent, type GitIntent } from './gitIntents'
 import { relativeTime, useGitStatus } from './useGit'
 
 const props = defineProps<{ session: SessionDetail }>()
@@ -270,8 +271,31 @@ const remoteLine = computed(() => {
 })
 const diverged = computed(() => !!status.value?.ahead && !!status.value?.behind)
 
+// The palette's `@` list asks for these.
+async function onIntent(i: GitIntent) {
+  if (i.kind === 'switch') {
+    const known = branches.value.find(b => b.name === i.branch)
+    if (known) await choose(known)
+    else await checkout(i.branch, {})
+  } else if (i.kind === 'new-session') newSession(i.branch)
+  else if (i.kind === 'new-branch') await createBranch(i.branch)
+  else if (i.kind === 'fetch') await fetchNow()
+  else if (i.kind === 'pull') await pull()
+  else if (i.kind === 'push') await push()
+  else if (i.kind === 'stash') {
+    const r = await run('Stash', t => api.gitStash(t, { includeUntracked: true }))
+    if (r.ok) toast({ title: 'Stashed your changes', intent: 'success' })
+  } else if (i.kind === 'stash-action') {
+    const verb = { apply: 'Applied', pop: 'Restored', drop: 'Dropped' }[i.action]
+    const r = await run('Stash', t => api.gitStashAction(t, i.action, i.ref))
+    if (r.ok) toast({ title: `${verb} ${i.ref}`, intent: 'success' })
+  }
+}
+
 let withdraw: (() => void) | undefined
+let withdrawIntent: (() => void) | undefined
 onMounted(() => {
+  withdrawIntent = onGitIntent(i => void onIntent(i))
   withdraw = registerShortcut({
     id: 'session-branch',
     keys: 'Mod+B',
@@ -284,6 +308,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   withdraw?.()
+  withdrawIntent?.()
   document.removeEventListener('pointerdown', onPointerdown)
   window.removeEventListener('resize', onResize)
 })

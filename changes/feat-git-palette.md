@@ -1,0 +1,1 @@
+- Type `@` in the ⌘K palette on a session to switch to one of its branches, start a new session on a branch, create a branch, restore, apply or drop a stash, or fetch, pull and push.

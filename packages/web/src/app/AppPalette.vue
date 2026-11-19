@@ -1,15 +1,17 @@
 <script setup lang="ts">
 // The command palette (⌘K), mounted once in the shell. One box for everything: type to search sessions, projects,
 // files and commands together (fuzzy, grouped, a few of each), or narrow it with a sigil: `>` commands, `#` projects,
-// `/` files. With nothing typed it shows what needs you, what you opened lately and a few commands. Whatever you
+// `/` files, `@` the session's branches and stashes. With nothing typed it shows what needs you, what you opened lately and a few commands. Whatever you
 // type can also start a new session: the last row is always "Start a session with …". Choosing a session, project or
 // file opens it; closing without a choice puts focus back where it was.
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { HarnessInfo, ProjectMapFile, Session } from '@odin/shared/api'
+import type { GitBranch, GitStash } from '@odin/shared/git'
 import { useApi } from '@/api'
 import { IuCommandPalette, type CommandItem, type CommandSource } from '@/components/CommandPalette'
 import { harnessLabel, relativeTime, SESSION_DISPLAY } from '@/screens/shared/format'
+import { hasGitHandler, sendGitIntent, type GitIntent } from '@/screens/git/gitIntents'
 import { useCommands } from './commands'
 import { openNewProject } from './newProject'
 import { useDrafts } from './drafts'
@@ -286,6 +288,155 @@ function commandResults(term: string): CommandItem[] {
   }))
 }
 
+// ── git (`@`): the open session's branches and stashes, carried out by its branch chip ──
+const gitBranches = ref<GitBranch[]>([])
+const gitStashes = ref<GitStash[]>([])
+const gitReady = ref(false)
+watch(open, async v => {
+  if (!v) return
+  gitReady.value = false
+  gitBranches.value = []
+  gitStashes.value = []
+  const id = route.params.id
+  if (route.name !== 'session' || typeof id !== 'string' || !hasGitHandler()) return
+  const t = { kind: 'session' as const, id }
+  try {
+    const [b, st] = await Promise.all([api.gitBranches(t), api.gitStashes(t)])
+    gitBranches.value = b.branches
+    gitStashes.value = st
+    gitReady.value = true
+  } catch {
+    // not a checkout: the source stays empty
+  }
+})
+const remoteShort = (name: string) => name.replace(/^[^/]+\//, '')
+function branchHint(b: GitBranch): string {
+  if (b.worktreeSession) return 'Open session'
+  if (b.worktree) return 'checked out elsewhere'
+  const ab = [b.ahead ? `↑${b.ahead}` : '', b.behind ? `↓${b.behind}` : '']
+    .filter(Boolean)
+    .join(' ')
+  return [ab, relativeTime(b.lastCommitAt)].filter(Boolean).join(' · ')
+}
+const SYNC_ROWS: { kind: 'fetch' | 'pull' | 'push' | 'stash'; label: string }[] = [
+  { kind: 'fetch', label: 'Fetch' },
+  { kind: 'pull', label: 'Pull' },
+  { kind: 'push', label: 'Push' },
+  { kind: 'stash', label: 'Stash changes' },
+]
+function gitResults(term: string, scoped: boolean): CommandItem[] {
+  if (!gitReady.value)
+    return scoped
+      ? [
+          {
+            id: 'status:git',
+            label: hasGitHandler()
+              ? 'Loading branches…'
+              : 'Open a session in a git checkout to switch branches',
+            group: 'Git',
+            disabledReason: ' ',
+          },
+        ]
+      : []
+  const text = term.trim()
+  if (!scoped && !text) return []
+  const local = new Set(gitBranches.value.filter(b => !b.remote).map(b => b.name))
+  const candidates = gitBranches.value.filter(
+    b =>
+      !b.current &&
+      !b.name.endsWith('/HEAD') &&
+      !(b.remote && local.has(remoteShort(b.name))) &&
+      !(b.worktree && !b.worktreeSession),
+  )
+  const branches = fuzzyFilter(candidates, term, b => b.name).map(({ item, match }) => ({
+    id: `git:switch:${item.name}`,
+    label: item.name,
+    icon: item.remote ? ('external' as const) : ('gitBranch' as const),
+    detail: item.worktreeSession ? 'worktree' : item.remote ? 'remote' : undefined,
+    hint: branchHint(item),
+    group: 'Branches',
+    matches: match.indices,
+  }))
+  if (!scoped) return branches.slice(0, 3)
+  const current = gitBranches.value.find(b => b.current)
+  const rows: CommandItem[] = [...branches]
+  const top = branches[0]
+  if (text && top) {
+    const name = top.label.startsWith('origin/') ? remoteShort(top.label) : top.label
+    rows.push({
+      id: `git:new-session:${name}`,
+      label: `New session on ${name}`,
+      icon: 'plus',
+      group: 'Branch actions',
+    })
+  }
+  if (text && !/\s/.test(text) && !gitBranches.value.some(b => remoteShort(b.name) === text))
+    rows.push({
+      id: `git:new-branch:${text}`,
+      label: `Create branch ${text}`,
+      detail: current ? `from ${current.name}` : undefined,
+      icon: 'plus',
+      group: 'Branch actions',
+    })
+  const stashes = fuzzyFilter(gitStashes.value, term, st => st.message).map(({ item }) => item)
+  rows.push(
+    ...stashes.map(st => ({
+      id: `git:stash-action:pop:${st.ref}`,
+      label: st.message.replace(/^On [^:]+: /, ''),
+      icon: 'history' as const,
+      detail: st.branch ? `on ${st.branch}` : undefined,
+      hint: `${st.ref} · ${relativeTime(st.at)}`,
+      group: 'Stashes · ↵ restores',
+    })),
+  )
+  const first = stashes[0]
+  if (first && text)
+    rows.push(
+      {
+        id: `git:stash-action:apply:${first.ref}`,
+        label: `Apply ${first.ref} and keep it`,
+        icon: 'copy',
+        group: 'Stash actions',
+      },
+      {
+        id: `git:stash-action:drop:${first.ref}`,
+        label: `Drop ${first.ref}`,
+        icon: 'trash',
+        group: 'Stash actions',
+      },
+    )
+  rows.push(
+    ...fuzzyFilter(SYNC_ROWS, term, r => r.label).map(({ item, match }) => ({
+      id: `git:${item.kind}`,
+      label: item.label,
+      icon:
+        item.kind === 'pull'
+          ? ('arrowDown' as const)
+          : item.kind === 'push'
+            ? ('arrowUp' as const)
+            : ('retry' as const),
+      detail: current ? current.name : undefined,
+      group: 'Sync',
+      matches: match.indices,
+    })),
+  )
+  return rows
+}
+function gitIntentOf(id: string): GitIntent | null {
+  const rest = id.slice('git:'.length)
+  const at = rest.indexOf(':')
+  const kind = at < 0 ? rest : rest.slice(0, at)
+  const value = at < 0 ? '' : rest.slice(at + 1)
+  if (kind === 'switch' || kind === 'new-session' || kind === 'new-branch')
+    return { kind, branch: value }
+  if (kind === 'fetch' || kind === 'pull' || kind === 'push' || kind === 'stash') return { kind }
+  if (kind === 'stash-action') {
+    const action = value.slice(0, value.indexOf(':')) as 'apply' | 'pop' | 'drop'
+    return { kind, action, ref: value.slice(value.indexOf(':') + 1) }
+  }
+  return null
+}
+
 // ── start a session from what you typed ──
 function startItem(term: string): CommandItem[] {
   const text = term.trim()
@@ -345,6 +496,12 @@ const sources = computed<CommandSource[]>(() => [
     prefix: '>',
     label: 'Commands',
     resolve: (term, { scoped }) => limited(commandResults(term), scoped, MIXED_LIMIT.command),
+  },
+  {
+    id: 'git',
+    prefix: '@',
+    label: 'Branches',
+    resolve: (term, { scoped }) => gitResults(term, scoped),
   },
   {
     id: 'start',
@@ -446,6 +603,9 @@ function onSelect(item: CommandItem, opts: { newTab: boolean }) {
     }
     if (opts.newTab) window.open(router.resolve(to).href, '_blank', 'noopener')
     else void router.push(to)
+  } else if (kind === 'git') {
+    const intent = gitIntentOf(item.id)
+    if (intent) void nextTick(() => sendGitIntent(intent))
   } else if (kind === 'new') {
     drafts.set('new', { text: value, attachments: [] })
     void nextTick(() => emit('quickLaunch'))
@@ -467,8 +627,8 @@ function onSelect(item: CommandItem, opts: { newTab: boolean }) {
   >
     <template #empty="{ term }">
       <p class="app-palette__empty">
-        Nothing matches “{{ term }}”. Type <kbd>&gt;</kbd> for commands, <kbd>#</kbd> for projects
-        or <kbd>/</kbd> for files.
+        Nothing matches “{{ term }}”. Type <kbd>&gt;</kbd> for commands, <kbd>#</kbd> for projects,
+        <kbd>/</kbd> for files or <kbd>@</kbd> for branches.
       </p>
     </template>
     <template #footer>
@@ -482,6 +642,7 @@ function onSelect(item: CommandItem, opts: { newTab: boolean }) {
       <span class="iu-cmdk__hint"><kbd>&gt;</kbd>commands</span>
       <span class="iu-cmdk__hint"><kbd>#</kbd>projects</span>
       <span class="iu-cmdk__hint"><kbd>/</kbd>files</span>
+      <span class="iu-cmdk__hint"><kbd>@</kbd>git</span>
     </template>
   </IuCommandPalette>
 </template>
