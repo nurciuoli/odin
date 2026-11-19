@@ -145,8 +145,9 @@ const hasEyebrow = computed(() => Boolean(props.eyebrow || slots.eyebrow))
 .iu-page-header__title {
   margin: 0;
   min-width: 0;
+  font-family: var(--iu-font-display);
   font-size: 21px;
-  font-weight: var(--iu-font-weight-semibold);
+  font-weight: var(--iu-font-weight-medium);
   line-height: var(--iu-leading-tight);
   letter-spacing: -0.01em;
   color: var(--iu-text);

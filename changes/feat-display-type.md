@@ -1,0 +1,1 @@
+- Page titles and headings use the Space Grotesk display face, small-caps labels are a little tighter, and numbers line up in columns.

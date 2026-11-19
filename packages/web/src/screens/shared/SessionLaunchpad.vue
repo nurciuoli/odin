@@ -408,7 +408,8 @@ const title = (s: Session) =>
 }
 .launchpad__heading h2 {
   margin: 0;
-  font-size: var(--iu-font-size-13);
+  font-family: var(--iu-font-display);
+  font-size: var(--iu-font-size-13-5);
   font-weight: var(--iu-font-weight-medium);
   color: var(--iu-text-2);
 }

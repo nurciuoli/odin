@@ -112,6 +112,9 @@
   /* type */
   --iu-font-sans: 'IBM Plex Sans', system-ui, sans-serif;
   --iu-font-brand: 'Space Grotesk', var(--iu-font-sans);
+  --iu-font-display: var(
+    --iu-font-brand
+  ); /* page titles and the big numbers; never body or labels */
   --iu-font-mono: 'IBM Plex Mono', monospace;
 
   /* type scale — UI text runs 10–14px in half-pixel steps; names are the px value
@@ -141,7 +144,7 @@
   --iu-leading-code: 1.7; /* code wells and diffs */
 
   /* tracking for mono uppercase labels (eyebrows, column heads, group labels) */
-  --iu-tracking-caps: 0.12em;
+  --iu-tracking-caps: 0.08em;
   --iu-tracking-caps-tight: 0.06em; /* badges and other caps inside a pill */
 
   /* geometry */

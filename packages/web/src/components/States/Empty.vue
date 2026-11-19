@@ -81,8 +81,9 @@ const eyebrowText = computed(() => EYEBROW[props.kind])
 }
 
 .iu-empty__title {
+  font-family: var(--iu-font-display);
   font-size: 15px;
-  font-weight: var(--iu-font-weight-semibold);
+  font-weight: var(--iu-font-weight-medium);
   color: var(--iu-text);
 }
 
