@@ -20,6 +20,7 @@ body {
   font-size: var(--iu-font-size-14);
   line-height: var(--iu-leading-normal);
   -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums; /* costs, times and counts line up in every column */
 }
 
 a {

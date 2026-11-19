@@ -186,8 +186,9 @@ async function copyTraceId() {
   color: var(--iu-warning);
 }
 .iu-error-state__title--page {
+  font-family: var(--iu-font-display);
   font-size: 17px;
-  font-weight: var(--iu-font-weight-semibold);
+  font-weight: var(--iu-font-weight-medium);
 }
 .iu-error-state__text--page {
   font-size: var(--iu-font-size-13-5);
