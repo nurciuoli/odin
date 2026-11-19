@@ -20,7 +20,7 @@ beforeAll(() => {
 })
 
 describe('SessionFiles', () => {
-  it('lists the files this session touched, newest first, and opens one', async () => {
+  it('browses the working directory and leaves session files to Details', async () => {
     const api = createMockApi()
     const base = await api.getSession(FIXTURE_SESSION_IDS.idle)
     const tool = (id: string, name: string, file: string) => ({
@@ -34,27 +34,17 @@ describe('SessionFiles', () => {
     })
     const session = {
       ...base,
-      transcript: [tool('1', 'Read', 'a.md'), tool('2', 'Edit', 'b.md')],
+      transcript: [tool('1', 'Read', 'README.md'), tool('2', 'Edit', 'src/example.ts')],
     }
-    const read = vi.fn(async (_id: string, path: string) => ({
-      path,
-      content: 'x',
-      version: 'v1',
-      size: 1,
-    }))
-    api.readSessionFile = read
     const wrapper = mount(SessionFiles, {
       props: { session },
       global: { provide: { [API_KEY as symbol]: api }, stubs: { IuMarkdownEditor: editorStub } },
     })
     await flushPromises()
-    const list = wrapper.find('[aria-label="This session"]')
-    const names = list.findAll('.session-files__entry-name').map(n => n.text())
-    expect(names).toEqual(['b.md', 'a.md'])
-    expect(list.text()).toContain('Edited')
-    await list.findAll('button')[1]!.trigger('click')
-    await flushPromises()
-    expect(read).toHaveBeenCalledWith(session.id, 'a.md')
+    expect(wrapper.find('[aria-label="This session"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Edited')
+    const names = wrapper.findAll('.session-files__entry-name').map(n => n.text())
+    expect(names).toContain('README.md')
     wrapper.unmount()
   })
   it('adds selected CSV rows and original references to the existing composer draft', async () => {
@@ -229,7 +219,8 @@ describe('SessionFiles', () => {
     const { wrapper, button } = await mountFiles()
     await button('README.md').trigger('click')
     await flushPromises()
-    const toggle = () => wrapper.find('.session-files__sidebar-toggle')
+    const toggle = () =>
+      wrapper.find('[aria-label="Collapse file browser"], [aria-label="Expand file browser"]')
     const before = toggle().html()
     await toggle().trigger('click')
     expect(toggle().html()).not.toBe(before)

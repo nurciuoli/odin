@@ -86,9 +86,16 @@ const drag = ref<{ id: number; startX: number; startWidth: number } | null>(null
 function stopDrag() {
   const current = drag.value
   drag.value = null
+  window.removeEventListener('pointerup', onWindowPointer)
+  window.removeEventListener('pointercancel', onWindowPointer)
   if (current && splitter.value?.hasPointerCapture(current.id))
     splitter.value.releasePointerCapture(current.id)
   document.documentElement.classList.remove('session-workbench--resizing')
+}
+function onWindowPointer(event: PointerEvent) {
+  const current = drag.value
+  if (!current || current.id !== event.pointerId) return
+  stopDrag()
 }
 function startDrag(event: PointerEvent) {
   if (event.button !== 0) return
@@ -96,6 +103,8 @@ function startDrag(event: PointerEvent) {
   drag.value = { id: event.pointerId, startX: event.clientX, startWidth: boundedWidth.value }
   splitter.value?.setPointerCapture(event.pointerId)
   document.documentElement.classList.add('session-workbench--resizing')
+  window.addEventListener('pointerup', onWindowPointer)
+  window.addEventListener('pointercancel', onWindowPointer)
 }
 function moveDrag(event: PointerEvent) {
   const current = drag.value
@@ -158,7 +167,6 @@ defineExpose({ openFile, openCell })
       @lostpointercapture="stopDrag"
       @keydown="keyResize"
     />
-    <div v-if="drag" class="session-workbench__drag-shield" aria-hidden="true" />
     <aside class="session-workbench" :data-tab="tab" aria-label="Content preview">
       <div class="session-workbench__topbar">
         <IuButton
@@ -173,6 +181,7 @@ defineExpose({ openFile, openCell })
         </IuButton>
       </div>
       <div class="session-workbench__content">
+        <div v-if="drag" class="session-workbench__drag-shield" aria-hidden="true" />
         <div v-show="tab === 'files'" class="session-workbench__file-panel">
           <IuTabs
             v-model="filesTab"
@@ -238,18 +247,21 @@ defineExpose({ openFile, openCell })
   background: var(--iu-ground);
 }
 .session-workbench__topbar {
+  position: relative;
+  z-index: 4;
   flex: none;
   height: 38px;
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  padding: 0 10px 0 14px;
+  justify-content: flex-start;
+  padding: 0 10px 0 8px;
   border-bottom: 1px solid var(--iu-border-quiet);
   color: var(--iu-text-muted);
   font-size: var(--iu-font-size-12);
 }
 .session-workbench__content {
+  position: relative;
   flex: 1;
   min-height: 0;
   min-width: 0;

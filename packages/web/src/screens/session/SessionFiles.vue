@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // The workspace surface: a file browser above, and below it everything opened from it as documents in one tab strip.
 // A text file is edited here; a .ipynb opens as a notebook (its kernel is the file's), read-only while it opens.
-// "This session" heads the browser: the files the agent read or changed, newest first (fileActivity.ts).
+// Files the agent read or changed live in the details panel (fileActivity.ts), not in this browser.
 import {
   computed,
   defineAsyncComponent,
@@ -53,7 +53,7 @@ import {
   type OpenDoc,
 } from './documents'
 import { SURFACE } from './surface'
-import { touchedFiles, type CellRef, type FileTouch } from './fileActivity'
+import type { CellRef } from './fileActivity'
 
 const props = defineProps<{ session: SessionDetail }>()
 const emit = defineEmits<{ hide: []; 'open-environment': [] }>()
@@ -83,16 +83,7 @@ interface NotebookState {
   dirty: boolean
 }
 
-const touched = computed(() =>
-  touchedFiles(props.session.transcript, {
-    pending: props.session.pending,
-    running: props.session.state === 'running',
-    root: props.session.cwd,
-  }).filter(f => f.inside),
-)
 /** A cell to show in a notebook, per path; a new object asks the notebook again. */
-const touchLabel = (t?: FileTouch) =>
-  t ? (t.meta ? `${t.verb.done} · ${t.meta}` : t.verb.done) : ''
 const reveals = ref<Record<string, { cell: string }>>({})
 
 const listing = ref<SessionFileListing>({ path: '', entries: [], truncated: false })
@@ -500,35 +491,38 @@ defineExpose({ open, openCell })
     >
       <div class="session-files__sidebar-header">
         <span class="session-files__sidebar-title">Files</span>
-        <button
-          type="button"
-          class="session-files__sidebar-toggle"
-          :aria-expanded="!sidebarCollapsed"
-          :aria-label="sidebarCollapsed ? 'Expand file browser' : 'Collapse file browser'"
-          @click="sidebarCollapsed = !sidebarCollapsed"
-        >
-          <IuIcon :name="sidebarCollapsed ? 'chevronRight' : 'chevronDown'" :size="14" />
-        </button>
+        <span class="session-files__sidebar-actions">
+          <button
+            v-if="expanded"
+            type="button"
+            class="session-files__sidebar-toggle"
+            aria-label="Exit full screen"
+            title="Exit full screen"
+            @click="expanded = false"
+          >
+            <IuIcon name="minimize" :size="14" />
+          </button>
+          <button
+            type="button"
+            class="session-files__sidebar-toggle"
+            aria-label="Hide preview"
+            title="Hide preview"
+            @click="emit('hide')"
+          >
+            <IuIcon name="close" :size="14" />
+          </button>
+          <button
+            type="button"
+            class="session-files__sidebar-toggle"
+            :aria-expanded="!sidebarCollapsed"
+            :aria-label="sidebarCollapsed ? 'Expand file browser' : 'Collapse file browser'"
+            @click="sidebarCollapsed = !sidebarCollapsed"
+          >
+            <IuIcon :name="sidebarCollapsed ? 'chevronRight' : 'chevronDown'" :size="14" />
+          </button>
+        </span>
       </div>
       <div v-show="!sidebarCollapsed" class="session-files__sidebar-content">
-        <section v-if="touched.length" class="session-files__session" aria-label="This session">
-          <h3 class="session-files__section-title">This session</h3>
-          <ul class="session-files__touched">
-            <li v-for="file in touched" :key="file.path">
-              <button
-                type="button"
-                class="session-files__entry"
-                :class="{ 'session-files__entry--active': activePath === file.path }"
-                :title="file.path"
-                @click="open(file.path)"
-              >
-                <IuIcon :name="fileIcon(file.path)" :size="14" class="session-files__entry-icon" />
-                <span class="session-files__entry-name">{{ file.path }}</span>
-                <span class="session-files__entry-meta">{{ touchLabel(file.touches[0]) }}</span>
-              </button>
-            </li>
-          </ul>
-        </section>
         <div class="session-files__nav">
           <IuButton size="sm" variant="ghost" @click="browse()">Root</IuButton>
           <IuButton
@@ -823,9 +817,16 @@ defineExpose({ open, openCell })
 }
 .session-files--expanded {
   position: fixed;
-  inset: 12px;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  top: 12px;
   z-index: 80;
   border: 1px solid var(--iu-border);
+}
+/* Stay under the desktop window buttons so the window itself can still close. */
+html.is-desktop-shell .session-files--expanded {
+  top: calc(env(titlebar-area-height, 48px) + 8px);
 }
 /* File browser on top, open documents below */
 .session-files__sidebar {
@@ -853,6 +854,11 @@ defineExpose({ open, openCell })
   height: 36px;
   padding: 0 6px 0 10px;
   border-bottom: 1px solid var(--iu-border-quiet);
+}
+.session-files__sidebar-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 .session-files__sidebar-title {
   font-size: var(--iu-font-size-12);
@@ -950,30 +956,6 @@ defineExpose({ open, openCell })
 }
 .session-files__entry-icon {
   flex: none;
-  color: var(--iu-text-muted);
-}
-.session-files__session {
-  flex: none;
-  max-height: 40%;
-  overflow-y: auto;
-  padding: 6px 6px 4px;
-  border-bottom: 1px solid var(--iu-border-quiet);
-}
-.session-files__section-title {
-  margin: 0;
-  padding: 2px 8px 4px;
-  font-size: var(--iu-font-size-11);
-  font-weight: var(--iu-font-weight-medium);
-  color: var(--iu-text-muted);
-}
-.session-files__touched {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.session-files__entry-meta {
-  flex: none;
-  font-size: var(--iu-font-size-11);
   color: var(--iu-text-muted);
 }
 .session-files__entry-name {

@@ -45,11 +45,20 @@ html.is-desktop-shell .session-screen__state::before {
   -webkit-app-region: drag;
 }
 
-/* The preview pane runs the full height of the window, so its top bar sits under the window buttons: it takes the
-   title bar's height (see above) and keeps its close button clear of them. */
+/* The preview pane runs the full height of the window, so its top bar sits under the window buttons. The bar ends
+   before those buttons: padding would still be part of the drag region and would swallow the close click. */
 html.is-desktop-shell .session-workbench__topbar {
-  padding-right: calc(10px + 100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
+  margin-right: max(
+    140px,
+    calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw))
+  );
   -webkit-app-region: drag;
+}
+@media (max-width: 1024px) {
+  /* Below this width the preview starts under the title bar, so it no longer shares a row with the buttons. */
+  html.is-desktop-shell .session-workbench__topbar {
+    margin-right: 0;
+  }
 }
 
 html.is-desktop-shell .session-workbench__topbar :is(a, button) {

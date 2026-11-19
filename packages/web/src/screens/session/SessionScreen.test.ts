@@ -155,6 +155,16 @@ describe('SessionScreen', () => {
     await wrapper!.find('[role="separator"]').trigger('pointercancel', { pointerId: 7 })
     expect(wrapper!.find('.session-workbench__drag-shield').exists()).toBe(false)
 
+    await wrapper!.find('[role="separator"]').trigger('pointerdown', {
+      button: 0,
+      pointerId: 8,
+      clientX: 1000,
+    })
+    expect(wrapper!.find('.session-workbench__drag-shield').exists()).toBe(true)
+    window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 8 }))
+    await flushPromises()
+    expect(wrapper!.find('.session-workbench__drag-shield').exists()).toBe(false)
+
     const close = wrapper!.find('[aria-label="Hide preview"]')
     await close.trigger('click')
     await flushPromises()
@@ -402,7 +412,7 @@ describe('SessionScreen', () => {
     const context = side.find('#side-context button')
     expect(context.element.children[0]?.textContent).toBe('Context')
     expect(context.element.children[1]?.tagName).toBe('svg')
-    for (const label of ['Outputs', 'Changes', 'Background tasks']) {
+    for (const label of ['Outputs', 'Changes', 'Background tasks', 'This session']) {
       const summary = side
         .findAll('summary')
         .find(s => s.element.firstElementChild?.textContent === label)
@@ -410,7 +420,39 @@ describe('SessionScreen', () => {
       expect(summary!.element.children[1]?.classList.contains('session-side__caret')).toBe(true)
     }
     expect(side.text()).toContain('No background tasks.')
+    const tasks = side.find('#side-tasks').element
+    const sessionFiles = side.find('#side-session-files').element
+    expect(
+      tasks.compareDocumentPosition(sessionFiles) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
     expect(side.find('#side-plan').exists()).toBe(false)
+  })
+  it('opens a file this session read from Details, not from the file browser', async () => {
+    const api = createMockApi()
+    const session = api.db.sessions.find(s => s.id === FIXTURE_SESSION_IDS.idle)!
+    api.db.transcripts[session.id] = [
+      {
+        kind: 'tool',
+        id: 'read-notes',
+        name: 'Read',
+        at: null,
+        parentToolUseId: null,
+        input: { file_path: `${session.cwd}/README.md` },
+        result: { ok: true, text: 'alpha\nbeta\n', truncated: false },
+      },
+    ]
+    await mountSession(session.id, api)
+    const section = wrapper!.find('#side-session-files').element.parentElement!
+    expect(section.textContent).toContain('README.md')
+    expect(section.textContent).toContain('Read · 2 lines')
+    expect(wrapper!.find('.session-files [aria-label="This session"]').exists()).toBe(false)
+    const read = vi.spyOn(api, 'readSessionFile')
+    const row = [...section.querySelectorAll('button')].find(b =>
+      b.textContent?.includes('README.md'),
+    )
+    row!.click()
+    await flushPromises()
+    expect(read).toHaveBeenCalledWith(session.id, 'README.md')
   })
   it('shows the transcript, the header and the open prompt of a waiting session', async () => {
     await mountSession(FIXTURE_SESSION_IDS.waiting)

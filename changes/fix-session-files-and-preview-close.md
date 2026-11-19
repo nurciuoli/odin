@@ -1,0 +1,2 @@
+- Files this session read or changed are listed in Details, under Background tasks, instead of at the top of the Files browser.
+- The preview pane can be closed again. Its hide control stays clear of the window buttons, and resizing it no longer leaves the pane stuck open.

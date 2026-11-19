@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // The Details column: where the session runs (repository, branch, pull request, quick links, tags), then usage and
-// context, outputs, changes, the plan and, last, background tasks. Each section's header carries a quiet one-glance reading.
+// context, outputs, changes, the plan, background tasks and, last, the files this session read or changed.
 import { computed, ref, watchEffect } from 'vue'
 import type { Session, SessionDetail } from '@odin/shared/api'
 import { useApi } from '@/api'
@@ -26,6 +26,7 @@ import TaskLanes from './TaskLanes.vue'
 import TaskStrip from './TaskStrip.vue'
 import { buildTaskTree, limitRows } from './taskTree'
 import { fileChanges, latestPlan, latestPlanFile } from './workbench'
+import { touchedFiles, type FileTouch } from './fileActivity'
 import { IuMarkdown } from '@/components/Markdown'
 import {
   TOKEN_LABEL,
@@ -97,6 +98,15 @@ const todosPct = computed(() =>
 
 // ── files and changes ──
 const files = computed(() => fileChanges(props.session.transcript))
+const touched = computed(() =>
+  touchedFiles(props.session.transcript, {
+    pending: props.session.pending,
+    running: props.session.state === 'running',
+    root: props.session.cwd,
+  }).filter(f => f.inside),
+)
+const touchLabel = (t?: FileTouch) =>
+  t ? (t.meta ? `${t.verb.done} · ${t.meta}` : t.verb.done) : ''
 const totals = computed(() => ({
   added: files.value.reduce((n, f) => n + f.added, 0),
   removed: files.value.reduce((n, f) => n + f.removed, 0),
@@ -621,6 +631,30 @@ function addTag(e: KeyboardEvent) {
         @select="emit('openTask', $event)"
       />
       <p v-else class="session-side__none">No background tasks.</p>
+    </details>
+
+    <details class="session-side__section" aria-labelledby="side-session-files">
+      <summary id="side-session-files" class="session-side__summary">
+        <span>This session</span>
+        <IuIcon name="chevronRight" :size="14" class="session-side__caret" />
+        <span class="session-side__summary-value">{{
+          touched.length ? `${touched.length} ${touched.length === 1 ? 'file' : 'files'}` : 'None'
+        }}</span>
+      </summary>
+      <ul v-if="touched.length" class="session-side__list">
+        <li v-for="file in touched" :key="file.path" class="session-side__file">
+          <button
+            type="button"
+            class="session-side__open"
+            :title="file.path"
+            @click="emit('openFile', file.path)"
+          >
+            <IuFilePath class="session-side__path" :path="file.path" :root="session.cwd" />
+          </button>
+          <span class="session-side__count">{{ touchLabel(file.touches[0]) }}</span>
+        </li>
+      </ul>
+      <p v-else class="session-side__none">No files touched yet.</p>
     </details>
   </div>
 </template>

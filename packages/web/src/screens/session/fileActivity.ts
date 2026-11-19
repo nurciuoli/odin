@@ -1,5 +1,5 @@
-// What the session did to files and notebook cells, read from the transcript alone. The Files tab's "This session" list
-// leads with it (files ordered by when the agent last touched them); the thread uses the same lookups to open the
+// What the session did to files and notebook cells, read from the transcript alone. The details panel's "This session"
+// list leads with it (files ordered by when the agent last touched them); the thread uses the same lookups to open the
 // Files tab at a step's file or notebook cell. Pure, so it is testable without a DOM.
 import type { TranscriptEntry } from '@odin/shared/harness'
 import { presentTool, toolMeta, toolPath } from '@/components/ToolCall/summary'
