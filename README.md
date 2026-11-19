@@ -4,55 +4,89 @@
 
 **A bird's-eye view of every coding agent.**
 
-<p align="center"><img src="docs/assets/murmuration.gif" width="720" alt="A murmuration of small strokes flocking and drifting, the animation behind Odin's session composer"></p>
+<p align="center"><img src="docs/assets/ravens.gif" width="720" alt="A flock of small ravens turning, gliding and drifting apart and back together"></p>
 
-Odin is a harness-agnostic Agentic Development Environment. Start, resume and organise agent sessions across all
-your projects and runtimes (Claude Code, Codex, Grok, OpenCode, Antigravity) from one calm, curated desktop app
-that you can shape to the way you work.
+Running several coding agents across several projects gets messy. Odin puts them in one calm place: see what is
+running, what is waiting for you and what has finished, step in when it matters, and undo what you don't like.
 
-- **Any harness, one view.** Every session runs on its tool's real native harness, so your instruction files,
-  skills, MCP servers, hooks and permissions behave the way they always do.
-- **Calm by design.** A curated interface that stays quiet until a session needs you.
-- **Yours to shape.** A shared library of instructions, skills, subagents, commands and settings profiles, kept as
-  plain files and adapted to each harness at launch.
+It works with the agents you already use (Claude Code, Codex, Grok, OpenCode and Antigravity) and runs each one as
+it normally runs, with your own instructions, skills, MCP servers and logins. There is nothing to migrate.
 
-Odin adds the parts those tools don't have:
+![Odin home: a flock of ravens above the message box, and every session listed by what needs you](docs/assets/screenshots/home.png)
 
-- **One place for every session**: streaming chat, tool calls, diffs, permission prompts and plan approval, with a
-  tray badge and a notification when a session needs you. Sessions you start in a terminal show up too, and you
-  can resume them.
-- **A shared library**: instructions, skills, subagents, commands, MCP servers and settings profiles, kept once in
-  `~/.odin/library/` (plain files, git-friendly), adapted to each runtime at launch, and installed into projects
-  with drift detection.
-- **Workspaces**: run a session in the project checkout or in a fresh git worktree on its own branch, across one
-  or several repositories.
-- **Measurement**: time, tokens, cost, diff size, and the outcome of the linked pull request, per session.
-- **Artifacts and notebooks**: agents can post sandboxed interactive HTML and drive Python kernels you can inspect.
+## What Odin helps you do
 
-## Screenshots
+### Keep every agent in view
 
-**Home**: start a chat, and see every session that is running, paused for you, or finished.
+Home lists every session across every project and every agent, ordered by what needs you. Ravens flock while work
+is under way, clouds roll in as more sessions start, and a flash of light marks one that finished or needs a
+decision. Sessions keep running with the window closed, and a tray badge and notification bring you back. Sessions
+you started in a terminal show up too, and you can pick them up where they left off.
 
-![Odin home: the composer above a list of in-progress sessions, one paused for permission](docs/assets/screenshots/home.png)
+Hover any project or session for a quick card: its branch, status, last message and cost.
 
-**Session**: streaming chat with tool calls, terminal output, and a details panel for context, changes, background tasks and plan. Open the workspace files beside the chat to browse and preview them.
+![A hover card over a session in the sidebar, showing status, branch, model, last message and cost](docs/assets/screenshots/hover-card.png)
 
-![A session with streaming chat, the details panel, and the workspace file browser with a Markdown file previewed](docs/assets/screenshots/session-file-preview.png)
+### Find anything in a keystroke
 
-**Project overview**: time, cost, lines changed and commits per project, with a chart over 7 days, 30 days or 12 weeks.
+`⌘K` (or `Ctrl+K`) searches sessions, projects, files and commands together, shows what you touched recently, and
+can start a new session from whatever you typed. Type `>` for commands, `#` for projects, `/` for files and `@` for
+branches. See [all shortcuts](docs/shortcuts.md).
 
-![Project overview with metric tiles and a sessions-per-day chart](docs/assets/screenshots/project-overview.png)
+![The command palette listing sessions that need you, recent sessions and commands](docs/assets/screenshots/command-palette.png)
+
+### Stay in control of what changes
+
+Review what an agent did file by file, hunk by hunk, line by line, or turn by turn. Stage or revert exactly what you
+want, then commit with a message drafted from the session. Blame names the session and turn that wrote each line,
+and checks your repo defines can run before a commit or push and stop a bad one. Switch or sync branches from the session
+header, with a safe answer for uncommitted work.
+
+![The Changes panel: staged and unstaged files, a commit box, and a diff with hunks you can stage or revert](docs/assets/screenshots/changes.png)
+
+### Undo anything, branch from anywhere
+
+Hover one of your messages and rewind: branch from that moment in a new worktree, restore just the files (with an
+Undo), move the session back, or fork the conversation. The project's Branches panel shows what is in flight as a
+git tree, linked to each branch's sessions, worktrees and pull requests.
+
+![The rewind prompt, offering Branch, Rewind, Files only and Fork chat](docs/assets/screenshots/rewind.png)
+
+### Change agents without losing your place
+
+Type `/handoff` and carry on in the same folder and branch with a different agent. Start on whichever agent fits
+the task and change your mind later.
+
+![The handoff card listing the agents a session can continue on](docs/assets/screenshots/handoff.png)
+
+### Set it up once
+
+Keep your instructions, skills, subagents, commands, MCP servers and settings profiles in one library of plain files
+you can keep in git. Odin sets them up for each agent, shows when a project's copy has drifted from the library, and
+keeps tokens in a secrets vault so they stay out of your config files.
+
+![The Library's MCP servers tab, with sign-in state and the secrets each server needs](docs/assets/screenshots/library-mcp.png)
+
+### And the details
+
+- **Know what it cost.** Time, tokens, cost, lines changed and the outcome of the linked pull request, per session
+  and per project, with a chart over 7 days, 30 days or 12 weeks.
+- **Give an agent its own branch.** Run a session in your checkout or in a fresh git worktree, across one or several
+  repositories.
+- **Decide when you're ready.** Permission prompts, plan approvals and questions wait for you; nothing is approved
+  on your behalf.
+- **See your own thread.** `⌥T` lists every message you sent down the side of the conversation.
+- **Run a command inline.** Start a message with `!` to run a shell command in the session's folder and hand the
+  output to the agent.
+- **Look at what agents make.** Agents can post sandboxed interactive pages, and open, edit and run Jupyter notebooks
+  beside the chat. Odin finds your project's Python environment for you.
+
+![A Jupyter notebook open beside the chat, with its kernel, toolbar, and Markdown and Python cells with output](docs/assets/screenshots/session-notebook.png)
+
+More screenshots and walk-throughs are in the [guide](docs/guide.md).
 
 > **Status:** early. Windows (including WSL runtimes) is the most-tested platform; the server and web app run
 > anywhere Node 24 does, and prebuilt installers are not published yet.
-
-## Jupyter support
-
-Open, edit and run Jupyter notebooks (`.ipynb` files) right inside a session. Open one from the Files tab, or create a
-new notebook from the New menu. Odin detects your project's Python environment automatically; you can change it
-any time in the Environment tab.
-
-![A notebook open beside the chat, with its kernel, toolbar, and Markdown and Python cells with output](docs/assets/screenshots/session-notebook.png)
 
 ## Quick start
 
@@ -75,6 +109,8 @@ For the desktop app, build it from source with `yarn build:desktop` (Windows; se
 
 ## Documentation
 
+- [Guide](docs/guide.md): what you can do with Odin, task by task.
+- [Keyboard shortcuts](docs/shortcuts.md): the palette, the session screen and the composer.
 - [Overview](docs/overview.md): concepts and design decisions.
 - [Architecture](docs/architecture.md): how the pieces fit.
 - [Development](docs/development.md): setup, running, testing, environment variables.

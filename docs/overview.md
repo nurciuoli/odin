@@ -1,13 +1,16 @@
 # Odin: overview
 
-Odin is a harness-agnostic Agentic Development Environment: one place to start, resume and organise agent
-**sessions** across all your **projects**, with a shared **library** of the things you reuse (instructions, skills,
-subagents, commands, MCP servers, settings profiles).
+Odin is where you run your coding agents. Instead of a terminal per agent per project, you get one view of
+everything: what is running, what needs you, what is done, and what it cost.
 
-It does not replace the agent runtimes. Each session runs on a real native harness (Claude Agent SDK, Codex
-app-server, Grok, OpenCode, Antigravity) with that runtime's own installation, login, settings and transcripts.
-Odin adds what those tools don't: one view across all of them, a library you maintain once, and measurements of
-how sessions went.
+It does not replace your agents. Each session runs on the agent's own runtime (Claude Agent SDK, Codex app-server,
+Grok, OpenCode, Antigravity) with its own installation, login, settings and history, so it behaves exactly as it does
+in a terminal, and sessions you start there show up in Odin too. What Odin adds is the layer around them: one place to
+work, a library you maintain once, git tools that know which session changed what, and a record of how each session
+went.
+
+For a task-by-task tour see the [guide](guide.md). The rest of this page defines the terms (project, session,
+harness, library, artifact, notebook), lists what you can do, and explains the design decisions behind them.
 
 ## Concepts
 
@@ -41,16 +44,37 @@ through host tools and you can edit and run in the session workbench.
 ## What you can do
 
 - **Start a session.** Pick a project (or several), a harness, model, permission mode and workspace, and type.
-  Forking a session is the same flow, prefilled.
+  Forking a session is the same flow, prefilled. `Mod+K` searches everything and can start one from what you typed.
 - **Work in it.** Streamed replies and thinking, tool calls with inputs and results, diffs, nested subagent
   activity, todos, plan approval, permission prompts (allow once / always / deny), interrupt, queued follow-ups,
   attachments, context usage and cost so far.
 - **Come back later.** Sessions keep running with the window closed. A session that needs you raises a desktop
   notification and a tray badge. History is one searchable list across projects and harnesses, including sessions
   started in a terminal.
-- **Reuse.** Edit library assets in the app, see versions and diffs, install them into projects.
-- **Review.** Per session: tokens, cost, wall and active time, turns, tool calls, diff stats, and the linked pull
+- **Review and commit.** Per-hunk and per-line staging, changes grouped by the turn that made them, blame that names
+  the session behind each line, a branch switcher with stash handling, and repo-defined checks before commits and
+  pushes.
+- **Undo and branch.** Rewind from any of your messages: branch into a new worktree, restore the files, move the
+  session back, or fork the conversation. The project Overview shows branches as a git tree.
+- **Change agents.** `/handoff` continues a session on another harness in the same folder and branch.
+- **Reuse.** Edit library assets in the app, see versions and diffs, install them into projects, and keep MCP secrets
+  in the vault.
+- **Measure.** Per session: tokens, cost, wall and active time, turns, tool calls, diff stats, and the linked pull
   request and its outcome (optional, read-only GitHub integration).
+
+## Questions people ask
+
+**Is Odin another agent?** No. It starts and watches the agents you already have. Each keeps its own model access,
+login and transcripts, and Odin never reads or stores model credentials.
+
+**Will it change my agent configuration?** No. Library assets are copied into a project only when you install them,
+Odin never commits for you, and settings a runtime cannot express are reported rather than silently dropped.
+
+**Does it keep my conversations?** No. The harness's own history is the record; Odin keeps session metadata, such as
+title, tags, workspace and metrics, and points at the harness's session.
+
+**Can I use it without the desktop app?** Yes. The desktop app is a client of the same local web app a browser
+opens. Nothing leaves your machine except what your agents send to their own providers.
 
 ## Design decisions
 
@@ -67,6 +91,8 @@ through host tools and you can edit and run in the session workbench.
 
 ## Where to go next
 
+- [guide.md](guide.md): what you can do, task by task.
+- [shortcuts.md](shortcuts.md): keyboard shortcuts.
 - [architecture.md](architecture.md): how the pieces fit.
 - [contracts.md](contracts.md): API, SSE, harness, library, ingest and security rules.
 - [desktop.md](desktop.md): the Electron shell.
