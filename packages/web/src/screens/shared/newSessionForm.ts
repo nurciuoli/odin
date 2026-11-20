@@ -1,5 +1,13 @@
 // One conversation with the default agent; settings are independent of the user message.
-import type { AppSettings, PermissionMode, StartSessionRequest } from '@odin/shared/api'
+import type {
+  AppSettings,
+  LaunchWhere,
+  PermissionMode,
+  StartSessionRequest,
+} from '@odin/shared/api'
+
+/** An existing place picked in the composer: a worktree by path, or an existing branch (checked out in a new worktree). */
+export type ExistingWhere = Extract<LaunchWhere, { kind: 'worktree' | 'branch' }>
 
 export interface SessionForm {
   runtimeOptions?: import('@odin/shared/api').RuntimeOptions
@@ -13,6 +21,8 @@ export interface SessionForm {
   permissionMode: PermissionMode
   worktree: boolean
   branch: string
+  /** An existing worktree or branch; wins over `worktree`/`branch` (the new-worktree choice). */
+  existing?: ExistingWhere | null
 }
 
 export type SessionFormErrors = Partial<
@@ -117,11 +127,19 @@ export function validateSessionForm(form: SessionForm): SessionFormErrors {
   const errors: SessionFormErrors = {}
   if (!form.project) errors.project = 'Pick a project.'
   if (!form.prompt.trim()) errors.prompt = 'Write a message to start a session.'
-  if (form.worktree) {
+  if (form.worktree && !form.existing) {
     const branch = branchProblem(form.branch)
     if (branch) errors.branch = branch
   }
   return errors
+}
+
+/** What the form says about where the session runs, as the API's `where`. */
+export function whereOf(form: SessionForm): LaunchWhere {
+  if (form.existing) return form.existing
+  if (!form.worktree) return { kind: 'checkout' }
+  const branch = form.branch.trim()
+  return branch ? { kind: 'new-worktree', branch } : { kind: 'new-worktree' }
 }
 
 export function buildStartRequest(form: SessionForm): StartSessionRequest {
@@ -130,12 +148,11 @@ export function buildStartRequest(form: SessionForm): StartSessionRequest {
     projects: [...new Set([form.project, ...form.projects])],
     prompt: { text: form.prompt.trim() },
     permissionMode: form.permissionMode,
-    worktree: form.worktree,
+    where: whereOf(form),
   }
   if (form.effort) req.effort = form.effort
   if (form.runtimeOptions) req.runtimeOptions = form.runtimeOptions
   if (form.harness) req.harness = form.harness
   if (form.model && form.model !== 'default') req.model = form.model
-  if (form.worktree && form.branch.trim()) req.branch = form.branch.trim()
   return req
 }

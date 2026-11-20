@@ -1,0 +1,1 @@
+- The new-session composer now says exactly where a session runs (the branch, an existing worktree, an existing branch or a new worktree), lets you pick any of them, and warns when a session is already running in the chosen folder.

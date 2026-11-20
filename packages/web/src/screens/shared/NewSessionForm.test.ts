@@ -259,7 +259,7 @@ describe('NewSessionForm', () => {
         harness: 'codex',
         model: 'codex-test',
         permissionMode: 'plan',
-        worktree: true,
+        where: { kind: 'new-worktree' },
       }),
     )
   })
@@ -333,7 +333,7 @@ describe('NewSessionForm', () => {
     ])
     const live = wrapper.find('[aria-live="polite"].sr-only')
     expect(live.text()).toBe('Permission mode: Ask before edits')
-    expect(wrapper.find('button[aria-label^="Where it runs:"]').text()).toContain('This checkout')
+    expect(wrapper.find('button[aria-label^="Where it runs:"]').text()).toContain('⎇ main')
   })
 
   it('opens the where popover from the chip, never on its own, and sends a typed branch', async () => {
@@ -342,25 +342,27 @@ describe('NewSessionForm', () => {
     expect(wrapper.text()).not.toContain('Configure')
     const chip = () => wrapper.find('button[aria-label^="Where it runs:"]')
     await chip().trigger('click')
-    await wrapper.findAll('.composer-where__option')[1]!.trigger('click')
+    await wrapper.find('[data-where="new-worktree"]').trigger('click')
     expect(chip().text()).toContain('New worktree · auto')
-    await wrapper.find('.composer-where__input').setValue('feat/x')
+    await wrapper.find('input[data-name]').setValue('feat/x')
     expect(chip().text()).toContain('New worktree · feat/x')
     await type('Go')
     const spy = vi.spyOn(api, 'startSession')
     await start().trigger('click')
     await flushPromises()
-    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ worktree: true, branch: 'feat/x' }))
+    expect(spy).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { kind: 'new-worktree', branch: 'feat/x' } }),
+    )
     // nothing is remembered: back to the default after the send
-    expect(chip().text()).toContain('This checkout')
+    expect(chip().text()).toContain('⎇ main')
   })
 
   it('reopens the popover when the branch is invalid on send', async () => {
     const { wrapper, api, type, start } = await mountForm({ project: 'odin' })
     const chip = () => wrapper.find('button[aria-label^="Where it runs:"]')
     await chip().trigger('click')
-    await wrapper.findAll('.composer-where__option')[1]!.trigger('click')
-    await wrapper.find('.composer-where__input').setValue('bad..name')
+    await wrapper.find('[data-where="new-worktree"]').trigger('click')
+    await wrapper.find('input[data-name]').setValue('bad..name')
     await chip().trigger('click')
     expect(wrapper.find('.composer-where__pop').exists()).toBe(false)
     await type('Go')
@@ -377,7 +379,7 @@ describe('NewSessionForm', () => {
   it('toggles checkout and worktree with Alt+W', async () => {
     const { wrapper } = await mountForm({ project: 'odin' })
     const chip = () => wrapper.find('button[aria-label^="Where it runs:"]')
-    expect(chip().text()).toContain('This checkout')
+    expect(chip().text()).toContain('⎇ main')
     dispatchShortcut(new KeyboardEvent('keydown', { key: 'w', altKey: true, cancelable: true }))
     await flushPromises()
     expect(chip().text()).toContain('New worktree')
