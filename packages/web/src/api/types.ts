@@ -37,6 +37,7 @@ import type {
   ProjectBranch,
   ProjectDetail,
   ProjectFolders,
+  ProjectWorktrees,
   SecretInfo,
   SecretsResponse,
   StartMcpOAuthResponse,
@@ -127,6 +128,8 @@ export interface Api {
   /** Per local calendar day (the server's time zone), oldest first, no gaps. `days` defaults to 84, at most 168. */
   getProjectActivity(project: string, days?: number): Promise<ProjectActivity>
   listProjectBranches(project: string): Promise<ProjectBranch[]>
+  /** The main checkout and every worktree, with status, merge state and the sessions in each. */
+  listProjectWorktrees(project: string): Promise<ProjectWorktrees>
   /** Removes a worktree Odin created (the branch stays). 409 when a live session uses it or it is dirty. */
   removeWorktree(project: string, path: string): Promise<void>
 

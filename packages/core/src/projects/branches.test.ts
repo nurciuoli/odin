@@ -76,7 +76,8 @@ test("branches: ahead/behind/merged against the default, worktrees, current, ses
   assert.match(by.main!.headSha, /^[0-9a-f]{40}$/);
   assert.ok(!Number.isNaN(Date.parse(by.main!.lastCommitAt)));
 
-  // origin/main wins over main once it exists.
+  // origin/main wins over main once the remote and its ref exist.
+  git(repo, "remote", "add", "origin", repo);
   git(repo, "update-ref", "refs/remotes/origin/main", "main~1");
   const again = Object.fromEntries((await projects.branches("demo")).map((b) => [b.name, b]));
   assert.deepEqual([again.feature!.ahead, again.feature!.behind], [2, 0]);

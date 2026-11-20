@@ -180,6 +180,60 @@ export interface ProjectBranch {
   pull: PullRef | null;
 }
 
+/** A session whose working directory is a given folder. */
+export interface WorktreeSession {
+  id: string;
+  title: string;
+  state: SessionState;
+  /** state is running or waiting: the harness is live in that folder right now. */
+  running: boolean;
+}
+
+/** The project's main checkout or one of its git worktrees. */
+export interface ProjectWorktree {
+  /** Absolute path. */
+  path: string;
+  /** Short branch name, or null when detached. */
+  branch: string | null;
+  headSha: string | null;
+  /** Uncommitted changes (including untracked files). */
+  dirty: boolean;
+  /** Commits on the branch not on the base branch, and the other way round. 0/0 when detached or there is no base. */
+  ahead: number;
+  behind: number;
+  /** The project's own checkout (always the first entry). */
+  main: boolean;
+  /** The branch is fully merged into the base branch. False when detached or when it is the base branch itself. */
+  merged: boolean;
+  /** Odin sessions whose cwd is exactly this folder, newest first (at most 20). */
+  sessions: WorktreeSession[];
+}
+
+/** GET /api/projects/:name/worktrees. */
+export interface ProjectWorktrees {
+  /** The main checkout's current branch, or null when detached. */
+  mainBranch: string | null;
+  /** The base branch ahead/behind/merged are measured against, or null when the repo has none yet. */
+  baseBranch: string | null;
+  /** The main checkout first, then every other worktree (Odin's and the user's own). */
+  worktrees: ProjectWorktree[];
+}
+
+/**
+ * Where a new session runs.
+ * - checkout: the project's own folder.
+ * - new-worktree: a new worktree on a NEW branch (default `odin/<slug>-<short id>`).
+ * - branch: a new worktree on an EXISTING branch. `branch` is a local name (`x`) or a remote one (`origin/x`, or
+ *   `x` when only a remote has it), which becomes a local tracking branch `x`. When `x` is already checked out in
+ *   another worktree that worktree is reused; 409 `checked-out-elsewhere` when it's the main checkout.
+ * - worktree: an EXISTING worktree of the project, by absolute path (one of `git worktree list`; 400 otherwise).
+ */
+export type LaunchWhere =
+  | { kind: "checkout" }
+  | { kind: "new-worktree"; branch?: string }
+  | { kind: "branch"; branch: string }
+  | { kind: "worktree"; path: string };
+
 /** DELETE /api/projects/:name/worktrees. */
 export interface RemoveWorktreeRequest {
   /** Absolute path of a worktree Odin created for this project. */
@@ -443,7 +497,7 @@ export type PermissionMode = "default" | "acceptEdits" | "plan" | "bypassPermiss
 
 export type Workspace =
   | { kind: "checkout" }
-  /** A git worktree Odin made under <ODIN_HOME>/worktrees/, on its own branch. */
+  /** A git worktree on a branch: one Odin made under <ODIN_HOME>/worktrees/, or an existing one of the project. */
   | { kind: "worktree"; path: string; branch: string };
 
 export type ChecksResult = "pass" | "fail" | "skipped";
@@ -662,10 +716,15 @@ export interface StartSessionRequest {
   permissionMode?: PermissionMode;
   /** @deprecated Rejected at launch. Agents are subagents, installed through the library. */
   agent?: string;
-  /** Run in a new worktree on its own branch. Default false (the checkout). */
+  /** Run in a new worktree on its own branch. Default false (the checkout). Shorthand for `where`. */
   worktree?: boolean;
-  /** Branch for the worktree. Default `odin/<slug>-<short id>`. */
+  /** Branch for the worktree. Default `odin/<slug>-<short id>`. Shorthand for `where`. */
   branch?: string;
+  /**
+   * Where to run. Mutually exclusive with `worktree`/`branch` (400 when both are given); without either the
+   * project's `defaultWorktree` setting decides between `checkout` and `new-worktree`.
+   */
+  where?: LaunchWhere;
   /** Library MCP server ids to pass at start (not written to the repo). */
   mcp?: string[];
   /** @deprecated Rejected at launch. Translate reusable task instructions into a skill. */
@@ -678,8 +737,14 @@ export interface StartSessionRequest {
 /** POST /api/sessions/:id/fork */
 export interface ForkSessionRequest {
   title?: string;
-  /** Fork into a new worktree (default: same workspace as the parent). */
+  /** Fork into a new worktree (default: same workspace as the parent). Shorthand for `where: { kind: "new-worktree" }`. */
   worktree?: boolean;
+  /**
+   * Where the fork runs; 400 when combined with `worktree`. Omitted: the parent's workspace. `checkout` is the
+   * project's own folder, `worktree` an existing one, `branch` an existing branch in a worktree, `new-worktree` a new
+   * branch started at the parent's HEAD commit. A side thread can't use `new-worktree` or `branch` (400).
+   */
+  where?: LaunchWhere;
   /** Optional first message for the fork. */
   prompt?: UserMessage;
   /**
@@ -699,7 +764,7 @@ export interface ForkSessionRequest {
   atMessageId?: string;
   /**
    * Also give the fork the working tree the parent had at `atMessageId`'s checkpoint. Requires `atMessageId` and
-   * `worktree: true` (400 otherwise: files are never restored into a checkout another session is using). 409 when
+   * a new worktree (`worktree: true` or `where.kind: "new-worktree"`; 400 otherwise: files are never restored into a checkout another session is using). 409 when
    * that checkpoint has no files (`snapshot` is not `ok`).
    */
   restoreFiles?: boolean;

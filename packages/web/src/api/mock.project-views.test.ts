@@ -18,6 +18,45 @@ const status = (p: Promise<unknown>) =>
   )
 
 describe('mock api: project views', () => {
+  it('fork where: an existing worktree shares its folder; where and worktree conflict', async () => {
+    const { api } = withEvents()
+    const wt = (await api.listProjectWorktrees('odin')).worktrees[1]!
+    const parent = (await api.listSessions({ project: 'odin' }))[0]!
+    const f = await api.forkSession(parent.id, { where: { kind: 'worktree', path: wt.path } })
+    expect([f.cwd, f.branch]).toEqual([wt.path, wt.branch])
+    const n = await api.forkSession(parent.id, { where: { kind: 'new-worktree', branch: 'x/y' } })
+    expect(n.branch).toBe('x/y')
+    expect(
+      await status(api.forkSession(parent.id, { where: { kind: 'checkout' }, worktree: true })),
+    ).toBe(400)
+  })
+
+  it('worktrees: the checkout and two worktrees; start can use an existing one', async () => {
+    const { api } = withEvents()
+    const wt = await api.listProjectWorktrees('odin')
+    expect(wt.worktrees.map(w => w.main)).toEqual([true, false, false])
+    expect(wt.worktrees.some(w => w.sessions.some(s => s.running))).toBe(true)
+    expect(wt.worktrees.some(w => w.merged)).toBe(true)
+    expect(await status(api.listProjectWorktrees('nope'))).toBe(404)
+    const target = wt.worktrees[1]!
+    const s = await api.startSession({
+      project: 'odin',
+      prompt: { text: 'hi' },
+      where: { kind: 'worktree', path: target.path },
+    })
+    expect(s.cwd).toBe(target.path)
+    expect(s.branch).toBe(target.branch)
+    expect(
+      await status(
+        api.startSession({
+          project: 'odin',
+          prompt: { text: 'x' },
+          where: { kind: 'worktree', path: '/nowhere' },
+        }),
+      ),
+    ).toBe(400)
+  })
+
   it('activity: 84 local days ending today, no gaps, deterministic', async () => {
     const { api } = withEvents()
     const { days } = await api.getProjectActivity('odin')

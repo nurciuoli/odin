@@ -9,8 +9,8 @@ import type { DatabaseSync } from "node:sqlite";
 import type {
   AppSettings, Artifact, ArtifactDetail, ArtifactSubmitRequest, AssetDetail, AssetFiles, AssetKind, CreateProjectRequest,
   ForkSessionRequest, HandoffPreview, HandoffRequest, ExportResult, ImportPreview, ImportRequest, Installation, InstallRequest, InstallResult, 
-  LibraryAsset, MetricsQuery, MetricsRow, ModelPrice, PermissionAnswer,
-  PermissionMode, ProjectActivity, ProjectAgent, ProjectBranch, ProjectDetail, ProjectSettings, PullRef, Session,
+  LaunchWhere, LibraryAsset, MetricsQuery, MetricsRow, ModelPrice, PermissionAnswer,
+  PermissionMode, ProjectActivity, ProjectAgent, ProjectBranch, ProjectDetail, ProjectSettings, ProjectWorktrees, PullRef, Session,
   MessageQueue, SessionCounts, SessionDetail, SessionFilter, SessionMetrics, SessionState, StartSessionRequest, SyncStatus,
   UpdateProjectSettingsRequest, UpdateProjectSourcesRequest, UpdateSessionRequest, UserMessage,
 } from "@odin/shared/api";
@@ -69,9 +69,12 @@ export interface ProjectsService extends Closeable {
   agents(name: string): ProjectAgent[];
   /**
    * `git worktree add -b <branch> <ODIN_HOME>/worktrees/<project>/<branch slug> <base>` where base is
-   * origin/<default> when it exists, else <default>. Reuses an existing worktree of that branch.
+   * origin/<default> when it exists, else <default>. Reuses an existing worktree of that branch. `fromCwd` starts a new
+   * branch at that folder's HEAD commit instead (a fork continues from its parent).
    */
-  createWorktree(name: string, branch: string): Promise<{ path: string; branch: string }>;
+  createWorktree(name: string, branch: string, opts?: { fromCwd?: string }): Promise<{ path: string; branch: string }>;
+  /** The local branch name `branch` stands for (`origin/x` or a remote-only `x` → `x`). 404 when nobody has it. */
+  localBranchName(name: string, branch: string): Promise<string>;
   /**
    * Removes a Odin worktree (branch kept). 400 for paths outside <ODIN_HOME>/worktrees/<project>/ (never the
    * project checkout); 409 when a live session's cwd is inside it or the tree is dirty.
@@ -82,6 +85,16 @@ export interface ProjectsService extends Closeable {
    * the sessions on it and its PR. Read-only git. 404 unknown project.
    */
   branches(name: string): Promise<ProjectBranch[]>;
+  /**
+   * A new worktree on an EXISTING branch (local, or `origin/x` / `x` from a remote, which becomes a local tracking
+   * branch). Reuses the worktree that has it checked out; 409 `checked-out-elsewhere` when that is the main
+   * checkout; 404 for an unknown branch.
+   */
+  openBranch(name: string, branch: string): Promise<{ path: string; branch: string }>;
+  /** An existing worktree of the project by path. 400 when it isn't in `git worktree list`. The main checkout is allowed. */
+  existingWorktree(name: string, path: string): Promise<{ path: string; branch: string | null; main: boolean }>;
+  /** The main checkout and every worktree with status, merge state and the sessions in each. Read-only. 404 unknown project. */
+  worktrees(name: string): Promise<ProjectWorktrees>;
   /** Other modules report repo files they wrote (library installs, hooks, permission rules) for dirtyFiles. */
   noteWritten(name: string, repoRelativePaths: string[]): void;
 }
@@ -182,8 +195,10 @@ export interface LaunchPlan {
   permissionMode: PermissionMode | null;
   mcpServers: Record<string, McpServerStart>;
   worktree: boolean;
-  /** Worktree branch when `worktree`. */
+  /** Worktree branch when `worktree`; the local branch name for `where.kind === "branch"`, the worktree's own branch (or null) for `"worktree"`. */
   branch: string | null;
+  /** The resolved placement (`worktree`/`branch` above are kept for older callers). `new-worktree` always has its branch. */
+  where: LaunchWhere;
   tags: string[];
 }
 

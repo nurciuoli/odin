@@ -12,6 +12,7 @@ import type {
   ModelInfo,
   ProjectActivityDay,
   ProjectBranch,
+  ProjectWorktrees,
   ProjectContext,
   ProjectDetail,
   Session,
@@ -57,6 +58,8 @@ export interface Fixtures {
   activity: Record<string, ProjectActivityDay[]>
   /** GET /api/projects/:name/branches. */
   branches: Record<string, ProjectBranch[]>
+  /** GET /api/projects/:name/worktrees. */
+  worktrees: Record<string, ProjectWorktrees>
   models: ModelInfo[]
   settings: SettingsResponse
 }
@@ -1783,6 +1786,77 @@ export function createFixtures(now: number = Date.now()): Fixtures {
     ],
   }
 
+  // ── worktrees: the checkout, one with a live session, one merged ──
+  const worktrees: Record<string, ProjectWorktrees> = {
+    odin: {
+      mainBranch: 'main',
+      baseBranch: 'main',
+      worktrees: [
+        {
+          path: `${root}/odin`,
+          branch: 'main',
+          headSha: 'a1b2c3d4e5f6',
+          dirty: false,
+          ahead: 0,
+          behind: 0,
+          main: true,
+          merged: false,
+          sessions: [
+            { id: s.idle, title: 'Why is history search slow?', state: 'idle', running: false },
+          ],
+        },
+        {
+          path: '/home/me/.odin/worktrees/odin/odin-permission-prompt-7b2d4e81',
+          branch: 'odin/permission-prompt-7b2d4e81',
+          headSha: 'c3d4e5f6a1b2',
+          dirty: true,
+          ahead: 4,
+          behind: 1,
+          main: false,
+          merged: false,
+          sessions: [
+            {
+              id: s.waiting,
+              title: 'Permission prompt component',
+              state: 'waiting',
+              running: true,
+            },
+          ],
+        },
+        {
+          path: '/home/me/.odin/worktrees/odin/odin-remove-pi-c4e8a90d',
+          branch: 'odin/remove-pi-c4e8a90d',
+          headSha: 'b2c3d4e5f6a1',
+          dirty: false,
+          ahead: 0,
+          behind: 12,
+          main: false,
+          merged: true,
+          sessions: [
+            { id: s.ended, title: 'Remove Pi and the PM', state: 'ended', running: false },
+          ],
+        },
+      ],
+    },
+    harbor: {
+      mainBranch: 'main',
+      baseBranch: 'main',
+      worktrees: [
+        {
+          path: `${root}/harbor`,
+          branch: 'main',
+          headSha: '9a8b7c6d5e4f',
+          dirty: false,
+          ahead: 0,
+          behind: 0,
+          main: true,
+          merged: false,
+          sessions: [],
+        },
+      ],
+    },
+  }
+
   // A fork carries its parent's conversation as it was, then its own question and answer.
   transcripts[s.aside] = [
     // only what was stored when it forked (6 minutes ago)
@@ -1826,6 +1900,7 @@ export function createFixtures(now: number = Date.now()): Fixtures {
     tracking: { odin: true, rick: false, harbor: false },
     activity,
     branches,
+    worktrees,
     models: MODELS,
     settings: {
       settings: {

@@ -247,6 +247,7 @@ export function createHttpApi(options: HttpApiOptions = {}): Api {
         `${project(name)}/activity${query({ days: days === undefined ? undefined : String(days) })}`,
       ),
     listProjectBranches: name => get(`${project(name)}/branches`),
+    listProjectWorktrees: name => get(`${project(name)}/worktrees`),
     removeWorktree: (name, path) => send('DELETE', `${project(name)}/worktrees`, { path }),
     listProjectArtifacts: (name, limit) =>
       get(

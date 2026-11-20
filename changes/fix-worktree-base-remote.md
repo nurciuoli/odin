@@ -1,0 +1,1 @@
+- New session worktrees now branch from the repo's real working remote, not just one named `origin`: the default branch's upstream remote, else `origin`, else the only remote. Default-branch detection, ahead/behind and first push use it too.

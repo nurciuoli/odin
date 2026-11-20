@@ -83,3 +83,36 @@ describe("worktrees", () => {
   });
 });
 
+
+describe("base remote", () => {
+  test("a repo whose only remote is not called origin bases worktrees on it", async () => {
+    const { projects } = setup();
+    const a = makeRepo({ origin: true });
+    git(a.path, "remote", "rename", "origin", "upstream");
+    await projects.create({ path: a.path, name: "wu" });
+    const remoteSha = git(a.path, "rev-parse", "upstream/main").trim();
+    writeFileSync(join(a.path, "local.txt"), "x");
+    git(a.path, "add", "-A");
+    git(a.path, "commit", "--quiet", "-m", "local only");
+    const wt = await projects.createWorktree("wu", "feature/y");
+    assert.equal(git(wt.path, "rev-parse", "HEAD").trim(), remoteSha);
+  });
+
+  test("the default branch's configured remote wins over origin", async () => {
+    const { projects } = setup();
+    const a = makeRepo({ origin: true });
+    const fork = join(root, "fork-bare.git");
+    git(root, "clone", "--quiet", "--bare", a.path, fork);
+    git(a.path, "remote", "add", "work", fork);
+    git(a.path, "fetch", "--quiet", "work");
+    writeFileSync(join(a.path, "w.txt"), "x");
+    git(a.path, "add", "-A");
+    git(a.path, "commit", "--quiet", "-m", "on work");
+    git(a.path, "push", "--quiet", "work", "main");
+    git(a.path, "config", "branch.main.remote", "work");
+    await projects.create({ path: a.path, name: "ww" });
+    const workSha = git(a.path, "rev-parse", "work/main").trim();
+    const wt = await projects.createWorktree("ww", "feature/z");
+    assert.equal(git(wt.path, "rev-parse", "HEAD").trim(), workSha);
+  });
+});
