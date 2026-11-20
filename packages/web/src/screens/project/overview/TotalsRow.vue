@@ -124,7 +124,7 @@ const placeholders = computed(() =>
 }
 .ov-totals__list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
   gap: 12px;
   margin: 0;
   padding: 0;

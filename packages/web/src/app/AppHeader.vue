@@ -1,5 +1,7 @@
 <script setup lang="ts">
 // The page header band above the centre column: where you are. Home shows no title. Sessions draw their own header (SessionHeader), so this never shows there.
+// A project page teleports its own one-line header (title, branch, quick actions, Start chat) into this band, so the
+// breadcrumb and the project title are one line, not two.
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { IuBreadcrumb, IuHeader, type Crumb } from '@/components/AppShell'
@@ -43,6 +45,22 @@ const crumbs = computed<Crumb[]>(() => {
 
 <template>
   <IuHeader>
-    <template #breadcrumb><IuBreadcrumb :items="crumbs" /></template>
+    <template #breadcrumb>
+      <div v-if="projectName" id="app-header-project" class="app-header-project" />
+      <IuBreadcrumb v-else :items="crumbs" />
+    </template>
   </IuHeader>
 </template>
+
+<style>
+.app-header-project {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+.app-header-project > * {
+  flex: 1;
+  min-width: 0;
+}
+</style>
