@@ -39,13 +39,13 @@ describe('AppHeader', () => {
     expect(wrapper.find('.iu-breadcrumb__current').text()).toBe('canva-test')
   })
 
-  it('titles a project page with the project and section, and links its settings', async () => {
+  it("leaves a project page's band to the project's own one-line header", async () => {
     const mounted = await mountScreen(AppHeader, '/p/odin/sessions')
     wrapper = mounted.wrapper
     stop = () => (mounted.projects.stop(), mounted.sessions.stop())
     await flushPromises()
-    expect(wrapper.find('.iu-breadcrumb').text()).toContain('Odin')
-    expect(wrapper.find('.iu-breadcrumb').text()).toContain('Sessions')
+    expect(wrapper.find('.iu-breadcrumb').exists()).toBe(false)
+    expect(wrapper.find('#app-header-project').exists()).toBe(true)
   })
 })
 
@@ -61,6 +61,14 @@ describe('App layout', () => {
     await flushPromises()
     return wrapper
   }
+
+  it("puts a project's title, branch and actions in the header band on one line", async () => {
+    await mountApp('/p/odin/overview')
+    const band = wrapper!.find('.iu-shell__header')
+    expect(band.find('.phdr__title').text()).toBe('Odin')
+    expect(band.text()).toContain('Start chat')
+    expect(wrapper!.findAll('.phdr')).toHaveLength(1)
+  })
 
   it('puts the title in the rail and the page header over the centre column', async () => {
     await mountApp('/')
