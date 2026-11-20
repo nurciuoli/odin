@@ -156,3 +156,23 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* State colours for glyphs that carry a state (Details header and its cards). */
+.hc__tone--worktree {
+  color: var(--iu-info);
+}
+.hc__tone--open {
+  color: var(--iu-positive);
+}
+.hc__tone--merged {
+  color: var(--iu-hue-4-ink);
+}
+.hc__tone--closed {
+  color: var(--iu-danger);
+}
+.hc__added {
+  color: var(--iu-positive);
+}
+.hc__removed {
+  color: var(--iu-danger);
+}

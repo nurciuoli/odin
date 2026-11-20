@@ -101,6 +101,10 @@ export const icons = {
     '<circle cx="6.5" cy="5.5" r="2"></circle><circle cx="6.5" cy="18.5" r="2"></circle><circle cx="17.5" cy="18.5" r="2"></circle><path d="M6.5 7.5v9M17.5 16.5V9a2.5 2.5 0 0 0-2.5-2.5h-4"></path><polyline points="13,4 10.5,6.5 13,9"></polyline>',
   gitMerge:
     '<circle cx="6.5" cy="5.5" r="2"></circle><circle cx="6.5" cy="18.5" r="2"></circle><circle cx="17.5" cy="12" r="2"></circle><path d="M6.5 7.5v9M6.5 7.5c0 3 3 4.5 9 4.5"></path>',
+  gitPullRequestClosed:
+    '<circle cx="6.5" cy="5.5" r="2"></circle><circle cx="6.5" cy="18.5" r="2"></circle><circle cx="17.5" cy="18.5" r="2"></circle><path d="M6.5 7.5v9M17.5 16.5V11M15 4l5 5M20 4l-5 5"></path>',
+  folderTree:
+    '<path d="M4 4v12.5A1.5 1.5 0 0 0 5.5 18H10M4 8h6"></path><path d="M12 5.5A1.5 1.5 0 0 1 13.5 4h2l1.5 1.5h2.5A1.5 1.5 0 0 1 21 7v2a1.5 1.5 0 0 1-1.5 1.5h-6A1.5 1.5 0 0 1 12 9Z"></path><path d="M12 15.5a1.5 1.5 0 0 1 1.5-1.5h2l1.5 1.5h2.5A1.5 1.5 0 0 1 21 17v1.5a1.5 1.5 0 0 1-1.5 1.5h-6a1.5 1.5 0 0 1-1.5-1.5Z"></path>',
   tag: '<path d="M4 4.5h7.5l8.5 8.5-7 7L4.5 11.5Z"></path><circle cx="8.5" cy="8.5" r="1.4" fill="currentColor" stroke="none"></circle>',
   link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"></path><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"></path>',
   at: '<circle cx="12" cy="12" r="3.5"></circle><path d="M15.5 12v1.5a2.5 2.5 0 0 0 5 0V12a8.5 8.5 0 1 0-3.5 6.9"></path>',
@@ -181,6 +185,8 @@ export const iconOrder: IconName[] = [
   'gitCommit',
   'gitPullRequest',
   'gitMerge',
+  'gitPullRequestClosed',
+  'folderTree',
   'tag',
   'link',
   'at',

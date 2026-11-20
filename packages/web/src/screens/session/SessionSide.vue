@@ -9,6 +9,9 @@ import { IuBadge } from '@/components/Badge'
 import { IuButton } from '@/components/Button'
 import { IuHoverCard } from '@/components/HoverCard'
 import ProjectHoverCard from '@/app/hovercards/ProjectHoverCard.vue'
+import PullHoverCard from '@/app/hovercards/PullHoverCard.vue'
+import WorktreeHoverCard from '@/app/hovercards/WorktreeHoverCard.vue'
+import { PULL_STATE, pullTone } from '@/app/hovercards/pullState'
 import { IuIcon } from '@/components/Icon'
 import { IuFilePath } from '@/components/FilePath'
 import { IuMeter } from '@/components/Meter'
@@ -209,10 +212,11 @@ const branchUrl = computed(() => {
     ? `https://github.com/${repo}/tree/${encodeURIComponent(b).replace(/%2F/g, '/')}`
     : null
 })
-const prState = computed(() => {
-  const pr = props.session.pull
-  return pr ? (pr.merged ? 'merged' : pr.state) : ''
-})
+// The glyph carries the state; the hover card names it and adds the detail.
+const prTone = computed(() => (props.session.pull ? pullTone(props.session.pull) : null))
+const worktree = computed(() =>
+  props.session.workspace.kind === 'worktree' ? props.session.workspace : null,
+)
 
 // ── tags ──
 const newTag = ref('')
@@ -245,17 +249,23 @@ function addTag(e: KeyboardEvent) {
           :key="name"
           class="session-side__row"
         >
-          <IuIcon name="folder" :size="14" />
+          <IuHoverCard
+            v-if="name === session.project && worktree"
+            placement="bottom-start"
+            label="Worktree"
+          >
+            <span class="session-side__glyph" tabindex="0" role="img" aria-label="Worktree">
+              <IuIcon name="folderTree" :size="14" class="hc__tone--worktree" />
+            </span>
+            <template #card
+              ><WorktreeHoverCard :project="name" :path="worktree.path" :branch="worktree.branch"
+            /></template>
+          </IuHoverCard>
+          <IuIcon v-else name="folder" :size="14" />
           <IuHoverCard placement="bottom-start" :label="`${name} overview`">
             <RouterLink class="session-side__link" :to="`/p/${name}`">{{ name }}</RouterLink>
             <template #card><ProjectHoverCard :name="name" /></template>
           </IuHoverCard>
-          <IuBadge
-            v-if="name === session.project && session.workspace.kind === 'worktree'"
-            variant="tag"
-            size="xs"
-            >worktree</IuBadge
-          >
           <span class="session-side__grow" />
           <span v-if="folderPath(name)" class="session-side__acts">
             <IuButton
@@ -311,16 +321,45 @@ function addTag(e: KeyboardEvent) {
             </IuButton>
           </span>
         </div>
-        <div v-if="session.pull" class="session-side__row" aria-label="Pull request">
-          <IuIcon name="gitPullRequest" :size="14" />
-          <a
-            class="session-side__link"
-            :href="session.pull.url"
-            target="_blank"
-            rel="noopener noreferrer"
-            >PR #{{ session.pull.number }}</a
-          >
-          <IuBadge size="xs">{{ prState }}</IuBadge>
+        <div v-if="session.pull && prTone" class="session-side__row" aria-label="Pull request">
+          <IuIcon :name="PULL_STATE[prTone].icon" :size="14" :class="`hc__tone--${prTone}`" />
+          <IuHoverCard placement="bottom-start" :label="`PR #${session.pull.number}`">
+            <a
+              class="session-side__link"
+              :href="session.pull.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              :aria-label="`PR #${session.pull.number}, ${PULL_STATE[prTone].label.toLowerCase()}`"
+              >PR #{{ session.pull.number }}</a
+            >
+            <template #card><PullHoverCard :pull="session.pull" :session="session" /></template>
+          </IuHoverCard>
+          <span class="session-side__grow" />
+          <span class="session-side__acts">
+            <IuButton
+              variant="ghost"
+              size="sm"
+              icon-only
+              aria-label="Copy pull request link"
+              :title="`Copy link: ${session.pull.url}`"
+              @click="copy('link', session.pull.url)"
+            >
+              <template #icon><IuIcon name="copy" :size="14" /></template>
+            </IuButton>
+            <IuButton
+              as="a"
+              variant="ghost"
+              size="sm"
+              icon-only
+              aria-label="Open pull request on GitHub"
+              title="Open on GitHub"
+              :href="session.pull.url"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <template #icon><IuIcon name="external" :size="14" /></template>
+            </IuButton>
+          </span>
         </div>
         <div v-if="session.origin === 'external'" class="session-side__row">
           <IuIcon name="terminal" :size="14" />
@@ -504,15 +543,6 @@ function addTag(e: KeyboardEvent) {
           >{{ files.length }} files, +{{ totals.added }} -{{ totals.removed }}</span
         >
       </summary>
-      <a
-        v-if="session.pull"
-        class="session-side__pr"
-        :href="session.pull.url"
-        target="_blank"
-        rel="noopener noreferrer"
-        >PR #{{ session.pull.number }} -
-        {{ session.pull.merged ? 'merged' : session.pull.state }}</a
-      >
       <div
         v-if="files.length"
         class="session-side__totals"
@@ -660,6 +690,10 @@ function addTag(e: KeyboardEvent) {
 </template>
 
 <style>
+.session-side__glyph {
+  display: inline-flex;
+  flex: none;
+}
 .session-side__summary {
   display: flex;
   flex-wrap: wrap;
@@ -830,7 +864,7 @@ details[open] > .session-side__summary .session-side__caret {
 }
 .session-side__toggle:focus-visible,
 .session-side__open:focus-visible,
-.session-side__pr:focus-visible {
+.session-side__glyph:focus-visible {
   outline: var(--iu-focus-ring);
   outline-offset: var(--iu-focus-offset);
   border-radius: var(--iu-radius-sm);
@@ -931,17 +965,6 @@ details[open] > .session-side__summary .session-side__caret {
   margin: 0;
   font-family: var(--iu-font-mono);
   font-size: var(--iu-font-size-12);
-}
-.session-side__pr {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--iu-text-2);
-  font-size: var(--iu-font-size-12);
-  text-decoration: none;
-}
-.session-side__pr:hover {
-  color: var(--iu-text);
 }
 .session-side__link {
   min-width: 0;
