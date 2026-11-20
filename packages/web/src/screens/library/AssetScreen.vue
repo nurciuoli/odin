@@ -153,7 +153,8 @@ watch(
       typeof headers === 'object' &&
       !Array.isArray(headers) &&
       Object.keys(headers).some(h => h.toLowerCase() === 'authorization')
-    if ((doc.type !== 'http' && doc.type !== 'sse') || typeof doc.url !== 'string' || hasAuth) return
+    if ((doc.type !== 'http' && doc.type !== 'sse') || typeof doc.url !== 'string' || hasAuth)
+      return
     const id = props.id
     try {
       const found = await api.detectMcpOAuth(doc.url)
@@ -214,7 +215,9 @@ async function save() {
   try {
     const saved = await api.saveAsset(kind.value, props.id, files)
     if (key !== `${props.kind}/${props.id}`) return
-    await reload(JSON.stringify(draft.value) === draftAtSend || JSON.stringify(draft.value) === sentDraft)
+    await reload(
+      JSON.stringify(draft.value) === draftAtSend || JSON.stringify(draft.value) === sentDraft,
+    )
     toast({
       title: warning
         ? 'Saved, but sign-in could not be checked'
