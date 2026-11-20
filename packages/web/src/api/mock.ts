@@ -1349,8 +1349,33 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
         if (!text.trim()) throw new ApiRequestError(400, 'a session needs a prompt')
         const title = req.title ?? text.split('\n')[0]!.slice(0, 60)
         const id = fakeUuid(`mock-new-${Date.now()}-${seq}`)
-        const worktree = req.worktree ?? db.settings.settings.defaultWorktree
-        const branch = worktree ? (req.branch ?? sessionBranch(title, id)) : project.git.branch
+        if (req.where && (req.worktree !== undefined || req.branch !== undefined))
+          throw new ApiRequestError(400, "where can't be combined with worktree or branch")
+        const where = req.where
+        const existing =
+          where?.kind === 'worktree'
+            ? db.worktrees[project.name]?.worktrees.find(w => w.path === where.path)
+            : undefined
+        if (where?.kind === 'worktree' && !existing)
+          throw new ApiRequestError(400, `${where.path} isn't a worktree of ${project.name}`)
+        const worktree = where
+          ? where.kind !== 'checkout' && !existing?.main
+          : (req.worktree ?? db.settings.settings.defaultWorktree)
+        const branch =
+          where?.kind === 'branch'
+            ? where.branch.replace(/^origin\//, '')
+            : where?.kind === 'worktree'
+              ? existing!.branch
+              : worktree
+                ? ((where?.kind === 'new-worktree' ? where.branch : req.branch) ??
+                  sessionBranch(title, id))
+                : project.git.branch
+        const worktreePath =
+          existing && !existing.main
+            ? existing.path
+            : branch
+              ? `/home/me/.odin/worktrees/${project.name}/${slugify(branch)}`
+              : project.path
         text = fillPrompt(text, {
           project: project.name,
           branch: branch ?? '',
@@ -1383,16 +1408,9 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
             : null,
           workspace:
             worktree && branch
-              ? {
-                  kind: 'worktree',
-                  path: `/home/me/.odin/worktrees/${project.name}/${slugify(branch)}`,
-                  branch,
-                }
+              ? { kind: 'worktree', path: worktreePath, branch }
               : { kind: 'checkout' },
-          cwd:
-            worktree && branch
-              ? `/home/me/.odin/worktrees/${project.name}/${slugify(branch)}`
-              : project.path,
+          cwd: worktree && branch ? worktreePath : project.path,
           branch,
           templateId: null,
           tags: req.tags ?? [],
@@ -2338,6 +2356,11 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
         return { days: out }
       }),
     listProjectBranches: project => respond(() => (projectOf(project), db.branches[project] ?? [])),
+    listProjectWorktrees: project =>
+      respond(() => {
+        projectOf(project)
+        return db.worktrees[project] ?? { mainBranch: null, baseBranch: null, worktrees: [] }
+      }),
     removeWorktree: (project, path) =>
       respond(() => {
         const p = projectOf(project)
@@ -2352,6 +2375,8 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
         if (live) throw new ApiRequestError(409, `session "${live.title}" is using this worktree`)
         for (const b of db.branches[project] ?? [])
           if (b.worktreePath === path) b.worktreePath = null
+        const list = db.worktrees[project]
+        if (list) list.worktrees = list.worktrees.filter(w => w.path !== path)
         emit({ type: 'project.updated', project })
       }),
     listProjectArtifacts: (project, limit) =>

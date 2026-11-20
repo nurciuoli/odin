@@ -1,6 +1,7 @@
 // One default agent per session. Explicit settings override app defaults; project resources are loaded natively.
 // docs/contracts.md#launch.
-import type { AssetKind, McpServerSpec, PermissionMode, StartSessionRequest, UserMessage } from "@odin/shared/api";
+import { isAbsolute } from "node:path";
+import type { AssetKind, LaunchWhere, McpServerSpec, PermissionMode, StartSessionRequest, UserMessage } from "@odin/shared/api";
 import { fillPrompt } from "@odin/shared/library";
 import { sessionBranch } from "@odin/shared/session";
 import { HttpError } from "../http/util.ts";
@@ -60,6 +61,26 @@ function mcpStart(id: string, meta: Record<string, unknown>): McpServerStart {
   return bad(`library mcp ${id} is not a valid server spec`);
 }
 
+/** Validates a request's `where` (400 on anything malformed); undefined when it wasn't given. */
+export function whereOf(raw: unknown): LaunchWhere | undefined {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) bad("where must be an object");
+  const w = raw as Record<string, unknown>;
+  const branch = (v: unknown): string => {
+    if (typeof v !== "string" || !validBranchName(v)) bad("invalid branch name");
+    return v as string;
+  };
+  switch (w.kind) {
+    case "checkout": return { kind: "checkout" };
+    case "new-worktree": return w.branch === undefined ? { kind: "new-worktree" } : { kind: "new-worktree", branch: branch(w.branch) };
+    case "branch": return { kind: "branch", branch: branch(w.branch) };
+    case "worktree":
+      if (typeof w.path !== "string" || !isAbsolute(w.path)) bad("where.path must be an absolute path");
+      return { kind: "worktree", path: w.path as string };
+    default: return bad(`unknown where.kind ${String(w.kind)}`);
+  }
+}
+
 export function createLaunchService(_deps: Deps, services: Services): LaunchService {
   /** Fills `${secret:NAME}` from the vault. Values exist only in the returned start options, never stored. */
   function withSecrets(id: string, s: McpServerStart): McpServerStart {
@@ -108,6 +129,8 @@ export function createLaunchService(_deps: Deps, services: Services): LaunchServ
       if (req.permissionMode !== undefined && !PERMISSION_MODES.includes(req.permissionMode)) bad(`unknown permission mode ${String(req.permissionMode)}`);
       if (req.worktree !== undefined && typeof req.worktree !== "boolean") bad("worktree must be a boolean");
       if (req.branch !== undefined && (typeof req.branch !== "string" || !validBranchName(req.branch))) bad("invalid branch name");
+      const requestedWhere = whereOf(req.where);
+      if (requestedWhere && (req.worktree !== undefined || req.branch !== undefined)) bad("where can't be combined with worktree or branch");
       if (req.variables !== undefined && (typeof req.variables !== "object" || req.variables === null || Object.values(req.variables).some((v) => typeof v !== "string"))) {
         bad("variables must map names to strings");
       }
@@ -144,7 +167,8 @@ export function createLaunchService(_deps: Deps, services: Services): LaunchServ
       for (const [k, v] of Object.entries(req.variables ?? {})) values[k] = v;
 
       // `{{branch}}`: the worktree branch (known once the title is), else the checkout's current branch.
-      const worktree = req.worktree ?? project.settings.defaultWorktree ?? settings.defaultWorktree;
+      const asked = requestedWhere ?? null;
+      const worktree = asked ? asked.kind !== "checkout" : (req.worktree ?? project.settings.defaultWorktree ?? settings.defaultWorktree);
       const callerBranch = "branch" in values;
       if (!worktree && !callerBranch) {
         let current: string | null = null;
@@ -156,7 +180,9 @@ export function createLaunchService(_deps: Deps, services: Services): LaunchServ
         if (current) values.branch = current;
       }
       const title = (req.title?.trim() || titleFromPrompt(fillPrompt(promptText, values)) || "Untitled session").slice(0, 200);
-      const branch = worktree ? (req.branch ?? sessionBranch(title, sessionId)) : null;
+      const newBranch = worktree && (!asked || asked.kind === "new-worktree") ? ((asked?.kind === "new-worktree" ? asked.branch : req.branch) ?? sessionBranch(title, sessionId)) : null;
+      const where: LaunchWhere = asked && asked.kind !== "new-worktree" ? asked : worktree ? { kind: "new-worktree", branch: newBranch! } : { kind: "checkout" };
+      const branch = newBranch ?? (where.kind === "branch" ? where.branch : null);
       if (branch && !callerBranch) values.branch = branch;
       const prompt: UserMessage = { text: fillPrompt(promptText, values) };
       if (raw?.attachments?.length) prompt.attachments = raw.attachments;
@@ -169,6 +195,7 @@ export function createLaunchService(_deps: Deps, services: Services): LaunchServ
         mcpServers,
         worktree,
         branch,
+        where,
         tags,
       };
     },

@@ -1093,7 +1093,18 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       let cwd = project.path;
       let workspace: Workspace = { kind: "checkout" };
       let branch: string | null;
-      if (plan.worktree) {
+      if (plan.where.kind === "worktree") {
+        const wt = await services.projects.existingWorktree(project.name, plan.where.path);
+        cwd = wt.path;
+        branch = wt.branch;
+        if (!wt.main && wt.branch) workspace = { kind: "worktree", path: wt.path, branch: wt.branch };
+        else if (wt.main) branch = currentBranch(project.name);
+      } else if (plan.where.kind === "branch") {
+        const wt = await services.projects.openBranch(project.name, plan.where.branch);
+        cwd = wt.path;
+        branch = wt.branch;
+        workspace = { kind: "worktree", path: wt.path, branch: wt.branch };
+      } else if (plan.worktree) {
         const wt = await services.projects.createWorktree(project.name, plan.branch ?? sessionBranch(plan.title, id));
         cwd = wt.path;
         branch = wt.branch;

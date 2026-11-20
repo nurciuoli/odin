@@ -18,6 +18,32 @@ const status = (p: Promise<unknown>) =>
   )
 
 describe('mock api: project views', () => {
+  it('worktrees: the checkout and two worktrees; start can use an existing one', async () => {
+    const { api } = withEvents()
+    const wt = await api.listProjectWorktrees('odin')
+    expect(wt.worktrees.map(w => w.main)).toEqual([true, false, false])
+    expect(wt.worktrees.some(w => w.sessions.some(s => s.running))).toBe(true)
+    expect(wt.worktrees.some(w => w.merged)).toBe(true)
+    expect(await status(api.listProjectWorktrees('nope'))).toBe(404)
+    const target = wt.worktrees[1]!
+    const s = await api.startSession({
+      project: 'odin',
+      prompt: { text: 'hi' },
+      where: { kind: 'worktree', path: target.path },
+    })
+    expect(s.cwd).toBe(target.path)
+    expect(s.branch).toBe(target.branch)
+    expect(
+      await status(
+        api.startSession({
+          project: 'odin',
+          prompt: { text: 'x' },
+          where: { kind: 'worktree', path: '/nowhere' },
+        }),
+      ),
+    ).toBe(400)
+  })
+
   it('activity: 84 local days ending today, no gaps, deterministic', async () => {
     const { api } = withEvents()
     const { days } = await api.getProjectActivity('odin')

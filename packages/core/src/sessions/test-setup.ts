@@ -57,6 +57,7 @@ export function setup(o: SetupOptions = {}) {
   const settings: ProjectSettings = { title: PROJECT, description: "", repo: null, defaultBranch: "main", commands: {} };
   const ref: ProjectRef = { name: PROJECT, path: projectPath, settings, manifestError: null, missing: false };
   const worktrees: { name: string; branch: string }[] = [];
+  const opened: { name: string; branch: string }[] = [];
   const projects = {
     list: () => [ref],
     get: (name: string) => (name === PROJECT ? ref : null),
@@ -69,6 +70,17 @@ export function setup(o: SetupOptions = {}) {
       const path = join(deps.config.worktreesDir, name, branch.replace(/\//g, "-"));
       mkdirSync(path, { recursive: true });
       return { path, branch };
+    },
+    async openBranch(name: string, branch: string) {
+      opened.push({ name, branch });
+      const local = branch.replace(/^origin\//, "");
+      const path = join(deps.config.worktreesDir, name, local.replace(/\//g, "-"));
+      mkdirSync(path, { recursive: true });
+      return { path, branch: local };
+    },
+    async existingWorktree(_name: string, path: string) {
+      if (!path.includes("known")) throw new HttpError(400, "not a worktree");
+      return { path, branch: "known-branch", main: false };
     },
     close: () => {},
   } as unknown as ProjectsService;
@@ -93,7 +105,7 @@ export function setup(o: SetupOptions = {}) {
   services.notebooks = createNotebooksService(deps, services);
   services.checkpoints = o.checkpoints ? createCheckpointsService(deps, services) : noopCheckpoints;
   services.sessions = createSessionsService(deps, services, o);
-  return { deps, harness, services, sessions: services.sessions, projectPath, worktrees, harnessEvents, baselines, refreshed };
+  return { deps, harness, services, sessions: services.sessions, projectPath, worktrees, opened, harnessEvents, baselines, refreshed };
 }
 
 /** The sessions routes and /api/events on a random port, over a setup(). */

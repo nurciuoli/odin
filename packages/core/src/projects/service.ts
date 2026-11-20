@@ -4,7 +4,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import type { CreateProjectRequest, ProjectAgent, ProjectBranch, ProjectCommands, ProjectSettings, ProjectSourceSelection, PullRef, UpdateProjectSettingsRequest, UpdateProjectSourcesRequest } from "@odin/shared/api";
+import type { CreateProjectRequest, ProjectAgent, ProjectBranch, ProjectCommands, ProjectSettings, ProjectSourceSelection, ProjectWorktree, ProjectWorktrees, PullRef, UpdateProjectSettingsRequest, UpdateProjectSourcesRequest } from "@odin/shared/api";
 import { parseProjectSources } from "@odin/shared/api";
 import { AGENT_ID_PATTERN } from "@odin/shared/agents";
 import { PROJECT_NAME_PATTERN } from "@odin/shared/labels";
@@ -422,11 +422,7 @@ export function createProjectsService(deps: Deps, services?: Services): Projects
           if (isInside(rootReal, realPathLoose(mine.path)) && existsSync(mine.path)) return { path: realPathLoose(mine.path), branch };
           throw new HttpError(409, `branch "${branch}" is already checked out at ${mine.path}`);
         }
-        const slug = slugify(branch) || "branch";
-        let path = join(root, slug);
-        // Another branch with the same slug (a/b vs a-b): disambiguate by a hash of the branch name.
-        if (existsSync(path)) path = join(root, `${slug}-${createHash("sha1").update(branch).digest("hex").slice(0, 6)}`);
-        if (existsSync(path)) throw new HttpError(409, `${path} already exists`);
+        const path = freePath(root, branch);
         // `git worktree prune` first: a worktree directory deleted by hand would otherwise block its branch.
         await git(row.path, ["worktree", "prune"]).catch(() => {});
 
@@ -447,6 +443,125 @@ export function createProjectsService(deps: Deps, services?: Services): Projects
         throw gitFailure(err);
       }
     });
+  }
+
+  /** <root>/<branch slug>; another branch with the same slug (a/b vs a-b) gets a hash of its name appended. */
+  function freePath(root: string, branch: string): string {
+    const slug = slugify(branch) || "branch";
+    let path = join(root, slug);
+    if (existsSync(path)) path = join(root, `${slug}-${createHash("sha1").update(branch).digest("hex").slice(0, 6)}`);
+    if (existsSync(path)) throw new HttpError(409, `${path} already exists`);
+    return path;
+  }
+
+  async function openBranch(name: string, requested: string): Promise<{ path: string; branch: string }> {
+    const row = need(name);
+    if (typeof requested !== "string" || !validBranchName(requested)) throw new HttpError(400, `"${String(requested)}" isn't a valid branch name`);
+    if (row.missing === 1 || !isGitRepo(row.path)) throw new HttpError(409, `${row.path} is not a git repository`);
+    const root = worktreeRoot(name);
+    return locked(name, async () => {
+      try {
+        await git(row.path, ["worktree", "prune"]).catch(() => {});
+        // Local branch first; else a remote one, as `<remote>/x` or a bare `x` that the base (or only matching) remote has.
+        let branch = requested;
+        let upstream: string | null = null;
+        if (!(await refExists(row.path, `refs/heads/${requested}`))) {
+          const remotes = (await git(row.path, ["remote"])).split(/\r?\n/).map((r) => r.trim()).filter(Boolean);
+          const prefixed = remotes.find((r) => requested.startsWith(`${r}/`) && requested.length > r.length + 1);
+          if (prefixed && (await refExists(row.path, `refs/remotes/${requested}`))) {
+            branch = requested.slice(prefixed.length + 1);
+            upstream = requested;
+          } else {
+            const base = remotes.includes("origin") ? "origin" : null;
+            const holders: string[] = [];
+            for (const r of base ? [base, ...remotes.filter((x) => x !== base)] : remotes) {
+              if (await refExists(row.path, `refs/remotes/${r}/${requested}`)) holders.push(r);
+            }
+            if (!holders.length) throw new HttpError(404, `no branch "${requested}" locally or on a remote`);
+            upstream = `${holders[0]}/${requested}`;
+          }
+          if (!validBranchName(branch)) throw new HttpError(400, `"${branch}" isn't a valid branch name`);
+          // A local branch of the resulting name may exist even though the requested ref was remote-shaped.
+          if (await refExists(row.path, `refs/heads/${branch}`)) upstream = null;
+        }
+        const existing = parseWorktrees(await git(row.path, ["worktree", "list", "--porcelain"]));
+        const holder = existing.find((w) => w.branch === branch);
+        if (holder) {
+          if (resolve(holder.path) === resolve(row.path) || realPathLoose(holder.path) === realPathLoose(row.path)) {
+            throw new HttpError(409, `branch "${branch}" is checked out in the project checkout`, "checked-out-elsewhere");
+          }
+          if (!existsSync(holder.path)) throw new HttpError(409, `branch "${branch}" is checked out at ${holder.path}, which is missing`, "checked-out-elsewhere");
+          return { path: realPathLoose(holder.path), branch };
+        }
+        const path = freePath(root, branch);
+        if (upstream) await git(row.path, ["worktree", "add", "--track", "-b", branch, path, upstream]);
+        else await git(row.path, ["worktree", "add", path, branch]);
+        return { path: realPathLoose(path), branch };
+      } catch (err) {
+        throw gitFailure(err);
+      }
+    });
+  }
+
+  async function existingWorktree(name: string, path: string): Promise<{ path: string; branch: string | null; main: boolean }> {
+    const row = need(name);
+    if (typeof path !== "string" || !isAbsolute(path)) throw new HttpError(400, "worktree path must be absolute");
+    if (row.missing === 1 || !isGitRepo(row.path)) throw new HttpError(409, `${row.path} is not a git repository`);
+    try {
+      const target = realPathLoose(path);
+      const list = await listWorktrees(row.path);
+      const hit = list.find((w) => realPathLoose(w.path) === target);
+      if (!hit || !existsSync(hit.path)) throw new HttpError(400, `${path} isn't a worktree of "${name}"`);
+      return { path: target, branch: hit.branch, main: hit === list[0] };
+    } catch (err) {
+      throw gitFailure(err);
+    }
+  }
+
+  async function worktrees(name: string): Promise<ProjectWorktrees> {
+    const row = need(name);
+    if (row.missing === 1 || !isGitRepo(row.path)) return { mainBranch: null, baseBranch: null, worktrees: [] };
+    try {
+      const list = await listWorktrees(row.path);
+      const def = settingsOf(row).defaultBranch;
+      const base = await defaultBase(row.path, def);
+      const baseBranch = base ? def : null;
+      const merged = base ? await mergedBranches(row.path, base) : new Set<string>();
+      const sessionRows = db.prepare("SELECT id, title, state, cwd FROM sessions WHERE project = ? AND archived = 0 ORDER BY created_at DESC, id").all(name) as
+        { id: string; title: string; state: ProjectWorktree["sessions"][number]["state"]; cwd: string }[];
+      const byCwd = new Map<string, ProjectWorktree["sessions"]>();
+      for (const s of sessionRows) {
+        if (typeof s.cwd !== "string" || !isAbsolute(s.cwd)) continue;
+        const key = realPathLoose(s.cwd);
+        const bucket = byCwd.get(key) ?? [];
+        bucket.push({ id: s.id, title: s.title, state: s.state, running: s.state === "running" || s.state === "waiting" });
+        byCwd.set(key, bucket);
+      }
+      const out: ProjectWorktree[] = [];
+      for (const [i, w] of list.entries()) {
+        if (!existsSync(w.path)) continue; // deleted by hand: `git worktree prune` will drop it
+        const real = realPathLoose(w.path);
+        const [head, dirty, counts] = await Promise.all([
+          git(w.path, ["rev-parse", "--verify", "--quiet", "HEAD"]).then((s) => s.trim() || null, () => null),
+          statusPaths(w.path).then((p) => p.length > 0, () => false),
+          base && w.branch ? aheadBehind(row.path, base, w.branch).catch(() => ({ ahead: 0, behind: 0 })) : Promise.resolve({ ahead: 0, behind: 0 }),
+        ]);
+        out.push({
+          path: real,
+          branch: w.branch,
+          headSha: head,
+          dirty,
+          ahead: counts.ahead,
+          behind: counts.behind,
+          main: i === 0,
+          merged: !!w.branch && w.branch !== baseBranch && merged.has(w.branch),
+          sessions: (byCwd.get(real) ?? []).slice(0, 20),
+        });
+      }
+      return { mainBranch: list[0]?.branch ?? null, baseBranch, worktrees: out };
+    } catch (err) {
+      throw gitFailure(err);
+    }
   }
 
   async function removeWorktree(name: string, path: string): Promise<void> {
@@ -687,6 +802,9 @@ export function createProjectsService(deps: Deps, services?: Services): Projects
     },
 
     createWorktree,
+    openBranch,
+    existingWorktree,
+    worktrees,
     removeWorktree,
     branches,
 

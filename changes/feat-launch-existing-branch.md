@@ -1,0 +1,1 @@
+- Sessions can now start on an existing local or remote branch, or inside an existing worktree, not only in the checkout or a new worktree: new `where` field on session start, and `GET /api/projects/:name/worktrees` lists the checkout and every worktree with status, merge state and the sessions in each.

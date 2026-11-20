@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { resolve } from "node:path";
 import type { ProjectAgent, StartSessionRequest, TemplateSpec } from "@odin/shared/api";
 import { fakeHarness } from "../harness/fake.ts";
 import { HttpError } from "../http/util.ts";
@@ -50,6 +51,25 @@ test("request fields win; worktree branch from the title and id; variables fill;
   assert.equal(p.prompt!.attachments!.length, 1);
   assert.deepEqual([p.title, p.model, p.permissionMode, p.branch, p.tags], ["My Task", "opus", "acceptEdits", "odin/my-task-0123abcd", ["a", "b"]]);
   assert.equal((await plan({ prompt: { text: "x" }, worktree: true, branch: "feat/x" })).branch, "feat/x");
+});
+
+test("where: validated, mapped to the plan, and exclusive with worktree/branch", async () => {
+  assert.deepEqual((await plan({ prompt: { text: "x" }, where: { kind: "checkout" } })).where, { kind: "checkout" });
+  const nw = await plan({ prompt: { text: "x" }, where: { kind: "new-worktree" } });
+  assert.deepEqual([nw.worktree, nw.where], [true, { kind: "new-worktree", branch: "odin/x-0123abcd" }]);
+  assert.deepEqual((await plan({ prompt: { text: "x" }, where: { kind: "new-worktree", branch: "feat/a" } })).where, { kind: "new-worktree", branch: "feat/a" });
+  const br = await plan({ prompt: { text: "on {{branch}}" }, where: { kind: "branch", branch: "origin/feat/b" } });
+  assert.deepEqual([br.worktree, br.branch, br.where, br.prompt!.text], [true, "origin/feat/b", { kind: "branch", branch: "origin/feat/b" }, "on origin/feat/b"]);
+  const wt = await plan({ prompt: { text: "x" }, where: { kind: "worktree", path: resolve("/some/tree") } });
+  assert.deepEqual([wt.worktree, wt.branch], [true, null]);
+  // The old fields still map.
+  assert.deepEqual((await plan({ prompt: { text: "x" }, worktree: true, branch: "feat/x" })).where, { kind: "new-worktree", branch: "feat/x" });
+  assert.deepEqual((await plan({ prompt: { text: "x" }, worktree: false })).where, { kind: "checkout" });
+  for (const where of [{ kind: "nope" }, "checkout", { kind: "branch" }, { kind: "branch", branch: "--x" }, { kind: "worktree", path: "rel" }, { kind: "new-worktree", branch: "a..b" }]) {
+    await assert.rejects(plan({ prompt: { text: "x" }, where } as never), status(400), JSON.stringify(where));
+  }
+  await assert.rejects(plan({ prompt: { text: "x" }, where: { kind: "checkout" }, worktree: true }), status(400));
+  await assert.rejects(plan({ prompt: { text: "x" }, where: { kind: "checkout" }, branch: "feat/x" }), status(400));
 });
 
 function fakeLibrary(assets: Record<string, { meta?: Record<string, unknown>; files?: Record<string, string>; error?: string | null; version?: string; enabled?: boolean }>): Services["library"] {
