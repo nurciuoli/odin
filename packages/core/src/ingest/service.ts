@@ -99,7 +99,7 @@ export function createIngestService(deps: Deps, services: Services): IngestServi
 
   /** Record changes one event implies; merged per session and written at flush. */
   function lifecycle(e: IngestEvent, session: Session, patch: SessionPatch): void {
-    if (!session.branch && e.branch && !patch.branch) patch.branch = e.branch;
+    if (e.branch && e.branch !== session.branch && !patch.branch) patch.branch = e.branch;
     if (!patch.updatedAt || patch.updatedAt < e.ts) patch.updatedAt = e.ts;
     if (e.kind === "session.started") {
       if (!session.model && e.data.model && !patch.model) patch.model = e.data.model;
