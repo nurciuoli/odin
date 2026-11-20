@@ -20,6 +20,7 @@ import { IuRavenLanding } from '@/components/RavenLanding'
 import { useFlagged } from '@/composables/useFlagged'
 import { buildPerch, perchParts, type LaneSource, type Perch } from '@/screens/shared/lanes'
 import { SESSION_DISPLAY, plural, relativeTime } from './format'
+import { sessionPlace } from './place'
 import StatusWord from './StatusWord.vue'
 import { useQuickAnswer } from './useQuickAnswer'
 import { useResource, useServerEvents } from './useResource'
@@ -214,9 +215,8 @@ const recent = computed(() => stopped.value.filter(s => !allUnread.value.include
 const history = { name: 'history' }
 const sessionFor = (id: string) => active.value.find(s => s.id === id)
 const projectSummary = (s: Session) => {
-  const names = s.projects?.length ? s.projects : [s.project]
-  const first = projects.projects.value.find(p => p.name === names[0])?.title ?? names[0]
-  return first + (names.length > 1 ? ' +' + (names.length - 1) : '')
+  const title = projects.projects.value.find(p => p.name === s.project)?.title
+  return sessionPlace(s, title)
 }
 const title = (s: Session) =>
   (s.projects ?? [s.project])

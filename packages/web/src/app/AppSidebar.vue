@@ -16,6 +16,7 @@ import { useApi, useIsMock } from '@/api'
 import type { Session } from '@odin/shared/api'
 import { SESSION_DISPLAY, needYouCount } from '@/screens/shared/format'
 import { plural, projectStatus, relativeTime } from '@/screens/shared/format'
+import { sessionPlace } from '@/screens/shared/place'
 import { useSessionPerches } from '@/screens/shared/useSessionPerches'
 import { layoutDemand, sidebarCrowded } from './layout'
 import { openNewProject } from './newProject'
@@ -56,9 +57,8 @@ function activityOf(s: Session): string {
     .join(' · ')
 }
 function projectOf(s: Session): string {
-  const names = s.projects?.length ? s.projects : [s.project]
-  const first = store.projects.value.find(p => p.name === names[0])?.title ?? names[0]
-  return first + (names.length > 1 ? ` +${names.length - 1}` : '')
+  const title = store.projects.value.find(p => p.name === s.project)?.title
+  return sessionPlace(s, title)
 }
 const flockOf = (s: Session) =>
   isLive(s) ? perches.value[s.id]?.flock : s.state === 'failed' ? 'failed' : 'idle'

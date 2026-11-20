@@ -60,7 +60,7 @@ const filter = (w: ReturnType<typeof mountWhere>) => w.find('input[placeholder="
 describe('ComposerWhere with the project checkout and worktrees', () => {
   it('names the branch with a dirty marker and the path in the tooltip', () => {
     const w = mountWhere({ info, branches })
-    expect(chip(w).text()).toContain('⎇ main')
+    expect(chip(w).text()).toContain('⎇ main · odin')
     expect(chip(w).attributes('aria-label')).toContain('uncommitted changes')
     expect(chip(w).attributes('title')).toContain('/r/odin')
     w.unmount()
@@ -69,7 +69,7 @@ describe('ComposerWhere with the project checkout and worktrees', () => {
     const w = mountWhere({
       info: { ...info, mainBranch: null, worktrees: [{ ...info.worktrees[0]!, branch: null }] },
     })
-    expect(chip(w).text()).toContain('⎇ detached')
+    expect(chip(w).text()).toContain('⎇ detached · odin')
     w.unmount()
   })
   it('lists existing worktrees with running count and merged badge, and picks one', async () => {

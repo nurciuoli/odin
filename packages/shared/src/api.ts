@@ -573,7 +573,7 @@ export interface Session {
   /** Where the harness runs: the project path, or the worktree path. */
   cwd: string;
   workspace: Workspace;
-  /** Git branch at start (or the worktree's branch). */
+  /** Branch of the checkout this session is working in, kept current while the session is live. */
   branch: string | null;
   /** As the harness reports it (alias resolved when known). Mixed models: the one with most output tokens. */
   model: string | null;

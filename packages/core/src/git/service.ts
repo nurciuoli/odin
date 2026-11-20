@@ -17,7 +17,7 @@ import {
 } from "./parse.ts";
 import { classify, gitConflict, gitOut, NETWORK_TIMEOUT_MS, runGit } from "./run.ts";
 import { loadActions, runAction, runTrigger } from "./actions.ts";
-import { createGitTracker, type GitTracker } from "./track.ts";
+import { checkoutRoot, createGitTracker, type GitTracker } from "./track.ts";
 
 const MAX_UNTRACKED_BYTES = 1024 * 1024;
 const LOG_LIMIT_MAX = 200;
@@ -56,9 +56,9 @@ export function createGitService(deps: Deps, services: Services, tracker?: GitTr
     return p.path;
   }
   function repoDir(t: GitTarget): string {
-    const d = dir(t);
-    if (!existsSync(join(d, ".git"))) throw gitConflict("not-a-repo", "This folder is not a git repository.");
-    return d;
+    const root = checkoutRoot(dir(t));
+    if (!root) throw gitConflict("not-a-repo", "This folder is not a git repository.");
+    return root;
   }
   /** Runs a write after earlier writes to the same checkout, then announces it. */
   async function write<T>(t: GitTarget, fn: (cwd: string) => Promise<T>): Promise<T> {
@@ -119,9 +119,9 @@ export function createGitService(deps: Deps, services: Services, tracker?: GitTr
   const EMPTY: GitStatus = { repo: false, branch: null, headSha: null, upstream: null, ahead: 0, behind: 0, upstreamGone: false, staged: [], unstaged: [], conflicted: [], operation: null, fetchedAt: null };
 
   async function status(t: GitTarget): Promise<GitStatus> {
-    const d = dir(t);
-    if (!existsSync(join(d, ".git"))) return { ...EMPTY };
-    try { return await statusOf(d); } catch (err) { throw classify(err); }
+    const root = checkoutRoot(dir(t));
+    if (!root) return { ...EMPTY };
+    try { return await statusOf(root); } catch (err) { throw classify(err); }
   }
 
   // ── diffs and patches ─────────────────────────────────────────────────────

@@ -9,6 +9,7 @@ import IuStatusDot from '@/components/StatusDot/StatusDot.vue'
 import StatusWord from '@/screens/shared/StatusWord.vue'
 import { useApi } from '@/api'
 import { SESSION_DISPLAY, formatCost, harnessLabel, relativeTime } from '@/screens/shared/format'
+import { placeFolder, placeLabel } from '@/screens/shared/place'
 import './hovercards.css'
 
 const props = defineProps<{ session: Session }>()
@@ -25,6 +26,7 @@ onMounted(() => {
 const display = computed(() => SESSION_DISPLAY[props.session.state])
 const metrics = computed(() => props.session.metrics)
 const project = computed(() => props.session.project)
+const place = computed(() => placeLabel(props.session.branch, placeFolder(props.session)))
 // what a session that needs you is waiting for
 const needs = computed(() =>
   props.session.state !== 'waiting'
@@ -74,7 +76,7 @@ const cost = computed(() => formatCost(metrics.value.costUsd))
       </div>
       <div v-if="session.branch">
         <dt><IuIcon name="gitBranch" :size="14" /><span class="hc__sr">Branch</span></dt>
-        <dd class="hc__mono">{{ session.branch }}</dd>
+        <dd class="hc__mono">{{ place }}</dd>
       </div>
       <div>
         <dt><IuIcon name="sparkle" :size="14" /><span class="hc__sr">Harness and model</span></dt>

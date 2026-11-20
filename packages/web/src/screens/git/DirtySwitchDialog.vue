@@ -9,7 +9,13 @@ import { IuDialog } from '@/components/Modal'
 
 export type DirtyChoice = 'stash' | 'carry' | 'commit' | 'session'
 
-const props = defineProps<{ branch: string; from: string; status: GitStatus | null }>()
+const props = defineProps<{
+  branch: string
+  from: string
+  status: GitStatus | null
+  /** `main · odin`: the checkout being left. */
+  place?: string
+}>()
 const emit = defineEmits<{ choose: [choice: DirtyChoice] }>()
 const open = defineModel<boolean>('open', { required: true })
 
@@ -43,7 +49,9 @@ const options = computed(() => [
   {
     value: 'session' as const,
     title: `Start a new session on ${local.value} instead`,
-    hint: 'Keeps this checkout as it is. Nothing is stashed.',
+    hint: props.place
+      ? `Keeps ${props.place} as it is. Nothing is stashed.`
+      : 'Keeps this checkout as it is. Nothing is stashed.',
   },
 ])
 const action = computed(

@@ -36,12 +36,12 @@ function repo(withOrigin = false) {
   return { dir, origin };
 }
 
-function setup(dir: string) {
+function setup(dir: string, cwd = dir) {
   const deps = testDeps();
   const projects = new Map<string, ProjectRef>([["p", { name: "p", path: dir } as ProjectRef]]);
   const services = stubServices({
     projects: { get: (name: string) => projects.get(name) ?? null } as never,
-    sessions: { get: (id: string) => (id === "s1" ? ({ id, cwd: dir } as Session) : null), list: () => [] } as never,
+    sessions: { get: (id: string) => (id === "s1" ? ({ id, cwd, project: "p", projects: ["p"] } as Session) : null), list: () => [] } as never,
   });
   return { git: createGitService(deps, services), deps };
 }
@@ -60,6 +60,16 @@ describe("git service", () => {
     assert.equal(s.branch, "main");
     assert.deepEqual(s.unstaged.map(c => [c.path, c.state, c.additions, c.deletions]), [["a.txt", "modified", 1, 1], ["new.txt", "untracked", 2, 0]]);
     assert.equal(s.staged.length, 0);
+  });
+
+  it("reads the checkout when the session folder is a subdirectory", async () => {
+    const { dir } = repo();
+    const sub = join(dir, "sub");
+    mkdirSync(sub);
+    const { git } = setup(dir, sub);
+    const s = await git.status(S);
+    assert.equal(s.repo, true);
+    assert.equal(s.branch, "main");
   });
 
   it("answers repo:false outside a repo and rejects bad paths", async () => {

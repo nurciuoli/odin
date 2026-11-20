@@ -12,6 +12,7 @@ import { useApi } from '@/api'
 import { IuButton } from '@/components/Button'
 import { IuIcon } from '@/components/Icon'
 import { useToast } from '@/components/Toast'
+import { placeFolder, placeLabel } from '@/screens/shared/place'
 import DirtySwitchDialog, { type DirtyChoice } from './DirtySwitchDialog.vue'
 import SyncDialog from './SyncDialog.vue'
 import { onGitIntent, type GitIntent } from './gitIntents'
@@ -34,10 +35,15 @@ const shown = computed(() => !!status.value?.repo)
 const branchLabel = computed(
   () => status.value?.branch ?? (status.value?.headSha?.slice(0, 7) || 'detached'),
 )
+const placeName = computed(
+  () =>
+    placeLabel(status.value?.branch ?? props.session.branch, placeFolder(props.session)) ||
+    branchLabel.value,
+)
 const chipLabel = computed(() => {
   const s = status.value
   if (!s) return ''
-  const parts = [`Branch ${branchLabel.value}`]
+  const parts = [placeName.value]
   if (s.ahead) parts.push(`${s.ahead} to push`)
   if (s.behind) parts.push(`${s.behind} to pull`)
   if (changedCount.value)
@@ -337,6 +343,7 @@ onBeforeUnmount(() => {
       :open="open"
       :toggle="toggle"
       :label="branchLabel"
+      :place="placeName"
       :chip-label="chipLabel"
       :status="status"
       :changed-count="changedCount"
@@ -353,7 +360,7 @@ onBeforeUnmount(() => {
         @click="toggle"
       >
         <template #icon><IuIcon name="gitBranch" :size="14" /></template>
-        <span class="branch-chip__name">{{ branchLabel }}</span>
+        <span class="branch-chip__name">{{ placeName }}</span>
         <span v-if="status.ahead || status.behind" class="branch-chip__ab" aria-hidden="true">
           <span v-if="status.ahead" class="branch-chip__up">↑{{ status.ahead }}</span>
           <span v-if="status.behind" class="branch-chip__down">↓{{ status.behind }}</span>
@@ -542,6 +549,7 @@ onBeforeUnmount(() => {
       v-model:open="dirtyOpen"
       :branch="dirtyFor ?? ''"
       :from="branchLabel"
+      :place="placeName"
       :status="status"
       @choose="onDirty"
     />

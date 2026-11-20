@@ -4,6 +4,7 @@ import { createMockApi } from '@/api/mock'
 import { IuNavGroup } from '@/components/Sidebar'
 import { IuFlock } from '@/components/Spinner'
 import { IuStatusDot } from '@/components/StatusDot'
+import { sessionPlace } from '@/screens/shared/place'
 import { mountScreen } from '@/screens/shared/testSupport'
 import { buildPerch } from '@/screens/shared/lanes'
 import AppSidebar from './AppSidebar.vue'
@@ -318,7 +319,9 @@ it('keeps recently finished unopened sessions in progress until read, with proje
   expect(row.attributes('aria-label')).toContain('Done, not opened yet')
   expect(row.findComponent(IuFlock).props('state')).toBe('idle')
   const projectTitle = projects.projects.value.find(p => p.name === 'odin')!.title
-  expect(row.find('.app-session-row__project').text()).toBe(`${projectTitle} +1`)
+  expect(row.find('.app-session-row__project').text()).toBe(
+    sessionPlace(finishedSession, projectTitle),
+  )
   expect(row.find('time').attributes('datetime')).toBe(finishedSession.updatedAt)
   expect(finished().find(`a[href="/s/${session.id}"]`).exists()).toBe(false)
   const visible = wrapper.findAll('section a[href^="/s/"]').map(a => a.attributes('href')!.slice(3))

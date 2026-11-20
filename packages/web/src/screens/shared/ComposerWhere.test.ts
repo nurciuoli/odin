@@ -60,9 +60,10 @@ describe('branchProblem', () => {
 
 describe('ComposerWhere', () => {
   it('labels the chip with text and exposes dialog semantics', async () => {
-    const w = mountWhere({ worktree: false })
+    const w = mountWhere({ worktree: false, project: 'odin' })
     const chip = w.find('button')
-    expect(chip.text()).toContain('This checkout')
+    expect(chip.text()).toContain('odin')
+    expect(chip.text()).not.toContain('This checkout')
     expect(chip.attributes('aria-haspopup')).toBe('dialog')
     expect(chip.attributes('aria-expanded')).toBe('false')
     await chip.trigger('click')

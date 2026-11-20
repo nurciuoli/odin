@@ -707,8 +707,13 @@ only on harnesses that do (the fake, for now); the UI follows (`docs/plans/check
 Status: implemented in core (`src/git`) with the Changes panel in the session's preview. Types in
 `packages/shared/src/git.ts`.
 
-- **Targets.** Every route exists twice: `/api/sessions/:id/git/…` works on the session's `cwd` (its worktree), and
+- **Targets.** Every route exists twice: `/api/sessions/:id/git/…` works on the checkout that contains the session's
+  `cwd` (the directory with `.git`, so a subdirectory and a linked worktree both count), and
   `/api/projects/:name/git/…` on the project's folder. `GitTarget` names one in the API client and in events.
+  A live session's stored `branch` follows that checkout. Registered project folders are watched even when nothing is
+  running there, and a session's other repositories are watched with it. A change emits `git.changed` for the project
+  and for every live session working in that checkout or listing that repository. The stored branch changes only for
+  sessions whose working checkout it is.
 - **The git CLI** through `execFile` with argv (never a shell), `GIT_TERMINAL_PROMPT=0`, `GIT_OPTIONAL_LOCKS=0` and a
   timeout (15 s, 120 s for network and commit). Paths from the client are repo-relative, may not be absolute, contain
   `..` or start with `-`, and always follow `--`. Branch names follow `validBranchName`; shas are hex.
