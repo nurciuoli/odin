@@ -16,7 +16,7 @@ import { HttpError } from "../http/util.ts";
 import { validBranchName } from "../git-policy.ts";
 import type { Deps, ProjectRef, ProjectsService, Services } from "../services.ts";
 import {
-  EMPTY_GIT, GitError, aheadBehind, cloneRepo, defaultBase, git, initRepo, isGitRepo, listBranches, listWorktrees, mergedBranches, readGitState, statusPaths,
+  EMPTY_GIT, GitError, aheadBehind, baseRemote, cloneRepo, defaultBase, git, initRepo, isGitRepo, listBranches, listWorktrees, mergedBranches, readGitState, statusPaths,
 } from "./git.ts";
 import { readProject, repoFromRemote, type ManifestFields, type SettingOverrides } from "./context.ts";
 
@@ -207,14 +207,22 @@ function readAgents(path: string): ProjectAgent[] {
 }
 
 async function detectDefaultBranch(path: string): Promise<string | undefined> {
-  const head = (await git(path, ["symbolic-ref", "--short", "-q", "refs/remotes/origin/HEAD"]).catch(() => "")).trim();
-  if (head.startsWith("origin/")) return head.slice("origin/".length);
-  return (await git(path, ["symbolic-ref", "--short", "-q", "HEAD"]).catch(() => "")).trim() || undefined;
+  const current = (await git(path, ["symbolic-ref", "--short", "-q", "HEAD"]).catch(() => "")).trim();
+  const remotes = new Set([await baseRemote(path, current || null), await baseRemote(path)]);
+  for (const remote of remotes) {
+    if (!remote) continue;
+    const head = (await git(path, ["symbolic-ref", "--short", "-q", `refs/remotes/${remote}/HEAD`]).catch(() => "")).trim();
+    if (head.startsWith(`${remote}/`)) return head.slice(remote.length + 1);
+  }
+  return current || undefined;
 }
 
 async function detectOriginRepo(path: string): Promise<string | undefined> {
   try {
-    return repoFromRemote((await git(path, ["remote", "get-url", "origin"])).trim()) ?? undefined;
+    const current = (await git(path, ["symbolic-ref", "--short", "-q", "HEAD"]).catch(() => "")).trim();
+    const remote = await baseRemote(path, current || null);
+    if (!remote) return undefined;
+    return repoFromRemote((await git(path, ["remote", "get-url", remote])).trim()) ?? undefined;
   } catch {
     return undefined;
   }
@@ -426,8 +434,9 @@ export function createProjectsService(deps: Deps, services?: Services): Projects
           await git(row.path, ["worktree", "add", path, branch]);
         } else {
           const def = settingsOf(row).defaultBranch;
-          const base = (await refExists(row.path, `refs/remotes/origin/${def}`))
-            ? `origin/${def}`
+          const remote = await baseRemote(row.path, def);
+          const base = remote && (await refExists(row.path, `refs/remotes/${remote}/${def}`))
+            ? `${remote}/${def}`
             : (await refExists(row.path, `refs/heads/${def}`))
               ? def
               : "HEAD";

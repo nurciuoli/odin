@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { commitAll, initRepo, isGitRepo, parseStatusZ, readGitState, repoFromRemoteUrl, statusPaths } from "./git.ts";
+import { baseRemote, commitAll, pushRemote, initRepo, isGitRepo, parseStatusZ, readGitState, repoFromRemoteUrl, statusPaths } from "./git.ts";
 import { tempDir, removeTempDir } from "../test-helpers.ts";
 
 test("parseStatusZ reads modified, untracked and renamed entries", () => {
@@ -61,5 +61,32 @@ test("readGitState for a folder that isn't a repo is empty", async () => {
     assert.deepEqual((await readGitState(root, "main")).state, { branch: null, headSha: null, dirty: false, ahead: 0, behind: 0 });
   } finally {
     removeTempDir(root);
+  }
+});
+
+test("baseRemote and pushRemote: configured upstream, then origin, then the only remote, else none", async () => {
+  const dir = tempDir("odin-remote-");
+  try {
+    const g = (cwd: string, ...a: string[]) => execFileSync("git", a, { cwd, encoding: "utf8", env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" } });
+    const repo = join(dir, "repo");
+    mkdirSync(repo);
+    g(repo, "init", "--quiet", "--initial-branch=main");
+    const bare = (n: string) => { const d = join(dir, `${n}.git`); g(dir, "init", "--quiet", "--bare", d); return d; };
+    assert.equal(await baseRemote(repo, "main"), null);
+    g(repo, "remote", "add", "up", bare("up"));
+    assert.equal(await baseRemote(repo, "main"), "up");
+    g(repo, "remote", "add", "other", bare("other"));
+    assert.equal(await baseRemote(repo, "main"), null);
+    g(repo, "remote", "add", "origin", bare("origin"));
+    assert.equal(await baseRemote(repo, "main"), "origin");
+    g(repo, "config", "branch.main.remote", "other");
+    assert.equal(await baseRemote(repo, "main"), "other");
+    assert.equal(await pushRemote(repo, "main"), "other");
+    g(repo, "config", "remote.pushDefault", "up");
+    assert.equal(await pushRemote(repo, "main"), "up");
+    g(repo, "config", "branch.main.pushRemote", "origin");
+    assert.equal(await pushRemote(repo, "main"), "origin");
+  } finally {
+    removeTempDir(dir);
   }
 });
