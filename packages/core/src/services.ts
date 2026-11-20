@@ -302,6 +302,8 @@ export interface SecretsService {
 }
 
 export interface McpOAuthService {
+  /** Probe a URL. `{ oauth: false }` when it publishes no OAuth metadata. 400 for a URL this client will not call. */
+  detect(url: string): Promise<import("@odin/shared/api").McpOAuthDetect>;
   /** 404 unknown server, 400 when it is not a remote server with `oauth`. */
   status(id: string): import("@odin/shared/api").McpOAuthStatus;
   /** Discovers, registers a client when needed, and returns the URL to open. `origin` must be this Odin's own address. */

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync, rmSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { McpOAuthStatus, StartMcpOAuthResponse } from "@odin/shared/api";
+import type { McpOAuthDetect, McpOAuthStatus, StartMcpOAuthResponse } from "@odin/shared/api";
 import { startApp } from "../test-helpers.ts";
 
 const homes: string[] = [];
@@ -22,7 +22,7 @@ function fakeServers(opts: { dcr?: boolean; expiresIn?: number; refreshError?: s
     const body = String(init?.body ?? "");
     log.push({ url, body });
     if (url === MCP) return new Response("", { status: 401, headers: { "www-authenticate": `Bearer resource_metadata="https://mcp.example.test/.well-known/oauth-protected-resource/mcp"` } });
-    if (url === "https://mcp.example.test/.well-known/oauth-protected-resource/mcp") return json({ resource: MCP, authorization_servers: [AS] });
+    if (url === "https://mcp.example.test/.well-known/oauth-protected-resource/mcp") return json({ resource: MCP, authorization_servers: [AS], scopes_supported: ["design:read", "design:write"] });
     if (url === `${AS}/.well-known/oauth-authorization-server`) {
       return json({ issuer: AS, authorization_endpoint: `${AS}/authorize`, token_endpoint: `${AS}/token`, code_challenge_methods_supported: ["S256"], ...(opts.dcr === false ? {} : { registration_endpoint: `${AS}/register` }) });
     }
@@ -91,6 +91,34 @@ test("oauth: discovery, registration, PKCE sign-in, status, tokens stored mode 6
 
     assert.equal((await t.api("/api/mcp/docs/oauth", { method: "DELETE" })).status, 204);
     assert.equal((await t.json<McpOAuthStatus>("/api/mcp/docs/oauth")).state, "needs-sign-in");
+  } finally {
+    await t.close();
+  }
+});
+
+test("oauth detect: a server with metadata is oauth, one without is not, a cleartext url is 400", async () => {
+  const servers = fakeServers();
+  const t = await startApp({ mcpFetch: servers.fetchFn });
+  homes.push(t.config.home);
+  try {
+    assert.deepEqual(await t.json<McpOAuthDetect>("/api/mcp/oauth/detect", { method: "POST", body: JSON.stringify({ url: MCP }) }), {
+      oauth: true, scopes: ["design:read", "design:write"],
+    });
+    assert.deepEqual(await t.json<McpOAuthDetect>("/api/mcp/oauth/detect", { method: "POST", body: JSON.stringify({ url: "https://plain.example/mcp" }) }), {
+      oauth: false, scopes: [],
+    });
+    assert.equal((await t.api("/api/mcp/oauth/detect", { method: "POST", body: JSON.stringify({ url: "http://plain.example/mcp" }) })).status, 400);
+  } finally {
+    await t.close();
+  }
+});
+
+test("oauth: a spec with no scope asks for the scopes the server publishes", async () => {
+  const servers = fakeServers();
+  const t = await app(servers, { oauth: {} });
+  try {
+    const started = await t.json<StartMcpOAuthResponse>("/api/mcp/docs/oauth/start", { method: "POST", body: JSON.stringify({ origin: t.base }) });
+    assert.equal(new URL(started.authorizationUrl).searchParams.get("scope"), "design:read design:write");
   } finally {
     await t.close();
   }

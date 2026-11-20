@@ -1,0 +1,1 @@
+- A remote MCP server in the library can sign in on its own. Saving a URL that publishes OAuth, or choosing Sign in, opens the browser; Odin keeps the grant and sends it when a session starts. The MCP editor is shorter, each library asset links back to its list, and the project picker in Install opens over the dialog instead of stretching it.

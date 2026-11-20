@@ -3,6 +3,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { IuBreadcrumb, IuHeader, type Crumb } from '@/components/AppShell'
+import { isAssetKind, KIND_INFO } from '@/screens/library/assetForm'
 import { PROJECT_SECTIONS } from './router'
 import { useProjects } from './projects'
 
@@ -24,6 +25,18 @@ const crumbs = computed<Crumb[]>(() => {
     ]
   }
   if (route.name === 'home') return []
+  if (route.name === 'library-asset') {
+    const kind = typeof route.params.kind === 'string' ? route.params.kind : ''
+    const id = typeof route.params.id === 'string' ? route.params.id : ''
+    const known = isAssetKind(kind)
+    return [
+      { label: 'Library', to: { name: 'library' } },
+      ...(known
+        ? [{ label: KIND_INFO[kind].plural, to: { name: 'library', query: { kind } } }]
+        : []),
+      { label: id, mono: true },
+    ]
+  }
   return [{ label: route.meta.crumb ?? 'Home' }]
 })
 </script>

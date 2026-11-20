@@ -2088,6 +2088,22 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
       respond(() => {
         if (!secrets.delete(name)) notFound(`secret ${name}`)
       }),
+    detectMcpOAuth: url =>
+      respond(() => {
+        let parsed: URL
+        try {
+          parsed = new URL(url)
+        } catch {
+          throw new ApiRequestError(400, 'url must be a URL')
+        }
+        if (
+          parsed.protocol !== 'https:' &&
+          !(parsed.protocol === 'http:' && parsed.hostname === 'localhost')
+        )
+          throw new ApiRequestError(400, 'url must be https')
+        if (parsed.hostname.includes('no-oauth')) return { oauth: false, scopes: [] }
+        return { oauth: true, scopes: ['read'] }
+      }),
     getMcpOAuth: id =>
       respond(() => {
         oauthServer(id)

@@ -9,6 +9,8 @@ export interface AuthServer {
   authorizationEndpoint: string;
   tokenEndpoint: string;
   registrationEndpoint: string | null;
+  /** Scopes the protected resource says it supports. Empty when it lists none. */
+  scopes: string[];
 }
 
 const MAX_BODY = 256 * 1024;
@@ -98,12 +100,16 @@ export async function discover(fetcher: Fetcher, mcpUrl: string): Promise<AuthSe
     if (v === undefined && !required) return null;
     return safeUrl(v, `the ${key.replace(/_/g, " ")}`).href;
   };
+  const scopes = Array.isArray(prm?.scopes_supported)
+    ? prm.scopes_supported.filter((s): s is string => typeof s === "string" && !!s.trim() && !/\s/.test(s))
+    : [];
   return {
     resource: typeof prm?.resource === "string" && prm.resource ? prm.resource : mcp.href,
     issuer: typeof meta.issuer === "string" ? meta.issuer : issuerUrl.origin,
     authorizationEndpoint: endpoint("authorization_endpoint", true)!,
     tokenEndpoint: endpoint("token_endpoint", true)!,
     registrationEndpoint: endpoint("registration_endpoint", false),
+    scopes,
   };
 }
 

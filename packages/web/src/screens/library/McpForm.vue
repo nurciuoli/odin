@@ -52,54 +52,61 @@ function setType(next: string) {
         @update:model-value="patch({ description: String($event) })"
       />
     </div>
-    <SelectField
-      label="Transport"
-      :options="TYPES"
-      :model-value="type"
-      @update:model-value="setType"
-    />
-    <template v-if="!remote">
+    <div class="mcp-form__row">
+      <SelectField
+        label="Transport"
+        :options="TYPES"
+        :model-value="type"
+        @update:model-value="setType"
+      />
       <IuField
+        v-if="remote"
+        label="URL"
+        mono
+        :model-value="str('url')"
+        hint="Saving checks whether this server needs sign-in."
+        :error="!str('url').trim() ? 'A remote server needs a URL.' : undefined"
+        @update:model-value="patch({ url: String($event) })"
+      />
+      <IuField
+        v-else
         label="Command"
         mono
         :model-value="str('command')"
         :error="!str('command').trim() ? 'A stdio server needs a command.' : undefined"
         @update:model-value="patch({ command: String($event) })"
       />
-      <IuTextarea
-        label="Arguments"
-        mono
-        :rows="3"
-        hint="One per line."
-        :model-value="args"
-        @update:model-value="patch({ args: parseLines($event) })"
-      />
-      <IuTextarea
-        label="Environment"
-        mono
-        :rows="3"
-        hint="KEY=value, one per line."
-        :model-value="map('env', '=')"
-        @update:model-value="patch({ env: parsePairs($event, '=') })"
-      />
+    </div>
+    <template v-if="!remote">
+      <div class="mcp-form__row">
+        <IuTextarea
+          label="Arguments"
+          mono
+          :rows="2"
+          hint="One per line."
+          :model-value="args"
+          @update:model-value="patch({ args: parseLines($event) })"
+        />
+        <IuTextarea
+          label="Environment"
+          mono
+          :rows="2"
+          hint="KEY=value, one per line."
+          :model-value="map('env', '=')"
+          @update:model-value="patch({ env: parsePairs($event, '=') })"
+        />
+      </div>
     </template>
-    <template v-else>
-      <IuField
-        label="URL"
-        mono
-        :model-value="str('url')"
-        :error="!str('url').trim() ? 'A remote server needs a URL.' : undefined"
-        @update:model-value="patch({ url: String($event) })"
-      />
-      <IuTextarea
-        label="Headers"
-        mono
-        :rows="3"
-        hint="Name: value, one per line."
-        :model-value="map('headers', ': ')"
-        @update:model-value="patch({ headers: parsePairs($event, ':') })"
-      />
-    </template>
+    <IuTextarea
+      v-else
+      class="mcp-form__headers"
+      label="Headers"
+      mono
+      :rows="2"
+      hint="Name: value, one per line. Leave empty when the server signs you in."
+      :model-value="map('headers', ': ')"
+      @update:model-value="patch({ headers: parsePairs($event, ':') })"
+    />
   </div>
 </template>
 
@@ -107,11 +114,14 @@ function setType(next: string) {
 .mcp-form {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
 }
 .mcp-form__row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 10px;
+}
+.mcp-form :deep(.iu-field__textarea) {
+  min-height: 2.6em;
 }
 </style>

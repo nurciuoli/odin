@@ -821,7 +821,8 @@ Odin signs in to remote MCP servers that use OAuth, once, and sends the token to
 - **Spec**: an `http`/`sse` library MCP spec may carry `oauth: { scope?, clientId? }` (`McpOAuthConfig`). A spec with
   `oauth` and its own `Authorization` header, or `oauth` on a stdio spec, fails to parse. `scope` is space-separated.
   `clientId` names a client registered by hand (a public PKCE client, no secret) for servers without dynamic
-  registration.
+  registration. The library editor probes a remote URL on save (`POST /api/mcp/oauth/detect`) and writes `oauth: {}`
+  when the server publishes OAuth metadata. A server that already sets `Authorization` is left alone.
 - **Discovery** (`oauth/discovery.ts`): probe the MCP url; a 401 whose `WWW-Authenticate` carries `resource_metadata`
   points at the protected-resource metadata (RFC 9728), else `/.well-known/oauth-protected-resource[/path]` on the
   server. Its first `authorization_servers` entry (else the server's own origin) gives the authorization-server
@@ -833,7 +834,8 @@ Odin signs in to remote MCP servers that use OAuth, once, and sends the token to
 - **Sign-in** (`POST /api/mcp/:id/oauth/start`, body `{ origin }`): `origin` is the browser's own origin; it must be
   this Odin's address (localhost names or `ODIN_EXTRA_HOSTS`, https unless localhost) or 400. The authorization URL
   uses code flow, PKCE `S256`, a random single-use `state` held in memory for 10 minutes, and the RFC 8707
-  `resource`. The server returns to `GET /api/oauth/callback`, which exchanges the code and stores the tokens. The
+  `resource`. When the spec omits `scope`, the request asks for the scopes in the protected-resource metadata. The
+  server returns to `GET /api/oauth/callback`, which exchanges the code and stores the tokens. The
   state is consumed whatever happens, so a replayed or forged callback is a 400 and never reaches the token
   endpoint. The callback answers a small HTML page that shows only the outcome (OAuth error codes limited to
   `[a-z_]`, everything escaped), with `no-store`, `no-referrer` and a `default-src 'none'` CSP. Tokens must be
@@ -846,9 +848,11 @@ Odin signs in to remote MCP servers that use OAuth, once, and sends the token to
   refused with `invalid_grant`/`invalid_client`, or no grant at all → 400 `MCP server <id> needs sign-in`, and the
   session does not start; other refresh failures → 502 and the grant is kept. A token that ends during a running
   session is not replaced until the next resume.
-- **API**: `GET /api/mcp/:id/oauth` → `McpOAuthStatus` (`connected` while the token is valid or refreshable, else
-  `needs-sign-in`; never a token). `POST …/oauth/start` → `{ authorizationUrl }`. `DELETE …/oauth` → 204 forgets the
-  grant (it is not revoked at the server). 404 for an unknown library id, 400 when the server has no `oauth`.
+- **API**: `POST /api/mcp/oauth/detect` (`{ url }`) → `McpOAuthDetect` (`oauth`, `scopes`). 400 when `url` is not
+  https (http only on localhost). A server with no OAuth metadata is `{ oauth: false }`, not an error. `GET
+  /api/mcp/:id/oauth` → `McpOAuthStatus` (`connected` while the token is valid or refreshable, else `needs-sign-in`;
+  never a token). `POST …/oauth/start` → `{ authorizationUrl }`. `DELETE …/oauth` → 204 forgets the grant (it is not
+  revoked at the server). 404 for an unknown library id, 400 when the server has no `oauth`.
 - `Deps.mcpFetch` carries all of this traffic; tests inject a fake.
 
 ### Plugins
@@ -1272,6 +1276,7 @@ The main routes; each module's `routes.ts` has the full list. All JSON. Errors: 
 | GET `/api/secrets` | `SecretsResponse` (no values) |
 | PUT `/api/secrets/:name` (`PutSecretRequest`) | `SecretInfo` |
 | DELETE `/api/secrets/:name` | 204 |
+| POST `/api/mcp/oauth/detect` (`McpOAuthDetectRequest`) | `McpOAuthDetect` |
 | GET `/api/mcp/:id/oauth` | `McpOAuthStatus` |
 | POST `/api/mcp/:id/oauth/start` (`StartMcpOAuthRequest`) | `StartMcpOAuthResponse` |
 | DELETE `/api/mcp/:id/oauth` | 204 |

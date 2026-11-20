@@ -28,6 +28,17 @@ describe('AppHeader', () => {
     expect(wrapper.find('[aria-label="Page settings and actions"]').exists()).toBe(false)
   })
 
+  it('links a library asset back to the library and its kind', async () => {
+    const mounted = await mountScreen(AppHeader, '/library/mcp/canva-test')
+    wrapper = mounted.wrapper
+    stop = () => (mounted.projects.stop(), mounted.sessions.stop())
+    const links = wrapper.findAll('.iu-breadcrumb a')
+    expect(links.map(a => a.text())).toEqual(['Library', 'MCP servers'])
+    expect(links[0]!.attributes('href')).toBe('/library')
+    expect(links[1]!.attributes('href')).toBe('/library?kind=mcp')
+    expect(wrapper.find('.iu-breadcrumb__current').text()).toBe('canva-test')
+  })
+
   it('titles a project page with the project and section, and links its settings', async () => {
     const mounted = await mountScreen(AppHeader, '/p/odin/sessions')
     wrapper = mounted.wrapper

@@ -23,6 +23,7 @@ import type {
   InstallRequest,
   InstallResult,
   LibraryAsset,
+  McpOAuthDetect,
   McpOAuthStatus,
   HandoffPreview,
   HandoffRequest,
@@ -313,6 +314,7 @@ export interface Api {
   /** Creates or replaces. The value is never returned. */
   putSecret(name: string, value: string): Promise<SecretInfo>
   deleteSecret(name: string): Promise<void>
+  detectMcpOAuth(url: string): Promise<McpOAuthDetect>
   getMcpOAuth(id: string): Promise<McpOAuthStatus>
   /** `origin` is this page's own origin; the sign-in returns to it. */
   startMcpOAuth(id: string, origin: string): Promise<StartMcpOAuthResponse>

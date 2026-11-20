@@ -32,16 +32,20 @@ import JsonSpecEditor from './JsonSpecEditor.vue'
 import MarkdownEditor from './MarkdownEditor.vue'
 import PluginMembers from './PluginMembers.vue'
 import SkillEditor from './SkillEditor.vue'
+import { attachMcpOAuth, mcpUrlChanged } from './mcpDraft'
 import VersionsPanel from './VersionsPanel.vue'
+import { useMcpSignIn } from '@/screens/mcp/useMcpSignIn'
 
 const props = defineProps<{ kind: string; id: string }>()
 
 const api = useApi()
 const router = useRouter()
 const { toast } = useToast()
+const signIn = useMcpSignIn()
 
 const validKind = computed(() => isAssetKind(props.kind))
 const kind = computed(() => (isAssetKind(props.kind) ? props.kind : 'agent'))
+const libraryList = computed(() => ({ name: 'library' as const, query: { kind: kind.value } }))
 
 const res = useResource<AssetDetail>(() => api.getAsset(kind.value, props.id))
 const draft = ref<AssetFiles>({})
@@ -118,6 +122,76 @@ const problems = computed(() => {
   return 'error' in parsed ? ['The JSON doesn’t parse.'] : specProblems(kind.value, parsed.value)
 })
 
+const savedMcpOauth = computed(() => {
+  if (kind.value !== 'mcp' || !detail.value) return false
+  const text = detail.value.files[entryFile('mcp', props.id)] ?? ''
+  const parsed = parseJsonObject(text)
+  return !('error' in parsed) && !!parsed.value.oauth
+})
+const mcpConnected = computed(() => {
+  const s = signIn.status.value[props.id]
+  return typeof s === 'object' && s.state === 'connected'
+})
+/** A remote spec with no `oauth` yet, whose URL publishes OAuth metadata. */
+const offerOauth = ref(false)
+watch(
+  () => [props.id, savedMcpOauth.value, detail.value?.files] as const,
+  async () => {
+    offerOauth.value = false
+    if (kind.value !== 'mcp' || !detail.value) return
+    if (savedMcpOauth.value) {
+      void signIn.load([props.id])
+      return
+    }
+    const text = detail.value.files[entryFile('mcp', props.id)] ?? ''
+    const parsed = parseJsonObject(text)
+    if ('error' in parsed) return
+    const doc = parsed.value
+    const headers = doc.headers
+    const hasAuth =
+      !!headers &&
+      typeof headers === 'object' &&
+      !Array.isArray(headers) &&
+      Object.keys(headers).some(h => h.toLowerCase() === 'authorization')
+    if ((doc.type !== 'http' && doc.type !== 'sse') || typeof doc.url !== 'string' || hasAuth) return
+    const id = props.id
+    try {
+      const found = await api.detectMcpOAuth(doc.url)
+      if (id === props.id) offerOauth.value = found.oauth
+    } catch {
+      if (id === props.id) offerOauth.value = false
+    }
+  },
+  { immediate: true },
+)
+
+async function beginSignIn() {
+  if (!detail.value) return
+  const name = detail.value.asset.name
+  try {
+    if (!savedMcpOauth.value) {
+      const prepared = await attachMcpOAuth({ ...draft.value }, props.id, url =>
+        api.detectMcpOAuth(url),
+      )
+      if (!prepared.signIn) {
+        toast({ title: `${name} does not use sign-in`, intent: 'info' })
+        return
+      }
+      if (prepared.added) {
+        await api.saveAsset(kind.value, props.id, prepared.files)
+        await reload(true)
+      }
+    }
+    await signIn.connect(props.id, name)
+  } catch (e) {
+    toast({
+      title: `Couldn't start sign-in for ${name}`,
+      description: e instanceof Error ? e.message : String(e),
+      intent: 'danger',
+    })
+  }
+}
+
 // ── actions ─────────────────────────────────────────────────────────────────
 const saving = ref(false)
 async function save() {
@@ -125,18 +199,37 @@ async function save() {
   saving.value = true
   const before = detail.value.asset.version
   const key = `${props.kind}/${props.id}`
-  const sentDraft = JSON.stringify(draft.value)
+  const savedFiles = detail.value.files
+  let files = { ...draft.value }
+  let prompt = false
+  let warning: string | null = null
+  if (kind.value === 'mcp') {
+    const prepared = await attachMcpOAuth(files, props.id, url => api.detectMcpOAuth(url))
+    files = prepared.files
+    warning = prepared.warning
+    prompt = prepared.signIn && (prepared.added || mcpUrlChanged(savedFiles, files, props.id))
+  }
+  const draftAtSend = JSON.stringify(draft.value)
+  const sentDraft = JSON.stringify(files)
   try {
-    const saved = await api.saveAsset(kind.value, props.id, { ...draft.value })
+    const saved = await api.saveAsset(kind.value, props.id, files)
     if (key !== `${props.kind}/${props.id}`) return
-    await reload(JSON.stringify(draft.value) === sentDraft)
+    await reload(JSON.stringify(draft.value) === draftAtSend || JSON.stringify(draft.value) === sentDraft)
     toast({
-      title:
-        saved.version === before
+      title: warning
+        ? 'Saved, but sign-in could not be checked'
+        : saved.version === before
           ? 'Saved. Nothing changed.'
           : `Saved as version ${shortHash(saved.version)}`,
-      intent: 'success',
+      description: warning ?? undefined,
+      intent: warning ? 'warning' : 'success',
     })
+    if (prompt) {
+      await signIn.load([props.id])
+      const s = signIn.status.value[props.id]
+      if (typeof s === 'object' && s.state === 'needs-sign-in')
+        await signIn.connect(props.id, detail.value?.asset.name ?? props.id)
+    }
   } catch (e) {
     toast({
       title: "Couldn't save",
@@ -223,12 +316,33 @@ const tabs = computed(() => [
     <template v-else-if="detail">
       <IuPageHeader
         :title="detail.asset.name"
-        :subtitle="detail.asset.description || undefined"
-        :eyebrow="KIND_INFO[kind].label"
-        icon="folder"
+        :subtitle="kind === 'mcp' ? undefined : detail.asset.description || undefined"
+        :icon="kind === 'mcp' ? undefined : 'folder'"
         wrap
       >
+        <template #eyebrow>
+          <RouterLink class="asset__back" :to="libraryList">{{
+            KIND_INFO[kind].plural
+          }}</RouterLink>
+        </template>
         <template #actions>
+          <template v-if="kind === 'mcp' && (savedMcpOauth || offerOauth)">
+            <IuButton
+              size="sm"
+              :variant="mcpConnected ? 'ghost' : 'primary'"
+              :loading="signIn.signingIn.value?.id === id"
+              @click="beginSignIn"
+            >
+              {{ mcpConnected ? 'Sign in again' : 'Sign in' }}
+            </IuButton>
+            <IuButton
+              v-if="mcpConnected"
+              size="sm"
+              variant="ghost"
+              @click="signIn.disconnect(id, detail.asset.name)"
+              >Sign out</IuButton
+            >
+          </template>
           <IuButton v-if="isInstallable(kind)" variant="secondary" @click="installing = true"
             >Install into…</IuButton
           >
@@ -248,6 +362,14 @@ const tabs = computed(() => [
         <span>{{ plural(detail.installs.length, 'install') }}</span>
         <IuBadge v-if="dirty" intent="warning" size="xs">Unsaved changes</IuBadge>
       </p>
+
+      <IuCallout v-if="signIn.signingIn.value" intent="info" variant="inline" live>
+        Finish signing in to {{ signIn.signingIn.value.name }} in the browser tab that opened.
+        <a :href="signIn.signingIn.value.url" target="_blank" rel="noopener noreferrer"
+          >Open the sign-in page</a
+        >
+        if it didn't.
+      </IuCallout>
 
       <IuCallout
         v-if="detail.asset.error"
@@ -356,6 +478,13 @@ const tabs = computed(() => [
   flex-direction: column;
   gap: 16px;
   padding-top: 16px;
+}
+.asset__back {
+  color: inherit;
+  text-decoration: none;
+}
+.asset__back:hover {
+  text-decoration: underline;
 }
 .asset__meta {
   display: flex;

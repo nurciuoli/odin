@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // The MCP servers tab of the Library: the library's servers with whether each can start (signed in, secrets set), a Connect button for the
 // ones that use OAuth, and the secrets vault their specs refer to.
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { McpOAuthStatus, SecretsResponse } from '@odin/shared/api'
 import { useApi } from '@/api'
 import { IuBadge } from '@/components/Badge'
@@ -18,6 +18,7 @@ import { plural, relativeTime } from '@/screens/shared/format'
 import { useResource, useServerEvents } from '@/screens/shared/useResource'
 import { assetMenu, type RowAction } from '@/screens/library/libraryActions'
 import { mcpRows, needsAttention, oauthIds, type McpRow } from './mcpModel'
+import { useMcpSignIn } from './useMcpSignIn'
 import SecretModal from './SecretModal.vue'
 
 const props = defineProps<{ installs: Record<string, number> | null }>()
@@ -41,28 +42,14 @@ useServerEvents(
   () => void refresh(),
 )
 
-const oauth = ref<Record<string, McpOAuthStatus | 'unknown'>>({})
-async function loadOAuth(ids: string[]) {
-  await Promise.all(
-    ids.map(async id => {
-      let status: McpOAuthStatus | 'unknown'
-      try {
-        status = await api.getMcpOAuth(id)
-      } catch {
-        status = 'unknown'
-      }
-      // read the map after the request: parallel requests must not overwrite each other
-      oauth.value = { ...oauth.value, [id]: status }
-    }),
-  )
-}
+const signIn = useMcpSignIn()
 async function refresh() {
   await Promise.all([lib.load(), vault.load()])
-  await loadOAuth(oauthIds(rows.value))
+  await signIn.load(oauthIds(rows.value))
 }
 
 const rows = computed(() =>
-  mcpRows(lib.data.value ?? [], vault.data.value, oauth.value).map(r => ({
+  mcpRows(lib.data.value ?? [], vault.data.value, signIn.status.value).map(r => ({
     ...r,
     used: props.installs ? (props.installs[`mcp/${r.id}`] ?? 0) : null,
   })),
@@ -70,7 +57,7 @@ const rows = computed(() =>
 // sign-in states arrive after the library, one request per OAuth server
 watch(
   () => oauthIds(rows.value).join(','),
-  key => void loadOAuth(key ? key.split(',') : []),
+  key => void signIn.load(key ? key.split(',') : []),
   { immediate: true },
 )
 
@@ -88,60 +75,6 @@ const columns: Column<Row>[] = [
 
 function oauthState(row: McpRow): McpOAuthStatus | 'loading' | 'unknown' | null {
   return row.auth.kind === 'oauth' ? row.auth.status : null
-}
-
-// ── signing in ──────────────────────────────────────────────────────────────
-const POLL_MS = 2000
-const GIVE_UP_MS = 3 * 60_000
-const signingIn = ref<{ id: string; url: string } | null>(null)
-let poll: ReturnType<typeof setInterval> | null = null
-function stopPolling() {
-  if (poll) clearInterval(poll)
-  poll = null
-}
-onBeforeUnmount(stopPolling)
-
-async function connect(row: McpRow) {
-  stopPolling()
-  try {
-    const { authorizationUrl } = await api.startMcpOAuth(row.id, window.location.origin)
-    signingIn.value = { id: row.id, url: authorizationUrl }
-    window.open(authorizationUrl, '_blank', 'noopener')
-    const until = Date.now() + GIVE_UP_MS
-    poll = setInterval(async () => {
-      await loadOAuth([row.id])
-      const s = oauth.value[row.id]
-      if (typeof s === 'object' && s.state === 'connected') {
-        stopPolling()
-        signingIn.value = null
-        toast({ title: `${row.name} is signed in`, intent: 'success' })
-      } else if (Date.now() > until) {
-        stopPolling()
-        signingIn.value = null
-      }
-    }, POLL_MS)
-  } catch (e) {
-    signingIn.value = null
-    toast({
-      title: `Couldn't start sign-in for ${row.name}`,
-      description: e instanceof Error ? e.message : String(e),
-      intent: 'danger',
-    })
-  }
-}
-
-async function disconnect(row: McpRow) {
-  try {
-    await api.disconnectMcpOAuth(row.id)
-    await loadOAuth([row.id])
-    toast({ title: `${row.name} signed out`, intent: 'success' })
-  } catch (e) {
-    toast({
-      title: `Couldn't sign out of ${row.name}`,
-      description: e instanceof Error ? e.message : String(e),
-      intent: 'danger',
-    })
-  }
 }
 
 // ── secrets ─────────────────────────────────────────────────────────────────
@@ -233,9 +166,9 @@ async function remove() {
           won't start a session until you finish setting
           {{ attention === 1 ? 'it' : 'them' }} up.
         </IuCallout>
-        <IuCallout v-if="signingIn" intent="info" variant="inline" live>
-          Finish signing in to {{ signingIn.id }} in the browser tab that opened.
-          <a :href="signingIn.url" target="_blank" rel="noopener noreferrer"
+        <IuCallout v-if="signIn.signingIn.value" intent="info" variant="inline" live>
+          Finish signing in to {{ signIn.signingIn.value.name }} in the browser tab that opened.
+          <a :href="signIn.signingIn.value.url" target="_blank" rel="noopener noreferrer"
             >Open the sign-in page</a
           >
           if it didn't.
@@ -317,8 +250,8 @@ async function remove() {
                       ? 'ghost'
                       : 'primary'
                   "
-                  :loading="signingIn?.id === row.id"
-                  @click="connect(row)"
+                  :loading="signIn.signingIn.value?.id === row.id"
+                  @click="signIn.connect(row.id, row.name)"
                 >
                   {{
                     typeof oauthState(row) === 'object' &&
@@ -334,7 +267,7 @@ async function remove() {
                   "
                   size="sm"
                   variant="ghost"
-                  @click="disconnect(row)"
+                  @click="signIn.disconnect(row.id, row.name)"
                   >Sign out</IuButton
                 >
               </template>

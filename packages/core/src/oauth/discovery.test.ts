@@ -34,7 +34,7 @@ test("resourceMetadataUrl reads the quoted url from WWW-Authenticate", () => {
 test("discover follows the 401 challenge to the resource metadata, then the authorization server", async () => {
   const { fetcher } = routes({
     "https://mcp.example/mcp": () => new Response("", { status: 401, headers: { "www-authenticate": 'Bearer resource_metadata="https://mcp.example/prm"' } }),
-    "https://mcp.example/prm": () => json({ resource: "https://mcp.example/mcp", authorization_servers: ["https://auth.example"] }),
+    "https://mcp.example/prm": () => json({ resource: "https://mcp.example/mcp", authorization_servers: ["https://auth.example"], scopes_supported: ["design:read", "", "has space", 1] }),
     "https://auth.example/.well-known/oauth-authorization-server": () => json(AS),
   });
   assert.deepEqual(await discover(fetcher, "https://mcp.example/mcp"), {
@@ -43,6 +43,7 @@ test("discover follows the 401 challenge to the resource metadata, then the auth
     authorizationEndpoint: "https://auth.example/authorize",
     tokenEndpoint: "https://auth.example/token",
     registrationEndpoint: "https://auth.example/register",
+    scopes: ["design:read"],
   });
 });
 

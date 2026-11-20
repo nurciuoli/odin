@@ -2,7 +2,7 @@
 // docs/contracts.md#mcp-oauth.
 import { createHash, randomBytes } from "node:crypto";
 import { join } from "node:path";
-import type { McpOAuthConfig, McpOAuthStatus, StartMcpOAuthResponse } from "@odin/shared/api";
+import type { McpOAuthConfig, McpOAuthDetect, McpOAuthStatus, StartMcpOAuthResponse } from "@odin/shared/api";
 import { allowed } from "../http/auth.ts";
 import { HttpError } from "../http/util.ts";
 import type { Deps, McpOAuthService, Services } from "../services.ts";
@@ -96,6 +96,25 @@ export function createMcpOAuthService(deps: Deps, services: Services, store: OAu
   }
 
   return {
+    async detect(url): Promise<McpOAuthDetect> {
+      let parsed: URL;
+      try {
+        parsed = new URL(url);
+      } catch {
+        throw new HttpError(400, "url must be a URL");
+      }
+      if (parsed.protocol !== "https:" && !(parsed.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname))) {
+        throw new HttpError(400, "url must be https (or http on localhost)");
+      }
+      try {
+        const found = await discover(fetcher, parsed.href);
+        return { oauth: true, scopes: found.scopes };
+      } catch (err) {
+        if (err instanceof HttpError && err.status === 502 && /does not publish OAuth metadata/.test(err.message)) return { oauth: false, scopes: [] };
+        throw err;
+      }
+    },
+
     status(id): McpOAuthStatus {
       const { url } = spec(id);
       const entry = grant(id, url);
@@ -137,7 +156,8 @@ export function createMcpOAuthService(deps: Deps, services: Services, store: OAu
       auth.searchParams.set("code_challenge", b64url(createHash("sha256").update(verifier).digest()));
       auth.searchParams.set("code_challenge_method", "S256");
       auth.searchParams.set("resource", found.resource);
-      if (oauth.scope) auth.searchParams.set("scope", oauth.scope);
+      const scope = oauth.scope ?? (found.scopes.length ? found.scopes.join(" ") : undefined);
+      if (scope) auth.searchParams.set("scope", scope);
       return { authorizationUrl: auth.href };
     },
 

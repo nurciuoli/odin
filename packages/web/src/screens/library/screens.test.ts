@@ -197,6 +197,34 @@ describe('AssetScreen', () => {
     expect(button(wrapper, 'Update')).toBeTruthy()
   })
 
+  it('links back to the MCP list and opens sign-in when a remote server needs it', async () => {
+    const api = createMockApi()
+    const start = vi.spyOn(api, 'startMcpOAuth')
+    const open = vi.fn()
+    vi.stubGlobal('open', open)
+    const { wrapper } = await mountScreen(AssetScreen, '/library/mcp/internal', api, {
+      kind: 'mcp',
+      id: 'internal',
+    })
+    await flushPromises()
+    const back = wrapper.find('.asset__back')
+    expect(back.text()).toBe('MCP servers')
+    expect(back.attributes('href')).toBe('/library?kind=mcp')
+    expect(wrapper.text()).not.toContain('Form')
+    const desc = wrapper
+      .findAll('input')
+      .find(i => (i.element as HTMLInputElement).value.includes('API key'))!
+    await desc.setValue('Internal service')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    const saved = JSON.parse((await api.getAsset('mcp', 'internal')).files['internal.json']!)
+    expect(saved.oauth).toEqual({})
+    expect(start).toHaveBeenCalledWith('internal', window.location.origin)
+    expect(open).toHaveBeenCalled()
+    wrapper.unmount()
+    vi.unstubAllGlobals()
+  })
+
   it('updates an install from the Installs tab', async () => {
     const api = createMockApi()
     const { wrapper } = await mountScreen(AssetScreen, '/library/agent/reviewer', api, {

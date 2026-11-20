@@ -10,4 +10,17 @@ describe('IuSelect', () => {
     expect(sm.classes()).toContain('iu-select--sm')
     expect(sm.find('[role="combobox"]').attributes('aria-label')).toBe('Pick')
   })
+
+  it('opens the list as a popover anchored to the trigger, not in the document flow', async () => {
+    const md = mount(IuSelect, {
+      props: { options: ['Odin', 'open-quant'], ariaLabel: 'Project' },
+      attachTo: document.body,
+    })
+    await md.get('button').trigger('click')
+    const panel = document.body.querySelector<HTMLElement>('.iu-select__panel')!
+    expect(panel.getAttribute('popover')).toBe('manual')
+    expect(panel.style.position).toBe('fixed')
+    expect(panel.style.width).toBe(`${md.element.getBoundingClientRect().width}px`)
+    md.unmount()
+  })
 })

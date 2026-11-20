@@ -122,15 +122,66 @@ function onCreate() {
   list.close()
 }
 
+const panel = ref<HTMLElement | null>(null)
+
 function onOutside(e: PointerEvent) {
   if (root.value && !root.value.contains(e.target as Node)) list.close()
 }
 
-onMounted(() => document.addEventListener('pointerdown', onOutside))
-onBeforeUnmount(() => document.removeEventListener('pointerdown', onOutside))
+/** The list is a popover so a dialog's scroll box does not grow a scrollbar around it. */
+function placePanel() {
+  const el = panel.value
+  const anchor = root.value
+  if (!el || !anchor) return
+  const box = anchor.getBoundingClientRect()
+  const gap = 6
+  const edge = 8
+  const search = el.querySelector<HTMLElement>('.iu-select__search')
+  const searchHeight = search?.offsetHeight ?? 42
+  const roomBelow = window.innerHeight - box.bottom - gap - edge
+  const roomAbove = box.top - gap - edge
+  const up = roomBelow < 180 && roomAbove > roomBelow
+  const room = Math.max(96, up ? roomAbove : roomBelow)
+  const listEl = el.querySelector<HTMLElement>('.iu-select__list')
+  if (listEl) listEl.style.maxHeight = `${Math.min(280, Math.max(72, room - searchHeight))}px`
+  Object.assign(el.style, {
+    position: 'fixed',
+    margin: '0',
+    left: `${box.left}px`,
+    width: `${box.width}px`,
+    right: 'auto',
+    top: up ? 'auto' : `${box.bottom + gap}px`,
+    bottom: up ? `${window.innerHeight - box.top + gap}px` : 'auto',
+  })
+}
 
-watch(list.open, isOpen => {
-  if (isOpen) nextTick(() => searchInput.value?.focus())
+function onViewport(e: Event) {
+  if (e.type === 'scroll' && panel.value?.contains(e.target as Node)) return
+  placePanel()
+}
+
+function unlisten() {
+  window.removeEventListener('scroll', onViewport, true)
+  window.removeEventListener('resize', onViewport)
+}
+
+onMounted(() => document.addEventListener('pointerdown', onOutside))
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', onOutside)
+  unlisten()
+})
+
+watch(list.open, async isOpen => {
+  if (!isOpen) {
+    unlisten()
+    return
+  }
+  await nextTick()
+  panel.value?.showPopover?.()
+  placePanel()
+  searchInput.value?.focus()
+  window.addEventListener('scroll', onViewport, true)
+  window.addEventListener('resize', onViewport)
 })
 </script>
 
@@ -213,7 +264,9 @@ watch(list.open, isOpen => {
     <div
       v-if="list.open.value"
       :id="`${uid}-panel`"
+      ref="panel"
       class="iu-select__panel"
+      popover="manual"
       role="listbox"
       :aria-multiselectable="multiple || undefined"
     >
@@ -386,16 +439,16 @@ watch(list.open, isOpen => {
 }
 
 .iu-select__panel {
-  position: absolute;
+  position: fixed;
   z-index: 30;
-  top: calc(100% + 6px);
-  left: 0;
-  right: 0;
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
   border-radius: var(--iu-radius-lg);
   border: 1px solid var(--iu-border);
   background: var(--iu-raised);
+  color: var(--iu-text);
   box-shadow: var(--iu-shadow-raised);
   overflow: hidden;
   animation: iu-settle var(--iu-dur-micro) var(--iu-ease);
@@ -434,6 +487,7 @@ watch(list.open, isOpen => {
 .iu-select__list {
   overflow-y: auto;
   max-height: 280px;
+  min-height: 0;
 }
 
 .iu-select__group-label {

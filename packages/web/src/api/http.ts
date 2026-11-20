@@ -235,6 +235,7 @@ export function createHttpApi(options: HttpApiOptions = {}): Api {
     listSecrets: () => get('/api/secrets'),
     putSecret: (name, value) => send('PUT', `/api/secrets/${seg(name)}`, { value }),
     deleteSecret: name => send('DELETE', `/api/secrets/${seg(name)}`),
+    detectMcpOAuth: url => send('POST', '/api/mcp/oauth/detect', { url }),
     getMcpOAuth: id => get(`/api/mcp/${seg(id)}/oauth`),
     startMcpOAuth: (id, origin) => send('POST', `/api/mcp/${seg(id)}/oauth/start`, { origin }),
     disconnectMcpOAuth: id => send('DELETE', `/api/mcp/${seg(id)}/oauth`),

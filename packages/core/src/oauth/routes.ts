@@ -16,6 +16,12 @@ export const registerOAuthRoutes: RegisterRoutes = (router, _deps, services) => 
     return id;
   };
 
+  router.post("/api/mcp/oauth/detect", async ({ req }) => {
+    const body = await readJson(req);
+    if (!body || typeof body !== "object" || Array.isArray(body) || typeof body.url !== "string") throw new HttpError(400, "expected { url: string }");
+    return services.mcpOAuth.detect(body.url);
+  });
+
   router.get("/api/mcp/:id/oauth", ({ params }) => services.mcpOAuth.status(idOf(params.id)));
 
   router.post("/api/mcp/:id/oauth/start", async ({ req, params }) => {

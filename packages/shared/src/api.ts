@@ -911,6 +911,17 @@ export interface StartMcpOAuthResponse {
   authorizationUrl: string;
 }
 
+/** POST /api/mcp/oauth/detect. Whether a remote URL signs in with OAuth, before a library spec says so. */
+export interface McpOAuthDetectRequest {
+  url: string;
+}
+
+export interface McpOAuthDetect {
+  oauth: boolean;
+  /** Scopes the server publishes. Empty when it is not OAuth, or when it lists none. */
+  scopes: string[];
+}
+
 /** The kinds a plugin can hold. A plugin never holds another plugin. */
 export type PluginMemberKind = "instruction" | "skill" | "agent" | "mcp" | "settings";
 

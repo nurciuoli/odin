@@ -3,6 +3,7 @@
 // fallback for anything the form doesn't cover (or when the JSON doesn't parse yet).
 import { computed, ref } from 'vue'
 import type { AssetKind } from '@odin/shared/api'
+import { IuButton } from '@/components/Button'
 import { IuCallout } from '@/components/Callout'
 import { IuTextarea } from '@/components/Fields'
 import { IuTabs } from '@/components/Tabs'
@@ -34,12 +35,22 @@ function setDoc(next: JsonObject) {
 </script>
 
 <template>
-  <div class="json-editor">
-    <IuTabs v-model="active" :tabs="tabs" variant="segmented" :lazy="false">
+  <div class="json-editor" :class="{ 'json-editor--flat': kind === 'mcp' }">
+    <div v-if="kind === 'mcp'" class="json-editor__switch">
+      <IuButton
+        type="button"
+        size="sm"
+        variant="ghost"
+        :disabled="!!parseError && active === 'raw'"
+        @click="active = active === 'form' ? 'raw' : 'form'"
+      >
+        {{ active === 'form' ? 'Edit JSON' : 'Back to form' }}
+      </IuButton>
+    </div>
+    <IuTabs v-else v-model="active" :tabs="tabs" variant="segmented" :lazy="false">
       <template #panel:form>
         <div class="json-editor__panel">
-          <McpForm v-if="kind === 'mcp'" :model-value="doc" @update:model-value="setDoc" />
-          <SettingsForm v-else :model-value="doc" @update:model-value="setDoc" />
+          <SettingsForm :model-value="doc" @update:model-value="setDoc" />
         </div>
       </template>
       <template #panel:raw>
@@ -48,6 +59,14 @@ function setDoc(next: JsonObject) {
         </div>
       </template>
     </IuTabs>
+    <template v-if="kind === 'mcp'">
+      <McpForm
+        v-if="active === 'form'"
+        :model-value="doc"
+        @update:model-value="setDoc"
+      />
+      <IuTextarea v-else v-model="text" label="Spec (JSON)" mono :rows="12" />
+    </template>
     <IuCallout v-if="parseError" intent="danger" variant="inline" live>
       This isn't valid JSON yet: {{ parseError }}
     </IuCallout>
@@ -64,6 +83,13 @@ function setDoc(next: JsonObject) {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+.json-editor--flat {
+  gap: 8px;
+}
+.json-editor__switch {
+  display: flex;
+  justify-content: flex-end;
 }
 .json-editor__panel {
   padding-top: 16px;

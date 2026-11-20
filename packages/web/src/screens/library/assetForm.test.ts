@@ -78,6 +78,46 @@ describe('ids and starters', () => {
   })
 })
 
+describe('MCP sign-in on save', () => {
+  it('writes oauth when the server publishes it', async () => {
+    const { attachMcpOAuth } = await import('./mcpDraft')
+    const files = {
+      'canva.json': JSON.stringify({ name: 'Canva', type: 'http', url: 'https://mcp.canva.com/mcp' }),
+    }
+    const prepared = await attachMcpOAuth(files, 'canva', async () => ({ oauth: true, scopes: ['read'] }))
+    expect(prepared.added).toBe(true)
+    expect(prepared.signIn).toBe(true)
+    expect(JSON.parse(prepared.files['canva.json']!).oauth).toEqual({})
+  })
+
+  it('leaves a token header and an existing oauth spec alone', async () => {
+    const { attachMcpOAuth, mcpUrlChanged } = await import('./mcpDraft')
+    const probe = async () => {
+      throw new Error('should not probe')
+    }
+    const header = {
+      'gh.json': JSON.stringify({
+        name: 'gh',
+        type: 'http',
+        url: 'https://x',
+        headers: { Authorization: 'Bearer x' },
+      }),
+    }
+    expect((await attachMcpOAuth(header, 'gh', probe)).files).toBe(header)
+    const existing = {
+      'd.json': JSON.stringify({ name: 'd', type: 'http', url: 'https://x', oauth: {} }),
+    }
+    const again = await attachMcpOAuth(existing, 'd', probe)
+    expect(again.signIn).toBe(true)
+    expect(again.added).toBe(false)
+    expect(again.files).toBe(existing)
+    const moved = {
+      'd.json': JSON.stringify({ name: 'd', type: 'http', url: 'https://y', oauth: {} }),
+    }
+    expect(mcpUrlChanged(existing, moved, 'd')).toBe(true)
+  })
+})
+
 describe('MCP validation', () => {
   it('an MCP spec needs its transport field', () => {
     expect(specProblems('mcp', { name: 'm', type: 'stdio' })).toHaveLength(1)
