@@ -1,0 +1,1 @@
+- Sessions launched from Odin with Claude or Codex now take the harness's generated name instead of the first line of the prompt. A title you type at launch is still kept.

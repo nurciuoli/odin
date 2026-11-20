@@ -35,6 +35,19 @@ const ORIGINS = ["odin", "external"] as const;
 /** Titles that mean "no name yet": Odin's and the harness drivers' fallbacks. */
 const PLACEHOLDER_TITLES = new Set(["Untitled session", "Untitled"]);
 
+/**
+ * The title to hand a harness as the session's name: one the user chose. A placeholder or a title derived from the
+ * first prompt is withheld, so the harness generates its own name (Odin adopts it on the next discover).
+ */
+export function chosenTitle(title: string | undefined, firstPrompt: string | null | undefined): string | undefined {
+  const t = title?.trim().slice(0, 200);
+  if (!t || PLACEHOLDER_TITLES.has(t)) return undefined;
+  const text = firstPrompt ?? "";
+  const line = text.split("\n").map((l) => l.trim()).find(Boolean) ?? "";
+  if (line && (t === line.slice(0, 200) || t === titleFromPrompt(text))) return undefined;
+  return t;
+}
+
 export interface SessionsOptions {
   /** Live handles idle this long are closed (the session stays resumable). Default 10 minutes. */
   idleCloseMs?: number;
@@ -882,14 +895,12 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         const known = get(info.sessionId);
         if (known) {
           // Adopt the harness's generated name while the session still has a placeholder or the first-prompt
-          // fallback. A title the user chose (or set at launch) is left alone. Grok sessions get this too,
-          // because the runtime writes `generated_title` after the first turns.
+          // fallback, for every harness and origin. A title the user chose (or set at launch) is left alone.
           const next = info.title?.trim().slice(0, 200);
           const promptTitle = titleFromPrompt(row(known.id)?.first_prompt ?? "");
           const firstShown = info.firstPrompt?.trim().slice(0, 200) ?? "";
           const placeholder = (t: string) => PLACEHOLDER_TITLES.has(t) || (!!firstShown && t === firstShown) || (!!promptTitle && t === promptTitle);
-          const adopt = known.origin === "external" || known.harness === "grok";
-          if (adopt && next && !PLACEHOLDER_TITLES.has(next) && next !== known.title && placeholder(known.title)) {
+          if (next && !PLACEHOLDER_TITLES.has(next) && next !== known.title && placeholder(known.title)) {
             try {
               patchAndEmit(known.id, { title: next });
             } catch (err) {
@@ -1170,7 +1181,9 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         launchConfig: JSON.stringify({ mcpIds: Object.keys(plan.mcpServers), runtimeOptions: native }),
       });
 
-      const opts: StartOptions = { cwd, sessionId: id, title: plan.title, hostTools: hostTools(id) };
+      const opts: StartOptions = { cwd, sessionId: id, hostTools: hostTools(id) };
+      const named = chosenTitle(plan.title, plan.prompt?.text);
+      if (named) opts.title = named;
       if (plan.prompt) {
         stageAttachments(id, plan.prompt);
         opts.prompt = plan.prompt;
@@ -1523,7 +1536,9 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         agent: null, agentVersion: null, templateId: null, parentId: id, handoff: { from: id, harness: s.harness, at },
         createdAt: at, updatedAt: at, launchConfig: JSON.stringify({ mcpIds }),
       });
-      const opts: StartOptions = { cwd: s.cwd, sessionId: newId, title, prompt, hostTools: hostTools(newId), effort: null };
+      const opts: StartOptions = { cwd: s.cwd, sessionId: newId, prompt, hostTools: hostTools(newId), effort: null };
+      const named = chosenTitle(title, row(id)!.first_prompt);
+      if (named) opts.title = named;
       if (model) opts.model = model;
       if (permissionMode) opts.permissionMode = permissionMode;
       if (mcpServers && Object.keys(mcpServers).length) opts.mcpServers = mcpServers;
