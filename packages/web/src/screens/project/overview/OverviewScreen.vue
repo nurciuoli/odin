@@ -396,7 +396,6 @@ const span$ = (n: number) => ({ '--ov-span': String(n) })
   width: 100%;
   max-width: 1280px;
   min-width: 0;
-  padding-top: 8px;
 }
 .overview__bar {
   display: flex;
@@ -418,7 +417,7 @@ const span$ = (n: number) => ({ '--ov-span': String(n) })
 .overview__cell {
   grid-column: span var(--ov-span, 12);
 }
-@media (max-width: 980px) {
+@container (max-width: 760px) {
   .overview__cell {
     grid-column: span 12;
   }

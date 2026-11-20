@@ -85,7 +85,7 @@ async function copy(label: string, cmd: string) {
             :aria-label="`${detail.git.behind} commits behind`"
             >↓{{ detail.git.behind }} behind</IuBadge
           >
-          <IuBadge v-if="detail.git.dirty" intent="warning">Uncommitted changes</IuBadge>
+          <IuBadge v-if="detail.git.dirty" intent="warning">Uncommitted</IuBadge>
         </span>
       </IuProperty>
     </IuPropertyList>

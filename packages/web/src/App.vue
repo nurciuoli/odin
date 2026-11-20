@@ -19,6 +19,8 @@ import { createSessionsStore, SESSIONS_KEY, titleFor } from '@/app/sessions'
 // page header band above its padded content.
 const route = useRoute()
 const ownColumns = computed(() => route.name === 'session')
+// A project lays out its own columns too (the Overview and the docked panel each scroll), under the shared header.
+const flush = computed(() => ownColumns.value || route.matched.some(r => r.path === '/p/:name'))
 
 // The shell hides the native title bar and overlays its buttons on this header. A browser has no bridge.
 if (typeof document !== 'undefined' && hasDesktop())
@@ -64,7 +66,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <IuShell :flush="ownColumns">
+  <IuShell :flush="flush">
     <template #rail><AppSidebar /></template>
     <template v-if="!ownColumns" #header><AppHeader /></template>
     <RouterView />
