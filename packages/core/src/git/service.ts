@@ -9,7 +9,7 @@ import type {
 import { AUTO_STASH_PREFIX } from "@odin/shared/git";
 import { validBranchName } from "../git-policy.ts";
 import { HttpError } from "../http/util.ts";
-import { parseWorktreeList } from "../projects/git.ts";
+import { parseWorktreeList, pushRemote } from "../projects/git.ts";
 import type { Deps, GitService, Services } from "../services.ts";
 import {
   addedFileDiff, BRANCH_FORMAT, hunkPatch, LOG_FORMAT, parseBlamePorcelain, parseBranches, parseDiff, parseLog, parseNumstatZ,
@@ -346,7 +346,7 @@ export function createGitService(deps: Deps, services: Services): GitService {
       let pushed = before.ahead;
       if (!before.upstream || before.upstreamGone) {
         if (req?.setUpstream === false) throw gitConflict("no-upstream", "This branch has no upstream yet.");
-        args.push("-u", "origin", before.branch);
+        args.push("-u", (await pushRemote(cwd, before.branch)) ?? "origin", before.branch);
         pushed = Number((await gitOut(cwd, ["rev-list", "--count", "HEAD", "--not", "--remotes"]).catch(() => "0")).trim()) || 0;
       }
       let warned: GitAction[] = [];
