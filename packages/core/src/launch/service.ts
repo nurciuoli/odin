@@ -182,7 +182,9 @@ export function createLaunchService(_deps: Deps, services: Services): LaunchServ
       const title = (req.title?.trim() || titleFromPrompt(fillPrompt(promptText, values)) || "Untitled session").slice(0, 200);
       const newBranch = worktree && (!asked || asked.kind === "new-worktree") ? ((asked?.kind === "new-worktree" ? asked.branch : req.branch) ?? sessionBranch(title, sessionId)) : null;
       const where: LaunchWhere = asked && asked.kind !== "new-worktree" ? asked : worktree ? { kind: "new-worktree", branch: newBranch! } : { kind: "checkout" };
-      const branch = newBranch ?? (where.kind === "branch" ? where.branch : null);
+      let branch = newBranch;
+      if (where.kind === "branch") branch = await services.projects.localBranchName(project.name, where.branch);
+      else if (where.kind === "worktree") branch = (await services.projects.existingWorktree(project.name, where.path)).branch;
       if (branch && !callerBranch) values.branch = branch;
       const prompt: UserMessage = { text: fillPrompt(promptText, values) };
       if (raw?.attachments?.length) prompt.attachments = raw.attachments;

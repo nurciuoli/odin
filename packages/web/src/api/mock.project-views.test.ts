@@ -18,6 +18,19 @@ const status = (p: Promise<unknown>) =>
   )
 
 describe('mock api: project views', () => {
+  it('fork where: an existing worktree shares its folder; where and worktree conflict', async () => {
+    const { api } = withEvents()
+    const wt = (await api.listProjectWorktrees('odin')).worktrees[1]!
+    const parent = (await api.listSessions({ project: 'odin' }))[0]!
+    const f = await api.forkSession(parent.id, { where: { kind: 'worktree', path: wt.path } })
+    expect([f.cwd, f.branch]).toEqual([wt.path, wt.branch])
+    const n = await api.forkSession(parent.id, { where: { kind: 'new-worktree', branch: 'x/y' } })
+    expect(n.branch).toBe('x/y')
+    expect(
+      await status(api.forkSession(parent.id, { where: { kind: 'checkout' }, worktree: true })),
+    ).toBe(400)
+  })
+
   it('worktrees: the checkout and two worktrees; start can use an existing one', async () => {
     const { api } = withEvents()
     const wt = await api.listProjectWorktrees('odin')

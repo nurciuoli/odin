@@ -156,3 +156,30 @@ test("GET /api/projects/:name/worktrees serves the list; unknown project is 404"
     await app.close();
   }
 });
+
+test("openBranch and localBranchName resolve against any remote, not only origin", async () => {
+  const { projects } = setup();
+  const repo = makeRepo();
+  git(repo, "remote", "rename", "origin", "upstream");
+  await projects.create({ path: repo, name: "demo" });
+  assert.equal(await projects.localBranchName("demo", "upstream/remote-only"), "remote-only");
+  assert.equal(await projects.localBranchName("demo", "remote-only"), "remote-only");
+  assert.equal(await projects.localBranchName("demo", "main"), "main");
+  const wt = await projects.openBranch("demo", "upstream/remote-only");
+  assert.equal(git(wt.path, "rev-parse", "--abbrev-ref", "remote-only@{upstream}").trim(), "upstream/remote-only");
+  assert.equal((await failure(projects.localBranchName("demo", "other/nope")))?.status, 404);
+});
+
+test("createWorktree fromCwd starts at that folder's HEAD, and resolveCwd maps the user's own worktrees", async () => {
+  const { projects } = setup();
+  const repo = makeRepo();
+  await projects.create({ path: repo, name: "demo" });
+  const own = join(root, `mine${counter}`);
+  git(repo, "worktree", "add", "--quiet", "-b", "mine", own);
+  commit(own, "own.txt");
+  const head = git(own, "rev-parse", "HEAD").trim();
+  const wt = await projects.createWorktree("demo", "feature/fork", { fromCwd: own });
+  assert.equal(git(wt.path, "rev-parse", "HEAD").trim(), head);
+  assert.equal(projects.resolveCwd(join(own, "sub")), "demo");
+  assert.equal(projects.resolveCwd(join(root, "unrelated")), null);
+});

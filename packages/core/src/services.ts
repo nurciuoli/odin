@@ -69,9 +69,12 @@ export interface ProjectsService extends Closeable {
   agents(name: string): ProjectAgent[];
   /**
    * `git worktree add -b <branch> <ODIN_HOME>/worktrees/<project>/<branch slug> <base>` where base is
-   * origin/<default> when it exists, else <default>. Reuses an existing worktree of that branch.
+   * origin/<default> when it exists, else <default>. Reuses an existing worktree of that branch. `fromCwd` starts a new
+   * branch at that folder's HEAD commit instead (a fork continues from its parent).
    */
-  createWorktree(name: string, branch: string): Promise<{ path: string; branch: string }>;
+  createWorktree(name: string, branch: string, opts?: { fromCwd?: string }): Promise<{ path: string; branch: string }>;
+  /** The local branch name `branch` stands for (`origin/x` or a remote-only `x` → `x`). 404 when nobody has it. */
+  localBranchName(name: string, branch: string): Promise<string>;
   /**
    * Removes a Odin worktree (branch kept). 400 for paths outside <ODIN_HOME>/worktrees/<project>/ (never the
    * project checkout); 409 when a live session's cwd is inside it or the tree is dirty.
@@ -187,7 +190,7 @@ export interface LaunchPlan {
   permissionMode: PermissionMode | null;
   mcpServers: Record<string, McpServerStart>;
   worktree: boolean;
-  /** Worktree branch when `worktree`; for `where.kind === "branch"` the branch as requested. */
+  /** Worktree branch when `worktree`; the local branch name for `where.kind === "branch"`, the worktree's own branch (or null) for `"worktree"`. */
   branch: string | null;
   /** The resolved placement (`worktree`/`branch` above are kept for older callers). `new-worktree` always has its branch. */
   where: LaunchWhere;

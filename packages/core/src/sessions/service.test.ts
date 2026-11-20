@@ -621,6 +621,29 @@ test("where: an existing branch or worktree starts there and creates nothing new
   }
 });
 
+test("fork where: checkout, existing worktree, existing branch, new worktree from the parent's HEAD; exclusive with worktree", async () => {
+  const s = setup();
+  try {
+    const st = await s.sessions.start({ project: PROJECT, prompt: { text: "base" } });
+    await idle(s, st.id);
+    const known = join(s.projectPath, "..", "known-tree");
+    const w = await s.sessions.fork(st.id, { prompt: { text: "a" }, where: { kind: "worktree", path: known } });
+    assert.deepEqual([w.branch, w.workspace.kind], ["known-branch", "worktree"]);
+    const b = await s.sessions.fork(st.id, { prompt: { text: "b" }, where: { kind: "branch", branch: "origin/feat/q" } });
+    assert.deepEqual([b.branch, s.opened.at(-1)!.branch], ["feat/q", "origin/feat/q"]);
+    const c = await s.sessions.fork(st.id, { prompt: { text: "c" }, where: { kind: "checkout" } });
+    assert.deepEqual([c.cwd, c.workspace], [s.projectPath, { kind: "checkout" }]);
+    const n = await s.sessions.fork(st.id, { prompt: { text: "n" }, where: { kind: "new-worktree", branch: "feat/fork" } });
+    assert.equal(n.branch, "feat/fork");
+    assert.deepEqual(s.worktrees.at(-1), { name: PROJECT, branch: "feat/fork", fromCwd: st.cwd });
+    await assert.rejects(s.sessions.fork(st.id, { prompt: { text: "x" }, where: { kind: "checkout" }, worktree: true }), status(400));
+    await assert.rejects(s.sessions.fork(st.id, { prompt: { text: "x" }, aside: true, where: { kind: "new-worktree" } }), status(400));
+    await assert.rejects(s.sessions.fork(st.id, { prompt: { text: "x" }, where: { kind: "worktree", path: "rel" } }), status(400));
+  } finally {
+    await s.sessions.close();
+  }
+});
+
 test("unknown harness → 400; unknown project → 404; launch refusals", async () => {
   const s = setup();
   try {

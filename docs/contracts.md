@@ -441,9 +441,22 @@ invalid branch name or a relative path → 400) and returns the resolved placeme
 (`new-worktree` always carries its branch); `LaunchPlan.worktree`/`branch` are kept for older callers. The sessions
 service then calls `createWorktree` (new-worktree), `openBranch` (branch) or `existingWorktree` (worktree), and
 records `workspace: { kind: "worktree", path, branch }` (a `worktree` that is the project checkout is a plain
-`checkout` session). Errors surface as the start's 4xx: 409 `checked-out-elsewhere` (`branch` held by the project
-checkout), 404 unknown branch, 400 a path that isn't one of the project's worktrees. Fork keeps `worktree?: boolean`
-only.
+`checkout` session). `{{branch}}` in the prompt expands to the stored local branch (`origin/x` → `x`; for `worktree`
+the worktree's current branch). Errors surface as the start's 4xx: 409 `checked-out-elsewhere` (`branch` held by the project
+checkout), 404 unknown branch, 400 a path that isn't one of the project's worktrees.
+
+Remote branch names resolve against any remote (`upstream/x` as well as `origin/x`); a bare `x` is looked up on the
+base remote first, then the others. `ProjectsService.localBranchName(name, branch)` gives the local name without
+creating anything (the launch plan uses it).
+
+`ForkSessionRequest.where?: LaunchWhere` takes the same shape (400 together with `worktree`; `worktree: true` is
+`new-worktree`). Omitted, the fork stays in the parent's workspace. `checkout` is the project's own folder,
+`worktree` and `branch` as for start, and `new-worktree` starts the new branch at the parent's HEAD commit (not the base
+branch; `createWorktree(name, branch, { fromCwd })`). A side thread may use `checkout` or `worktree` but not
+`new-worktree` or `branch` (400); `restoreFiles` needs `new-worktree`.
+
+`resolveCwd` also maps a cwd inside any linked worktree of a project (read from `.git/worktrees/*/gitdir`, so
+worktrees made outside Odin's folder count) to that project.
 
 ### Project worktree default
 

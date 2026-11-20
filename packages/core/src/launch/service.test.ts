@@ -59,9 +59,11 @@ test("where: validated, mapped to the plan, and exclusive with worktree/branch",
   assert.deepEqual([nw.worktree, nw.where], [true, { kind: "new-worktree", branch: "odin/x-0123abcd" }]);
   assert.deepEqual((await plan({ prompt: { text: "x" }, where: { kind: "new-worktree", branch: "feat/a" } })).where, { kind: "new-worktree", branch: "feat/a" });
   const br = await plan({ prompt: { text: "on {{branch}}" }, where: { kind: "branch", branch: "origin/feat/b" } });
-  assert.deepEqual([br.worktree, br.branch, br.where, br.prompt!.text], [true, "origin/feat/b", { kind: "branch", branch: "origin/feat/b" }, "on origin/feat/b"]);
-  const wt = await plan({ prompt: { text: "x" }, where: { kind: "worktree", path: resolve("/some/tree") } });
-  assert.deepEqual([wt.worktree, wt.branch], [true, null]);
+  assert.deepEqual([br.worktree, br.branch, br.where, br.prompt!.text], [true, "feat/b", { kind: "branch", branch: "origin/feat/b" }, "on feat/b"]);
+  const wt = await plan({ prompt: { text: "x" }, where: { kind: "worktree", path: resolve("/known/tree") }, variables: {} });
+  assert.deepEqual([wt.worktree, wt.branch], [true, "known-branch"]);
+  assert.equal((await plan({ prompt: { text: "at {{branch}}" }, where: { kind: "worktree", path: resolve("/known/tree") } })).prompt!.text, "at known-branch");
+  await assert.rejects(plan({ prompt: { text: "x" }, where: { kind: "worktree", path: resolve("/some/tree") } }), status(400));
   // The old fields still map.
   assert.deepEqual((await plan({ prompt: { text: "x" }, worktree: true, branch: "feat/x" })).where, { kind: "new-worktree", branch: "feat/x" });
   assert.deepEqual((await plan({ prompt: { text: "x" }, worktree: false })).where, { kind: "checkout" });

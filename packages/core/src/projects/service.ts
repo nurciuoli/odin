@@ -16,7 +16,7 @@ import { HttpError } from "../http/util.ts";
 import { validBranchName } from "../git-policy.ts";
 import type { Deps, ProjectRef, ProjectsService, Services } from "../services.ts";
 import {
-  EMPTY_GIT, GitError, aheadBehind, baseRemote, cloneRepo, defaultBase, git, initRepo, isGitRepo, listBranches, listWorktrees, mergedBranches, readGitState, statusPaths,
+  EMPTY_GIT, GitError, aheadBehind, baseRemote, cloneRepo, listRemotes, defaultBase, git, initRepo, isGitRepo, listBranches, listWorktrees, mergedBranches, readGitState, statusPaths,
 } from "./git.ts";
 import { readProject, repoFromRemote, type ManifestFields, type SettingOverrides } from "./context.ts";
 
@@ -251,6 +251,25 @@ function parseWorktrees(out: string): WorktreeEntry[] {
   return list;
 }
 
+/** Folders of a repo's linked worktrees, read from `.git/worktrees/<id>/gitdir` without running git. */
+function linkedWorktreeFolders(repoPath: string): string[] {
+  const dir = join(repoPath, ".git", "worktrees");
+  const out: string[] = [];
+  try {
+    for (const id of readdirSync(dir)) {
+      try {
+        const gitdir = readFileSync(join(dir, id, "gitdir"), "utf8").trim();
+        if (gitdir) out.push(dirname(gitdir));
+      } catch {
+        // a half-written or pruned entry
+      }
+    }
+  } catch {
+    // no linked worktrees
+  }
+  return out;
+}
+
 /** Session states that may hold a live harness handle: a worktree under one of them isn't removed. */
 const LIVE_STATES = ["idle", "running", "waiting"];
 
@@ -400,7 +419,7 @@ export function createProjectsService(deps: Deps, services?: Services): Projects
   const gitFailure = (err: unknown): HttpError =>
     err instanceof HttpError ? err : new HttpError(err instanceof GitError ? 409 : 500, err instanceof Error ? err.message : String(err));
 
-  async function createWorktree(name: string, branch: string): Promise<{ path: string; branch: string }> {
+  async function createWorktree(name: string, branch: string, opts: { fromCwd?: string } = {}): Promise<{ path: string; branch: string }> {
     const row = need(name);
     if (typeof branch !== "string" || !validBranchName(branch)) {
       throw new HttpError(400, `"${String(branch)}" isn't a valid branch name`);
@@ -431,7 +450,11 @@ export function createProjectsService(deps: Deps, services?: Services): Projects
         } else {
           const def = settingsOf(row).defaultBranch;
           const remote = await baseRemote(row.path, def);
-          const base = remote && (await refExists(row.path, `refs/remotes/${remote}/${def}`))
+          // `fromCwd`: branch off that folder's HEAD commit (a fork continues where its parent is), when it has one.
+          const head = opts.fromCwd && isAbsolute(opts.fromCwd) && existsSync(opts.fromCwd)
+            ? (await git(opts.fromCwd, ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]).catch(() => "")).trim()
+            : "";
+          const base = head ? head : remote && (await refExists(row.path, `refs/remotes/${remote}/${def}`))
             ? `${remote}/${def}`
             : (await refExists(row.path, `refs/heads/${def}`))
               ? def
@@ -454,6 +477,45 @@ export function createProjectsService(deps: Deps, services?: Services): Projects
     return path;
   }
 
+  /** The local branch name `requested` stands for and, when it only exists on a remote, the remote ref to track. */
+  async function resolveBranch(row: Row, requested: string): Promise<{ branch: string; upstream: string | null }> {
+    if (typeof requested !== "string" || !validBranchName(requested)) throw new HttpError(400, `"${String(requested)}" isn't a valid branch name`);
+    if (await refExists(row.path, `refs/heads/${requested}`)) return { branch: requested, upstream: null };
+    // A remote one, as `<remote>/x` (any remote) or a bare `x` that the base (or another) remote has.
+    let branch = requested;
+    let upstream: string;
+    const remotes = await listRemotes(row.path);
+    const prefixed = remotes.find((r) => requested.startsWith(`${r}/`) && requested.length > r.length + 1);
+    if (prefixed && (await refExists(row.path, `refs/remotes/${requested}`))) {
+      branch = requested.slice(prefixed.length + 1);
+      upstream = requested;
+    } else {
+      const base = await baseRemote(row.path, settingsOf(row).defaultBranch);
+      let holder: string | undefined;
+      for (const r of base ? [base, ...remotes.filter((x) => x !== base)] : remotes) {
+        if (await refExists(row.path, `refs/remotes/${r}/${requested}`)) {
+          holder = r;
+          break;
+        }
+      }
+      if (!holder) throw new HttpError(404, `no branch "${requested}" locally or on a remote`);
+      upstream = `${holder}/${requested}`;
+    }
+    if (!validBranchName(branch)) throw new HttpError(400, `"${branch}" isn't a valid branch name`);
+    // A local branch of the resulting name may exist even though the requested ref was remote-shaped.
+    return { branch, upstream: (await refExists(row.path, `refs/heads/${branch}`)) ? null : upstream };
+  }
+
+  async function localBranchName(name: string, requested: string): Promise<string> {
+    const row = need(name);
+    if (row.missing === 1 || !isGitRepo(row.path)) throw new HttpError(409, `${row.path} is not a git repository`);
+    try {
+      return (await resolveBranch(row, requested)).branch;
+    } catch (err) {
+      throw gitFailure(err);
+    }
+  }
+
   async function openBranch(name: string, requested: string): Promise<{ path: string; branch: string }> {
     const row = need(name);
     if (typeof requested !== "string" || !validBranchName(requested)) throw new HttpError(400, `"${String(requested)}" isn't a valid branch name`);
@@ -462,28 +524,7 @@ export function createProjectsService(deps: Deps, services?: Services): Projects
     return locked(name, async () => {
       try {
         await git(row.path, ["worktree", "prune"]).catch(() => {});
-        // Local branch first; else a remote one, as `<remote>/x` or a bare `x` that the base (or only matching) remote has.
-        let branch = requested;
-        let upstream: string | null = null;
-        if (!(await refExists(row.path, `refs/heads/${requested}`))) {
-          const remotes = (await git(row.path, ["remote"])).split(/\r?\n/).map((r) => r.trim()).filter(Boolean);
-          const prefixed = remotes.find((r) => requested.startsWith(`${r}/`) && requested.length > r.length + 1);
-          if (prefixed && (await refExists(row.path, `refs/remotes/${requested}`))) {
-            branch = requested.slice(prefixed.length + 1);
-            upstream = requested;
-          } else {
-            const base = remotes.includes("origin") ? "origin" : null;
-            const holders: string[] = [];
-            for (const r of base ? [base, ...remotes.filter((x) => x !== base)] : remotes) {
-              if (await refExists(row.path, `refs/remotes/${r}/${requested}`)) holders.push(r);
-            }
-            if (!holders.length) throw new HttpError(404, `no branch "${requested}" locally or on a remote`);
-            upstream = `${holders[0]}/${requested}`;
-          }
-          if (!validBranchName(branch)) throw new HttpError(400, `"${branch}" isn't a valid branch name`);
-          // A local branch of the resulting name may exist even though the requested ref was remote-shaped.
-          if (await refExists(row.path, `refs/heads/${branch}`)) upstream = null;
-        }
+        const { branch, upstream } = await resolveBranch(row, requested);
         const existing = parseWorktrees(await git(row.path, ["worktree", "list", "--porcelain"]));
         const holder = existing.find((w) => w.branch === branch);
         if (holder) {
@@ -752,6 +793,11 @@ export function createProjectsService(deps: Deps, services?: Services): Projects
         if (isInside(root, target) && (!best || root.length > best.len)) best = { name: row.name, len: root.length };
         const wt = realPathLoose(worktreeRoot(row.name));
         if (isInside(wt, target) && (!best || wt.length > best.len)) best = { name: row.name, len: wt.length };
+        // Worktrees made elsewhere: each is recorded as <repo>/.git/worktrees/<id>/gitdir -> <worktree>/.git.
+        for (const folder of linkedWorktreeFolders(row.path)) {
+          const real = realPathLoose(folder);
+          if (isInside(real, target) && (!best || real.length > best.len)) best = { name: row.name, len: real.length };
+        }
       }
       return best?.name ?? null;
     },
@@ -803,6 +849,7 @@ export function createProjectsService(deps: Deps, services?: Services): Projects
 
     createWorktree,
     openBranch,
+    localBranchName,
     existingWorktree,
     worktrees,
     removeWorktree,

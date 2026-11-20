@@ -1672,7 +1672,10 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
         const aside = req.aside === true
         if (aside && !req.prompt?.text.trim())
           throw new ApiRequestError(400, 'a side thread needs a prompt')
-        if (aside && req.worktree)
+        if (req.where && req.worktree !== undefined)
+          throw new ApiRequestError(400, "where can't be combined with worktree")
+        const newWorktree = req.where ? req.where.kind === 'new-worktree' : req.worktree === true
+        if (aside && (newWorktree || req.where?.kind === 'branch'))
           throw new ApiRequestError(400, 'a side thread never gets a worktree')
         // Any parent state is fine for a side thread: it forks the conversation as stored so far.
         const title =
@@ -1705,8 +1708,27 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
           if (at < 0) throw new ApiRequestError(400, 'that is not a user message of the session')
           db.transcripts[s.id] = db.transcripts[s.id]!.slice(0, at)
         }
-        if (req.worktree && !aside) {
-          const branch = sessionBranch(title, s.id)
+        const where = req.where
+        if (where?.kind === 'checkout') {
+          s.workspace = { kind: 'checkout' }
+          s.cwd = project.path
+          s.branch = project.git.branch
+        } else if (where?.kind === 'worktree') {
+          const w = db.worktrees[project.name]?.worktrees.find(x => x.path === where.path)
+          if (!w)
+            throw new ApiRequestError(400, `${where.path} isn't a worktree of ${project.name}`)
+          s.cwd = w.path
+          s.branch = w.branch
+          s.workspace =
+            w.main || !w.branch
+              ? { kind: 'checkout' }
+              : { kind: 'worktree', path: w.path, branch: w.branch }
+        } else if (where?.kind === 'branch' || newWorktree) {
+          const branch =
+            where?.kind === 'branch'
+              ? where.branch.replace(/^origin\//, '')
+              : ((where?.kind === 'new-worktree' ? where.branch : undefined) ??
+                sessionBranch(title, s.id))
           const path = `/home/me/.odin/worktrees/${project.name}/${slugify(branch)}`
           s.workspace = { kind: 'worktree', path, branch }
           s.cwd = path

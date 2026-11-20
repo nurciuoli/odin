@@ -737,8 +737,14 @@ export interface StartSessionRequest {
 /** POST /api/sessions/:id/fork */
 export interface ForkSessionRequest {
   title?: string;
-  /** Fork into a new worktree (default: same workspace as the parent). */
+  /** Fork into a new worktree (default: same workspace as the parent). Shorthand for `where: { kind: "new-worktree" }`. */
   worktree?: boolean;
+  /**
+   * Where the fork runs; 400 when combined with `worktree`. Omitted: the parent's workspace. `checkout` is the
+   * project's own folder, `worktree` an existing one, `branch` an existing branch in a worktree, `new-worktree` a new
+   * branch started at the parent's HEAD commit. A side thread can't use `new-worktree` or `branch` (400).
+   */
+  where?: LaunchWhere;
   /** Optional first message for the fork. */
   prompt?: UserMessage;
   /**
@@ -758,7 +764,7 @@ export interface ForkSessionRequest {
   atMessageId?: string;
   /**
    * Also give the fork the working tree the parent had at `atMessageId`'s checkpoint. Requires `atMessageId` and
-   * `worktree: true` (400 otherwise: files are never restored into a checkout another session is using). 409 when
+   * a new worktree (`worktree: true` or `where.kind: "new-worktree"`; 400 otherwise: files are never restored into a checkout another session is using). 409 when
    * that checkpoint has no files (`snapshot` is not `ok`).
    */
   restoreFiles?: boolean;
