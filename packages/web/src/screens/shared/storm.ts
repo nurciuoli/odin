@@ -218,11 +218,11 @@ interface Lane {
  * Clear ground between the app bar and the first cloud tone. Lane `y` is an extra drop below that, scaled with the
  * screen. The bar height itself is added when drawing, so a taller desktop title bar keeps the same gap.
  */
-const CLEAR = 40
+const CLEAR = 16
 /** The far lane is smaller, paler and slower; the near lane crosses it the other way, lower in the pane. */
 const LANES: Lane[] = [
   { dir: -1, speed: 11, y: 12, size: 0.78, alpha: 0.72 },
-  { dir: 1, speed: 19, y: 64, size: 1, alpha: 0.88 },
+  { dir: 1, speed: 19, y: 40, size: 1, alpha: 0.88 },
 ]
 
 interface Cloud {
