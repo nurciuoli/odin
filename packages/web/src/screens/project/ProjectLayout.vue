@@ -3,7 +3,7 @@
 // other sections live in a docked panel on the right, the same pattern as the session's files/preview pane. The
 // panel resizes, hides and goes full screen; its tab follows the route (/p/:name/files, /sessions, …), so links from
 // the Overview open the right tab. On /p/:name/overview the panel keeps the tab it last showed.
-import { computed, defineAsyncComponent, provide, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, provide, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { ProjectDetail } from '@odin/shared/api'
 import { useApi } from '@/api'
@@ -151,6 +151,10 @@ function togglePanel() {
   else open.value = true
 }
 
+// The header goes into the app's header band (one line with no separate breadcrumb); inline when there is no band.
+const inBand = ref(false)
+onMounted(() => (inBand.value = document.getElementById('app-header-project') !== null))
+
 // Like the session screen: ask the app for room for the Overview plus the docked panel, so the app sidebar folds to
 // its rail before the Overview gets cramped.
 const OVERVIEW_MIN = 760
@@ -170,12 +174,14 @@ watch(open, v => setDemand(v ? OVERVIEW_MIN + PREVIEW_MIN : 0), { immediate: tru
     />
     <template v-else-if="detail">
       <div class="project__main">
-        <ProjectHeader
-          :detail="detail"
-          :sync="sync"
-          :panel-open="open"
-          @toggle-panel="togglePanel"
-        />
+        <Teleport to="#app-header-project" :disabled="!inBand">
+          <ProjectHeader
+            :detail="detail"
+            :sync="sync"
+            :panel-open="open"
+            @toggle-panel="togglePanel"
+          />
+        </Teleport>
         <OverviewScreen />
       </div>
       <ProjectWorkbench
