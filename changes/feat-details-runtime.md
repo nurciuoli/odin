@@ -1,0 +1,2 @@
+- Details lists the MCP servers and skills configured for the session, with a count and a dot that turns amber when one is not connected. Hover a row to see each one.
+- The branch in Details follows the live checkout, and clicking it switches or syncs the branch. The branch chip in the session header is gone.

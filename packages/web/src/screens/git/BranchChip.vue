@@ -1,8 +1,8 @@
 <script setup lang="ts">
-// The session's branch in its header: name, commits ahead and behind, and a dot when the tree has changes. It opens a
-// switcher: sync the current branch (Fetch, Pull, Push), switch to another one, open the session that already has a
-// branch checked out in its worktree, or start a new branch. A dirty switch asks what to do with the changes, and a
-// diverged pull or push asks how to bring the two sides together.
+// The session's branch switcher. Details draws the trigger (the branch name); the popover syncs the current branch
+// (Fetch, Pull, Push), switches to another one, opens the session that already has a branch checked out in its
+// worktree, or starts a new branch. A dirty switch asks what to do with the changes, and a diverged pull or push
+// asks how to bring the two sides together.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import type { SessionDetail } from '@odin/shared/api'
@@ -48,6 +48,7 @@ const chipLabel = computed(() => {
 // ── popover ──
 const open = ref(false)
 const root = ref<HTMLElement | null>(null)
+const pop = ref<HTMLElement | null>(null)
 const input = ref<HTMLInputElement | null>(null)
 const query = ref('')
 const active = ref(0)
@@ -66,8 +67,13 @@ async function loadBranches() {
 }
 // Fixed to the viewport: the header's title row clips anything that hangs out of it.
 const popStyle = ref<Record<string, string>>({})
+function anchor(): HTMLElement | null {
+  const rootEl = root.value
+  if (!rootEl) return null
+  return rootEl.querySelector<HTMLElement>('[data-branch-trigger]') ?? rootEl
+}
 function place() {
-  const r = root.value?.getBoundingClientRect()
+  const r = anchor()?.getBoundingClientRect()
   if (!r) return
   const width = Math.min(440, window.innerWidth - 32)
   const left = Math.max(16, Math.min(r.left, window.innerWidth - width - 16))
@@ -88,8 +94,11 @@ function close(refocus = true) {
   if (refocus) void nextTick(() => root.value?.querySelector<HTMLElement>('button')?.focus())
 }
 const toggle = () => (open.value ? close() : void show())
+function inside(node: Node | null): boolean {
+  return !!node && (!!root.value?.contains(node) || !!pop.value?.contains(node))
+}
 function onPointerdown(e: PointerEvent) {
-  if (open.value && !root.value?.contains(e.target as Node)) close(false)
+  if (open.value && !inside(e.target as Node)) close(false)
 }
 watch(open, v => {
   if (v) {
@@ -155,7 +164,7 @@ function onKeydown(e: KeyboardEvent) {
 }
 function onFocusout(e: FocusEvent) {
   const next = e.relatedTarget as Node | null
-  if (open.value && next && !root.value?.contains(next)) close(false)
+  if (open.value && next && !inside(next)) close(false)
 }
 
 // ── switching ──
@@ -319,198 +328,214 @@ onBeforeUnmount(() => {
     v-if="shown && status"
     ref="root"
     class="branch-chip"
+    :class="{ 'is-embedded': !!$slots.trigger }"
     @keydown="onKeydown"
     @focusout="onFocusout"
   >
-    <IuButton
-      variant="ghost"
-      size="sm"
-      class="branch-chip__button"
-      :aria-label="chipLabel"
-      aria-haspopup="dialog"
-      :aria-expanded="open"
-      :aria-controls="open ? `${id}-pop` : undefined"
-      @click="toggle"
+    <slot
+      name="trigger"
+      :open="open"
+      :toggle="toggle"
+      :label="branchLabel"
+      :chip-label="chipLabel"
+      :status="status"
+      :changed-count="changedCount"
     >
-      <template #icon><IuIcon name="gitBranch" :size="14" /></template>
-      <span class="branch-chip__name">{{ branchLabel }}</span>
-      <span v-if="status.ahead || status.behind" class="branch-chip__ab" aria-hidden="true">
-        <span v-if="status.ahead" class="branch-chip__up">↑{{ status.ahead }}</span>
-        <span v-if="status.behind" class="branch-chip__down">↓{{ status.behind }}</span>
-      </span>
-      <span v-if="changedCount" class="branch-chip__dirty" aria-hidden="true" />
-    </IuButton>
+      <IuButton
+        variant="ghost"
+        size="sm"
+        class="branch-chip__button"
+        data-branch-trigger
+        :aria-label="chipLabel"
+        aria-haspopup="dialog"
+        :aria-expanded="open"
+        :aria-controls="open ? `${id}-pop` : undefined"
+        @click="toggle"
+      >
+        <template #icon><IuIcon name="gitBranch" :size="14" /></template>
+        <span class="branch-chip__name">{{ branchLabel }}</span>
+        <span v-if="status.ahead || status.behind" class="branch-chip__ab" aria-hidden="true">
+          <span v-if="status.ahead" class="branch-chip__up">↑{{ status.ahead }}</span>
+          <span v-if="status.behind" class="branch-chip__down">↓{{ status.behind }}</span>
+        </span>
+        <span v-if="changedCount" class="branch-chip__dirty" aria-hidden="true" />
+      </IuButton>
+    </slot>
 
-    <div
-      v-if="open"
-      :id="`${id}-pop`"
-      class="branch-chip__pop"
-      :style="popStyle"
-      role="dialog"
-      aria-label="Switch or sync the branch"
-    >
-      <div class="branch-chip__search">
-        <IuIcon name="search" :size="14" />
-        <input
-          ref="input"
-          v-model="query"
-          class="branch-chip__input"
-          type="text"
-          placeholder="Switch branch or type a new name…"
-          aria-label="Switch branch or type a new name"
-          role="combobox"
-          aria-autocomplete="list"
-          :aria-controls="`${id}-list`"
-          aria-expanded="true"
-          :aria-activedescendant="rows.length ? `${id}-row-${active}` : undefined"
-          spellcheck="false"
-          autocomplete="off"
-        />
-      </div>
-
-      <div class="branch-chip__current">
-        <div class="branch-chip__current-row">
-          <IuIcon name="gitBranch" :size="14" />
-          <span class="branch-chip__mono">{{ branchLabel }}</span>
-          <span class="branch-chip__tag">this session</span>
-          <span class="branch-chip__grow" />
-          <span v-if="changedCount" class="branch-chip__changed">{{ changedCount }} changed</span>
+    <Teleport to="body">
+      <div
+        v-if="open"
+        :id="`${id}-pop`"
+        ref="pop"
+        class="branch-chip__pop"
+        :style="popStyle"
+        role="dialog"
+        aria-label="Switch or sync the branch"
+        @keydown="onKeydown"
+      >
+        <div class="branch-chip__search">
+          <IuIcon name="search" :size="14" />
+          <input
+            ref="input"
+            v-model="query"
+            class="branch-chip__input"
+            type="text"
+            placeholder="Switch branch or type a new name…"
+            aria-label="Switch branch or type a new name"
+            role="combobox"
+            aria-autocomplete="list"
+            :aria-controls="`${id}-list`"
+            aria-expanded="true"
+            :aria-activedescendant="rows.length ? `${id}-row-${active}` : undefined"
+            spellcheck="false"
+            autocomplete="off"
+          />
         </div>
-        <div class="branch-chip__current-row">
-          <span class="branch-chip__muted">{{ remoteLine }}</span>
-          <span class="branch-chip__grow" />
-          <IuButton size="sm" variant="secondary" :disabled="!!busy" @click="fetchNow">
-            <template #icon><IuIcon name="retry" :size="14" /></template>
-            Fetch
-          </IuButton>
-          <IuButton
-            v-if="diverged"
-            size="sm"
-            variant="secondary"
-            :disabled="!!busy"
-            @click="openSync"
-          >
-            <template #icon><IuIcon name="arrowDown" :size="14" /></template>
-            Sync…
-          </IuButton>
-          <template v-else>
+
+        <div class="branch-chip__current">
+          <div class="branch-chip__current-row">
+            <IuIcon name="gitBranch" :size="14" />
+            <span class="branch-chip__mono">{{ branchLabel }}</span>
+            <span class="branch-chip__tag">this session</span>
+            <span class="branch-chip__grow" />
+            <span v-if="changedCount" class="branch-chip__changed">{{ changedCount }} changed</span>
+          </div>
+          <div class="branch-chip__current-row">
+            <span class="branch-chip__muted">{{ remoteLine }}</span>
+            <span class="branch-chip__grow" />
+            <IuButton size="sm" variant="secondary" :disabled="!!busy" @click="fetchNow">
+              <template #icon><IuIcon name="retry" :size="14" /></template>
+              Fetch
+            </IuButton>
             <IuButton
+              v-if="diverged"
               size="sm"
               variant="secondary"
-              :disabled="!!busy || !status.upstream || !status.behind"
-              @click="pull"
+              :disabled="!!busy"
+              @click="openSync"
             >
               <template #icon><IuIcon name="arrowDown" :size="14" /></template>
-              Pull<span v-if="status.behind" class="branch-chip__down">{{ status.behind }}</span>
+              Sync…
             </IuButton>
-            <IuButton
-              size="sm"
-              variant="secondary"
-              :disabled="!!busy || !status.branch || (!!status.upstream && !status.ahead)"
-              @click="push"
-            >
-              <template #icon><IuIcon name="arrowUp" :size="14" /></template>
-              Push<span v-if="status.ahead" class="branch-chip__up">{{ status.ahead }}</span>
-            </IuButton>
-          </template>
+            <template v-else>
+              <IuButton
+                size="sm"
+                variant="secondary"
+                :disabled="!!busy || !status.upstream || !status.behind"
+                @click="pull"
+              >
+                <template #icon><IuIcon name="arrowDown" :size="14" /></template>
+                Pull<span v-if="status.behind" class="branch-chip__down">{{ status.behind }}</span>
+              </IuButton>
+              <IuButton
+                size="sm"
+                variant="secondary"
+                :disabled="!!busy || !status.branch || (!!status.upstream && !status.ahead)"
+                @click="push"
+              >
+                <template #icon><IuIcon name="arrowUp" :size="14" /></template>
+                Push<span v-if="status.ahead" class="branch-chip__up">{{ status.ahead }}</span>
+              </IuButton>
+            </template>
+          </div>
         </div>
-      </div>
 
-      <div
-        :id="`${id}-list`"
-        class="branch-chip__list"
-        role="listbox"
-        aria-label="Branches"
-        @mousedown.prevent
-      >
-        <p v-if="loadingBranches && !branches.length" class="branch-chip__note">
-          Loading branches…
-        </p>
-        <template v-if="recent.length">
-          <div class="branch-chip__group" role="presentation">Recent</div>
-          <div
-            v-for="b in recent"
-            :id="`${id}-row-${rowIndex(rowFor(b))}`"
-            :key="b.name"
-            class="branch-chip__row"
-            :class="{
-              'branch-chip__row--active': rowIndex(rowFor(b)) === active,
-              'branch-chip__row--off': !!b.worktree && !b.worktreeSession,
-            }"
-            role="option"
-            :aria-selected="rowIndex(rowFor(b)) === active"
-            :aria-disabled="!!b.worktree && !b.worktreeSession"
-            @pointerenter="active = rowIndex(rowFor(b))"
-            @click="choose(b)"
-          >
-            <IuIcon name="gitBranch" :size="14" />
-            <span class="branch-chip__mono" :class="{ 'branch-chip__dim': b.upstreamGone }">{{
-              b.name
-            }}</span>
-            <span class="branch-chip__meta">
-              <template v-if="b.worktree">
-                <span class="branch-chip__tag">worktree</span>
-                <span v-if="b.worktreeSession">Open session</span>
-                <span v-else>checked out elsewhere</span>
-              </template>
-              <span v-else-if="b.upstreamGone">upstream gone</span>
-              <span v-else-if="b.ahead || b.behind" class="branch-chip__ab">
-                <span v-if="b.ahead" class="branch-chip__up">↑{{ b.ahead }}</span>
-                <span v-if="b.behind" class="branch-chip__down">↓{{ b.behind }}</span>
+        <div
+          :id="`${id}-list`"
+          class="branch-chip__list"
+          role="listbox"
+          aria-label="Branches"
+          @mousedown.prevent
+        >
+          <p v-if="loadingBranches && !branches.length" class="branch-chip__note">
+            Loading branches…
+          </p>
+          <template v-if="recent.length">
+            <div class="branch-chip__group" role="presentation">Recent</div>
+            <div
+              v-for="b in recent"
+              :id="`${id}-row-${rowIndex(rowFor(b))}`"
+              :key="b.name"
+              class="branch-chip__row"
+              :class="{
+                'branch-chip__row--active': rowIndex(rowFor(b)) === active,
+                'branch-chip__row--off': !!b.worktree && !b.worktreeSession,
+              }"
+              role="option"
+              :aria-selected="rowIndex(rowFor(b)) === active"
+              :aria-disabled="!!b.worktree && !b.worktreeSession"
+              @pointerenter="active = rowIndex(rowFor(b))"
+              @click="choose(b)"
+            >
+              <IuIcon name="gitBranch" :size="14" />
+              <span class="branch-chip__mono" :class="{ 'branch-chip__dim': b.upstreamGone }">{{
+                b.name
+              }}</span>
+              <span class="branch-chip__meta">
+                <template v-if="b.worktree">
+                  <span class="branch-chip__tag">worktree</span>
+                  <span v-if="b.worktreeSession">Open session</span>
+                  <span v-else>checked out elsewhere</span>
+                </template>
+                <span v-else-if="b.upstreamGone">upstream gone</span>
+                <span v-else-if="b.ahead || b.behind" class="branch-chip__ab">
+                  <span v-if="b.ahead" class="branch-chip__up">↑{{ b.ahead }}</span>
+                  <span v-if="b.behind" class="branch-chip__down">↓{{ b.behind }}</span>
+                </span>
+                <span>{{ relativeTime(b.lastCommitAt) }}</span>
               </span>
-              <span>{{ relativeTime(b.lastCommitAt) }}</span>
-            </span>
-          </div>
-        </template>
-        <template v-if="remoteOnly.length">
-          <div class="branch-chip__group" role="presentation">Remote only</div>
+            </div>
+          </template>
+          <template v-if="remoteOnly.length">
+            <div class="branch-chip__group" role="presentation">Remote only</div>
+            <div
+              v-for="b in remoteOnly"
+              :id="`${id}-row-${rowIndex(rowFor(b))}`"
+              :key="b.name"
+              class="branch-chip__row"
+              :class="{ 'branch-chip__row--active': rowIndex(rowFor(b)) === active }"
+              role="option"
+              :aria-selected="rowIndex(rowFor(b)) === active"
+              @pointerenter="active = rowIndex(rowFor(b))"
+              @click="choose(b)"
+            >
+              <IuIcon name="external" :size="14" />
+              <span class="branch-chip__mono">{{ b.name }}</span>
+              <span class="branch-chip__meta"
+                ><span>{{ relativeTime(b.lastCommitAt) }}</span></span
+              >
+            </div>
+          </template>
           <div
-            v-for="b in remoteOnly"
-            :id="`${id}-row-${rowIndex(rowFor(b))}`"
-            :key="b.name"
-            class="branch-chip__row"
-            :class="{ 'branch-chip__row--active': rowIndex(rowFor(b)) === active }"
+            v-if="newName"
+            :id="`${id}-row-${rows.length - 1}`"
+            class="branch-chip__row branch-chip__row--new"
+            :class="{ 'branch-chip__row--active': active === rows.length - 1 }"
             role="option"
-            :aria-selected="rowIndex(rowFor(b)) === active"
-            @pointerenter="active = rowIndex(rowFor(b))"
-            @click="choose(b)"
+            :aria-selected="active === rows.length - 1"
+            @pointerenter="active = rows.length - 1"
+            @click="createBranch(newName)"
           >
-            <IuIcon name="external" :size="14" />
-            <span class="branch-chip__mono">{{ b.name }}</span>
-            <span class="branch-chip__meta"
-              ><span>{{ relativeTime(b.lastCommitAt) }}</span></span
+            <IuIcon name="plus" :size="14" />
+            <span
+              >New branch <span class="branch-chip__mono">{{ newName }}</span> from
+              <span class="branch-chip__mono">{{ branchLabel }}</span></span
             >
           </div>
-        </template>
-        <div
-          v-if="newName"
-          :id="`${id}-row-${rows.length - 1}`"
-          class="branch-chip__row branch-chip__row--new"
-          :class="{ 'branch-chip__row--active': active === rows.length - 1 }"
-          role="option"
-          :aria-selected="active === rows.length - 1"
-          @pointerenter="active = rows.length - 1"
-          @click="createBranch(newName)"
-        >
-          <IuIcon name="plus" :size="14" />
-          <span
-            >New branch <span class="branch-chip__mono">{{ newName }}</span> from
-            <span class="branch-chip__mono">{{ branchLabel }}</span></span
-          >
+          <p v-if="!loadingBranches && !rows.length" class="branch-chip__note">
+            {{
+              query
+                ? 'No branch matches. Type a name without spaces to create one.'
+                : 'No other branches.'
+            }}
+          </p>
         </div>
-        <p v-if="!loadingBranches && !rows.length" class="branch-chip__note">
-          {{
-            query
-              ? 'No branch matches. Type a name without spaces to create one.'
-              : 'No other branches.'
-          }}
-        </p>
+        <div class="branch-chip__foot" aria-hidden="true">
+          <span><kbd>↵</kbd> switch</span>
+          <span><kbd>⌘↵</kbd> new session on branch</span>
+        </div>
       </div>
-      <div class="branch-chip__foot" aria-hidden="true">
-        <span><kbd>↵</kbd> switch</span>
-        <span><kbd>⌘↵</kbd> new session on branch</span>
-      </div>
-    </div>
+    </Teleport>
 
     <DirtySwitchDialog
       v-if="dirtyOpen"
@@ -535,6 +560,12 @@ onBeforeUnmount(() => {
   position: relative;
   display: inline-flex;
   flex: none;
+}
+.branch-chip.is-embedded {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
 }
 .branch-chip__name {
   display: inline-block;
@@ -580,7 +611,7 @@ onBeforeUnmount(() => {
 }
 .branch-chip__pop {
   position: fixed;
-  z-index: 30;
+  z-index: 70;
   display: flex;
   flex-direction: column;
   background: var(--iu-raised);
