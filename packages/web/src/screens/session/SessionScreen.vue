@@ -60,7 +60,8 @@ import { CHAT_MIN, PREVIEW_MIN, detailsFit, setLayoutDemand } from '@/app/layout
 import SessionSide from './SessionSide.vue'
 import SessionThread from './SessionThread.vue'
 import SessionTimeline from './SessionTimeline.vue'
-import { buildTimeline } from './timeline'
+import SessionTimelineRail from './SessionTimelineRail.vue'
+import { buildTimeline, currentStep } from './timeline'
 import RewindPrompt from './RewindPrompt.vue'
 import { useCheckpoints } from './useCheckpoints'
 import type { CellRef } from './fileActivity'
@@ -555,14 +556,8 @@ function openTimeline() {
   }
   const focus = document.activeElement instanceof HTMLElement ? document.activeElement : null
   timelineBack = { scrollTop: threadScroller()?.scrollTop ?? 0, focus }
-  // start on the step the reader is looking at: the last one that has scrolled past the top of the thread
-  const sc = threadScroller()
-  const top = sc ? sc.getBoundingClientRect().top + 48 : 0
-  let at = 0
-  timelineSteps.value.forEach((s, i) => {
-    const el = turnEl(s.id)
-    if (el && el.getBoundingClientRect().top <= top) at = i
-  })
+  // start on the step the reader is looking at
+  const at = onScreenStep()
   timelineAt.value = at
   timelineOpen.value = true
 }
@@ -581,6 +576,57 @@ function closeTimeline(stay: boolean) {
   }
   void nextTick(() => back?.focus?.focus({ preventScroll: true }))
 }
+// The step on screen: the last one whose message has scrolled past the top of the thread.
+function onScreenStep() {
+  const sc = threadScroller()
+  const top = sc ? sc.getBoundingClientRect().top + 48 : 0
+  return currentStep(
+    timelineSteps.value.map(s => turnEl(s.id)?.getBoundingClientRect().top ?? Infinity),
+    top,
+  )
+}
+// The resting rail follows the thread's scroll, and a click on it jumps there with a way back.
+const railAt = ref(0)
+const railScroll = ref(0)
+const railFrom = ref<{ scrollTop: number; n: number } | null>(null)
+let railFrame = 0
+function onMainScroll(e: Event) {
+  if (!(e.target instanceof HTMLElement) || e.target.getAttribute('role') !== 'log') return
+  cancelAnimationFrame(railFrame)
+  railFrame = requestAnimationFrame(syncRail)
+}
+function syncRail() {
+  railAt.value = onScreenStep()
+  railScroll.value = threadScroller()?.scrollTop ?? 0
+}
+const railBack = computed(() =>
+  railFrom.value && Math.abs(railScroll.value - railFrom.value.scrollTop) > 160
+    ? railFrom.value.n
+    : null,
+)
+function railJump(index: number) {
+  const step = timelineSteps.value[index]
+  const el = step && turnEl(step.id)
+  const sc = threadScroller()
+  if (!el || !sc) return
+  if (!railBack.value) railFrom.value = { scrollTop: sc.scrollTop, n: railAt.value + 1 }
+  const top = sc.scrollTop + el.getBoundingClientRect().top - sc.getBoundingClientRect().top - 24
+  const calm = matchMedia('(prefers-reduced-motion: reduce)').matches
+  sc.scrollTo({ top, behavior: calm ? 'auto' : 'smooth' })
+  el.classList.add('timeline-flash')
+  setTimeout(() => el.classList.remove('timeline-flash'), 1200)
+}
+function railReturn() {
+  const from = railFrom.value
+  railFrom.value = null
+  const calm = matchMedia('(prefers-reduced-motion: reduce)').matches
+  if (from) threadScroller()?.scrollTo({ top: from.scrollTop, behavior: calm ? 'auto' : 'smooth' })
+}
+watch(
+  () => timelineSteps.value.length,
+  () => void nextTick(syncRail),
+)
+onBeforeUnmount(() => cancelAnimationFrame(railFrame))
 const toggleTimeline = () => (timelineOpen.value ? closeTimeline(false) : openTimeline())
 watch(timelineAt, i => timelineOpen.value && peekStep(i))
 async function copyStep(
@@ -606,6 +652,7 @@ watch(
   () => {
     timelineOpen.value = false
     timelineBack = null
+    railFrom.value = null
   },
 )
 const TIMELINE_KEYS = 'Alt+T'
@@ -789,7 +836,7 @@ function onDeleted() {
         </SessionHeader>
 
         <div class="session-screen__body">
-          <div ref="mainEl" class="session-screen__main">
+          <div ref="mainEl" class="session-screen__main" @scroll.capture="onMainScroll">
             <IuCallout
               v-if="recordError"
               intent="danger"
@@ -821,6 +868,14 @@ function onDeleted() {
               @open-task="openTask"
               @open-file="openFile"
               @open-cell="openCell"
+            />
+            <SessionTimelineRail
+              v-if="!timelineOpen && timelineSteps.length > 1"
+              :steps="timelineSteps"
+              :current="railAt"
+              :back="railBack"
+              @jump="railJump"
+              @back="railReturn"
             />
             <SessionTimeline
               v-if="timelineOpen"
