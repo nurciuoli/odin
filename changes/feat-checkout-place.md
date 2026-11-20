@@ -1,0 +1,2 @@
+- The composer, session lists, and session details name the checkout as its branch and folder, for example `main · odin`, including before git has answered.
+- A session started in a subfolder, a project with nothing running, and a session's other repositories stay in step with their git checkouts.

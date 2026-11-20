@@ -18,6 +18,7 @@ import { IuTable, type Column } from '@/components/Table'
 import { useToast } from '@/components/Toast'
 import { statusIntent } from '@/styles/status'
 import { formatCost, formatTokens, relativeTime, SESSION_DISPLAY } from './format'
+import { placeFolder, placeLabel } from './place'
 
 const props = withDefaults(
   defineProps<{
@@ -79,6 +80,11 @@ const rows = computed<Row[]>(() =>
     })),
 )
 const byId = computed(() => new Map(props.sessions.map(s => [s.id, s])))
+function rowPlace(id: string): string {
+  const s = byId.value.get(id)
+  if (!s?.branch) return ''
+  return placeLabel(s.branch, placeFolder(s, titleOf(s.project)))
+}
 
 const columns = computed<Column<Row>[]>(() => {
   const cols: Column<Row>[] = [
@@ -239,6 +245,7 @@ async function confirm() {
           <IuBadge v-for="t in byId.get(row.id)?.tags ?? []" :key="t" variant="tag" size="xs">
             {{ t }}
           </IuBadge>
+          <span v-if="rowPlace(row.id)" class="sessions-table__place">{{ rowPlace(row.id) }}</span>
         </span>
       </template>
       <template v-if="otherProjectsOf" #cell:project="{ row }">
@@ -369,6 +376,12 @@ async function confirm() {
 .sessions-table__link {
   color: var(--iu-text);
   font-weight: var(--iu-font-weight-medium);
+}
+.sessions-table__place {
+  flex-basis: 100%;
+  color: var(--iu-text-muted);
+  font-family: var(--iu-font-mono);
+  font-size: var(--iu-font-size-12);
 }
 .sessions-table__link:focus-visible {
   outline: var(--iu-focus-ring);

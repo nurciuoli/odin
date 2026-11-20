@@ -15,6 +15,8 @@ const props = defineProps<{
   title: string
   /** Whether the parent already runs in a worktree (the default is the same workspace). */
   inWorktree: boolean
+  /** `main · odin`: the checkout the fork shares when it does not get its own worktree. */
+  place?: string
 }>()
 
 const open = defineModel<boolean>('open', { required: true })
@@ -74,9 +76,11 @@ async function fork() {
         {{
           worktree
             ? 'It gets its own branch and folder, so its edits stay apart.'
-            : inWorktree
-              ? 'It shares the original’s worktree and branch.'
-              : 'It shares the project checkout with the original.'
+            : place
+              ? `It shares ${place} with the original.`
+              : inWorktree
+                ? 'It shares the original’s worktree and branch.'
+                : 'It shares the project checkout with the original.'
         }}
       </p>
       <IuTextarea

@@ -12,9 +12,9 @@ import { startApp, tempDir, removeTempDir, waitFor, watchEvents, type TestApp } 
 const git = (cwd: string, ...args: string[]) =>
   execFileSync("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", ...args], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 
-function tempRepo() {
+function tempRepo(name = "demo") {
   const root = tempDir("odin-track-");
-  const path = join(root, "demo");
+  const path = join(root, name);
   mkdirSync(path);
   git(path, "init", "-q", "-b", "main");
   writeFileSync(join(path, "README.md"), "# demo\n");
@@ -70,6 +70,76 @@ test("a branch switched outside Odin is picked up by the watcher", async () => {
     await waitFor(async () => (await branchOf(app, ids[0]!)()) === null, 5000, "detached");
   } finally {
     await done();
+  }
+});
+
+test("a session in a subdirectory follows the checkout, including a switch made outside Odin", async () => {
+  const repo = tempRepo();
+  const app = await startApp({ harnesses: { claude: fakeHarness() } });
+  try {
+    assert.equal((await post(app, "/api/projects", { path: repo.path })).status, 201);
+    const sub = join(repo.path, "src");
+    mkdirSync(sub);
+    const ev = [{ id: "e-sub", harness: "claude-code", session: "term-sub", cwd: sub, branch: "stale", ts: "2026-11-11T00:00:00.000Z", kind: "turn", data: { index: 1, durationMs: 1000 } }];
+    const send = await app.api("/api/ingest", { method: "POST", body: JSON.stringify(ev), headers: { authorization: "Bearer test-ingest-token" } });
+    assert.equal(send.status, 200);
+    const status = await app.json<{ repo: boolean; branch: string | null }>("/api/sessions/term-sub/git/status");
+    assert.equal(status.repo, true);
+    assert.equal(status.branch, "main");
+    const switched = await post(app, "/api/sessions/term-sub/git/checkout", { branch: "feat/via-route", create: true });
+    assert.equal(switched.status, 200);
+    assert.equal(await branchOf(app, "term-sub")(), "feat/via-route");
+    const want = ["project:demo", "session:term-sub"];
+    const w = watchEvents(app.base, (events) => want.every((t) => changedTargets(events).has(t)), 5000);
+    await w.connected;
+    git(repo.path, "checkout", "-q", "-b", "from-root");
+    await waitFor(async () => (await branchOf(app, "term-sub")()) === "from-root", 5000, "subdir branch");
+    const targets = changedTargets(await w.events);
+    for (const t of want) assert.ok(targets.has(t), `git.changed for ${t}`);
+  } finally {
+    await app.close();
+    repo.cleanup();
+  }
+});
+
+test("a project with no live session still announces a branch switch", async () => {
+  const repo = tempRepo("solo");
+  const app = await startApp({ harnesses: { claude: fakeHarness() } });
+  try {
+    assert.equal((await post(app, "/api/projects", { path: repo.path })).status, 201);
+    const w = watchEvents(app.base, (events) => changedTargets(events).has("project:solo"), 5000);
+    await w.connected;
+    git(repo.path, "checkout", "-q", "-b", "quiet");
+    const targets = changedTargets(await w.events);
+    assert.ok(targets.has("project:solo"));
+  } finally {
+    await app.close();
+    repo.cleanup();
+  }
+});
+
+test("a session's other repository is announced without changing the working branch", async () => {
+  const demo = tempRepo("demo");
+  const other = tempRepo("other");
+  const app = await startApp({ harnesses: { claude: fakeHarness() } });
+  try {
+    assert.equal((await post(app, "/api/projects", { path: demo.path })).status, 201);
+    assert.equal((await post(app, "/api/projects", { path: other.path })).status, 201);
+    const started = (await (await post(app, "/api/sessions", { project: "demo", projects: ["demo", "other"], prompt: { text: "across" } })).json()) as Session;
+    await waitFor(async () => (await app.json<Session>(`/api/sessions/${started.id}`)).state === "idle", 3000, "idle");
+    const before = await branchOf(app, started.id)();
+    const want = ["project:other", `session:${started.id}`];
+    const w = watchEvents(app.base, (events) => want.every((t) => changedTargets(events).has(t)), 4000);
+    await w.connected;
+    const res = await post(app, "/api/projects/other/git/checkout", { branch: "side", create: true });
+    assert.equal(res.status, 200);
+    const targets = changedTargets(await w.events);
+    for (const t of want) assert.ok(targets.has(t), `git.changed for ${t}`);
+    assert.equal(await branchOf(app, started.id)(), before);
+  } finally {
+    await app.close();
+    demo.cleanup();
+    other.cleanup();
   }
 });
 

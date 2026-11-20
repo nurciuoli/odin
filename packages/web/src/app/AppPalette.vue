@@ -11,6 +11,7 @@ import type { GitBranch, GitStash } from '@odin/shared/git'
 import { useApi } from '@/api'
 import { IuCommandPalette, type CommandItem, type CommandSource } from '@/components/CommandPalette'
 import { harnessLabel, relativeTime, SESSION_DISPLAY } from '@/screens/shared/format'
+import { sessionPlace } from '@/screens/shared/place'
 import { hasGitHandler, sendGitIntent, type GitIntent } from '@/screens/git/gitIntents'
 import { useCommands } from './commands'
 import { openNewProject } from './newProject'
@@ -80,7 +81,7 @@ function sessionItem(s: Session, group?: string): CommandItem {
   return {
     id: `session:${s.id}`,
     label: s.title,
-    detail: projectsOf(s).join(', '),
+    detail: sessionPlace(s, projectTitle(s.project)),
     icon: SESSION_DISPLAY[s.state].icon,
     hint: `${SESSION_DISPLAY[s.state].label} · ${relativeTime(s.updatedAt)}`,
     group: group ?? GROUPS[s.state] ?? 'Recent',

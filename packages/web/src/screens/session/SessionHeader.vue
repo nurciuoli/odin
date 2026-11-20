@@ -24,6 +24,7 @@ import { statusIntent } from '@/styles/status'
 import { needYouCount, SESSION_DISPLAY } from '@/screens/shared/format'
 import { useQuickAnswer } from '@/screens/shared/useQuickAnswer'
 import SaveToLibraryModal from '@/screens/library/SaveToLibraryModal.vue'
+import { sessionPlace } from '@/screens/shared/place'
 import ForkModal from './ForkModal.vue'
 import { openHandoff } from './handoff'
 import SessionStatusBand from './SessionStatusBand.vue'
@@ -347,6 +348,7 @@ async function confirmDelete() {
       :session-id="session.id"
       :title="session.title"
       :in-worktree="!!worktree"
+      :place="sessionPlace(session)"
       @forked="emit('forked', $event)"
     />
 

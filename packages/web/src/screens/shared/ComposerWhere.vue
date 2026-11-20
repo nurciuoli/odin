@@ -9,6 +9,7 @@ import { IuButton } from '@/components/Button'
 import { IuIcon } from '@/components/Icon'
 import { statusIntent } from '@/styles/status'
 import { branchProblem, slugFromPrompt, type ExistingWhere } from './newSessionForm'
+import { placeLabel } from './place'
 
 const props = withDefaults(
   defineProps<{
@@ -25,6 +26,8 @@ const props = withDefaults(
     branches?: ProjectBranch[]
     /** Remote branches (`origin/x`) with no local branch of the same name. */
     remoteBranches?: string[]
+    /** Project name shown before its checkout has loaded. */
+    project?: string
   }>(),
   {
     prompt: '',
@@ -34,6 +37,7 @@ const props = withDefaults(
     info: null,
     branches: () => [],
     remoteBranches: () => [],
+    project: '',
   },
 )
 const worktree = defineModel<boolean>('worktree', { default: false })
@@ -54,6 +58,8 @@ const folder = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? pa
 const main = computed(() => props.info?.worktrees.find(w => w.main) ?? null)
 const others = computed(() => props.info?.worktrees.filter(w => !w.main) ?? [])
 const mainName = computed(() => props.info?.mainBranch ?? main.value?.branch ?? 'detached')
+const mainFolder = computed(() => (main.value ? folder(main.value.path) : props.project.trim()))
+const checkoutLabel = computed(() => placeLabel(mainName.value, mainFolder.value))
 
 type Kind = 'checkout' | 'new-worktree' | 'worktree' | 'branch'
 const kind = computed<Kind>(
@@ -76,7 +82,9 @@ const label = computed(() => {
       return name ? `⎇ ${name} · ${folder(chosenPath.value)}` : folder(chosenPath.value)
     }
     default:
-      return props.info ? `⎇ ${mainName.value}` : 'This checkout'
+      return props.info && checkoutLabel.value
+        ? `⎇ ${checkoutLabel.value}`
+        : props.project.trim() || 'Checkout'
   }
 })
 const fullPath = computed(() => {
@@ -118,7 +126,7 @@ const matches = computed(() => {
 })
 watch(matches, () => (branchActive.value = -1))
 function branchHint(b: Candidate) {
-  if (b.current) return 'this checkout'
+  if (b.current) return mainFolder.value ? `in ${mainFolder.value}` : 'checkout'
   if (b.worktreePath) return `in ${folder(b.worktreePath)}`
   return 'new worktree'
 }
@@ -289,7 +297,7 @@ function mainHint(w: ProjectWorktree) {
         }}</span>
         <span class="composer-where__text">
           <span class="composer-where__title">
-            {{ info ? `Main checkout · ⎇ ${mainName}` : 'This checkout' }}
+            {{ info && checkoutLabel ? `⎇ ${checkoutLabel}` : project.trim() || 'Checkout' }}
             <template v-if="main?.dirty"
               ><span aria-hidden="true">•</span
               ><span class="sr-only"> uncommitted changes</span></template

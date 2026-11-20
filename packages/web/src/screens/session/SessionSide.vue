@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // The Details column: where the session runs (repository, branch, pull request, quick links, tags), then usage and
 // context, outputs, changes, the plan, background tasks and, last, the files this session read or changed.
-import { computed, ref, watchEffect } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
 import type { Session, SessionDetail } from '@odin/shared/api'
 import type { GitTarget } from '@odin/shared/git'
 import { useApi } from '@/api'
@@ -212,6 +212,36 @@ watchEffect(() => {
       .catch(() => {})
   }
 })
+const extraNames = computed(() =>
+  (props.session.projects ?? []).filter(name => name !== props.session.project),
+)
+const extraBranch = ref<Record<string, string>>({})
+async function loadExtra(name: string) {
+  try {
+    const status = await api.gitStatus({ kind: 'project', id: name })
+    if (!status.repo) return
+    extraBranch.value = { ...extraBranch.value, [name]: status.branch ?? 'detached' }
+  } catch {
+    // the row still names the project
+  }
+}
+function loadExtras() {
+  for (const name of extraNames.value) void loadExtra(name)
+}
+let stopGit: (() => void) | undefined
+onMounted(() => {
+  stopGit = api.subscribe(event => {
+    if (
+      event.type === 'git.changed' &&
+      event.target.kind === 'project' &&
+      extraNames.value.includes(event.target.id)
+    )
+      void loadExtra(event.target.id)
+  })
+})
+onBeforeUnmount(() => stopGit?.())
+watch(extraNames, loadExtras, { immediate: true })
+
 function folderPath(name: string): string | null {
   if (name === props.session.project) return workspacePath.value
   return projectInfo.value[name]?.path ?? null
@@ -276,6 +306,9 @@ function addTag(e: KeyboardEvent) {
             <RouterLink class="session-side__link" :to="`/p/${name}`">{{ name }}</RouterLink>
             <template #card><ProjectHoverCard :name="name" /></template>
           </IuHoverCard>
+          <span v-if="name !== session.project && extraBranch[name]" class="session-side__mono">{{
+            extraBranch[name]
+          }}</span>
           <span class="session-side__grow" />
           <span v-if="folderPath(name)" class="session-side__acts">
             <IuButton
@@ -365,7 +398,7 @@ function addTag(e: KeyboardEvent) {
           </IuHoverCard>
         </div>
         <BranchChip :session="session" @changes="emit('changes')">
-          <template #trigger="{ toggle, open, label, chipLabel, status, changedCount }">
+          <template #trigger="{ toggle, open, label, place, chipLabel, status, changedCount }">
             <div class="session-side__row" aria-label="Branch">
               <IuHoverCard placement="right-start" :label="`Branch ${label}`" :width="280">
                 <button
@@ -378,7 +411,7 @@ function addTag(e: KeyboardEvent) {
                   @click="toggle"
                 >
                   <IuIcon name="gitBranch" :size="14" />
-                  <span>{{ label }}</span>
+                  <span>{{ place }}</span>
                 </button>
                 <template #card>
                   <BranchStatusCard

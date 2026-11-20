@@ -36,6 +36,7 @@ import NativeControls from './NativeControls.vue'
 import { effortChoices, asEffort, pickerExtras } from './effort'
 import ComposerProjects from './ComposerProjects.vue'
 import ComposerWhere from './ComposerWhere.vue'
+import { folderName, placeLabel } from './place'
 import Murmuration from './Murmuration.vue'
 import { initialProjects, rememberProject } from './lastProject'
 import { lastRuntime, rememberRuntime } from './lastRuntime'
@@ -332,6 +333,17 @@ function useNewWorktree() {
   form.worktree = true
   modeAnnouncement.value = 'Running in a new worktree'
 }
+const projectLabel = computed(
+  () => store.projects.value.find(p => p.name === form.project)?.title || form.project || '',
+)
+function runningInCheckout(): string {
+  const tree = worktreeInfo.value?.worktrees.find(w => w.main)
+  const place = placeLabel(
+    tree?.branch ?? worktreeInfo.value?.mainBranch,
+    tree ? folderName(tree.path) : projectLabel.value,
+  )
+  return place ? `Running in ${place}` : 'Running in the checkout'
+}
 function currentProject() {
   return projectDefault.value
 }
@@ -390,7 +402,7 @@ function toggleWorktree() {
   form.worktree = !!form.existing || !form.worktree
   form.existing = null
   if (!form.worktree) form.branch = ''
-  modeAnnouncement.value = form.worktree ? 'Running in a new worktree' : 'Running in this checkout'
+  modeAnnouncement.value = form.worktree ? 'Running in a new worktree' : runningInCheckout()
 }
 let withdrawWhere: (() => void) | undefined
 onMounted(() => {
@@ -550,6 +562,7 @@ defineExpose({ focus })
         v-model:open="whereOpen"
         :prompt="form.prompt"
         :recent-prefixes="recentPrefixes"
+        :project="projectLabel"
         :shortcut="whereKeys"
         :disabled="starting || loadingDefaults"
       />
