@@ -60,11 +60,7 @@ function setDoc(next: JsonObject) {
       </template>
     </IuTabs>
     <template v-if="kind === 'mcp'">
-      <McpForm
-        v-if="active === 'form'"
-        :model-value="doc"
-        @update:model-value="setDoc"
-      />
+      <McpForm v-if="active === 'form'" :model-value="doc" @update:model-value="setDoc" />
       <IuTextarea v-else v-model="text" label="Spec (JSON)" mono :rows="12" />
     </template>
     <IuCallout v-if="parseError" intent="danger" variant="inline" live>

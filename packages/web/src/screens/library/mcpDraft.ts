@@ -53,7 +53,8 @@ export async function attachMcpOAuth(
     found = await detect(urlOf(doc))
   } catch (e) {
     return unchanged({
-      warning: e instanceof Error ? e.message : 'Could not check whether this server needs sign-in.',
+      warning:
+        e instanceof Error ? e.message : 'Could not check whether this server needs sign-in.',
     })
   }
   if (!found.oauth) return unchanged()

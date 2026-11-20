@@ -121,7 +121,4 @@ function setType(next: string) {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
-.mcp-form :deep(.iu-field__textarea) {
-  min-height: 2.6em;
-}
 </style>
