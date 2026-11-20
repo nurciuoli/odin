@@ -107,6 +107,14 @@ export interface SessionHandle {
   close(): Promise<void>;
 }
 
+/** One attachment recovered from harness history, without putting the bytes on the transcript. */
+export interface AttachmentContent {
+  name: string;
+  mediaType: string;
+  data: string;
+  encoding: "base64" | "utf8";
+}
+
 /** What the harness knows about a stored session (including ones Odin didn't start). */
 export interface HarnessSessionInfo {
   sessionId: string;
@@ -142,6 +150,11 @@ export interface Harness {
   info(sessionId: string, projectPath?: string): Promise<HarnessSessionInfo | null>;
   /** The stored conversation, mapped to transcript entries (tool results attached to their calls). */
   messages(sessionId: string, projectPath?: string): Promise<TranscriptEntry[]>;
+  /**
+   * Bytes for one attachment on a stored user entry. `encoding` is `base64` for images and `utf8` for text.
+   * Null when this driver has no copy. Must not read paths outside that session's own history.
+   */
+  readAttachment?(sessionId: string, entryId: string, index: number, projectPath?: string): Promise<AttachmentContent | null>;
   /** Read-only child history; must validate the child belongs to this parent. Never starts/resumes a turn. */
   taskMessages?(sessionId: string, task: TaskActivity, projectPath?: string): Promise<TaskHistory>;
   /** Complete native measurements for an imported session; null means unavailable, not an empty history. */

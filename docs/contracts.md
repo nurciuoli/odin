@@ -537,6 +537,11 @@ AppSettings.defaultWorktree`.
 - Session `launch_config` stores selected library MCP IDs only, never resolved environment/header secrets.
   Start, resume and fork resolve those IDs using current library configuration. Missing/broken selections fail
   explicitly rather than silently removing tools; historical sessions with no recorded selection remain supported.
+- `GET /api/sessions/:id/attachments/:entryId/:index` returns one user attachment for an in-app preview.
+  Images are `image/png`, `image/jpeg`, `image/gif` or `image/webp`. Every other type is `text/plain` with
+  `nosniff`, so HTML and SVG cannot run as a page. 404 when that session has no copy of the bytes. The transcript
+  itself stays names and media types. Claude, Grok and Codex read the bytes back from their own history; a turn
+  Odin just sent is also remembered until the process exits.
 - Messages allow at most 10 attachments, 5 MiB decoded per file, 20 MiB decoded total. Session-message JSON has
   a separate 32 MiB transport ceiling (including escaping/base64); text is bounded at 1 MiB. Start, follow-up,
   fork, queue edits and Send now use the same validation. Unsupported harness attachments are rejected before dispatch.

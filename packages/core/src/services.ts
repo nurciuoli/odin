@@ -130,6 +130,11 @@ export interface SessionsService extends Closeable {
   detail(id: string): Promise<SessionDetail | null>;
   /** Looks up a task in this parent's transcript before fetching read-only child history. */
   taskMessages(id: string, taskKey: string): Promise<TaskHistory>;
+  /**
+   * One attachment from a user turn, for an in-app preview. Null when the bytes were not kept.
+   * 404 when the session is unknown.
+   */
+  readAttachment(id: string, entryId: string, index: number): Promise<{ mediaType: string; disposition: string; body: Buffer } | null>;
   /** Plans the launch (services.launch), makes the worktree, starts the harness, returns once the record exists. */
   start(req: StartSessionRequest): Promise<Session>;
   /** Sends a message; resumes the harness session first when no live handle exists (external sessions too). */
