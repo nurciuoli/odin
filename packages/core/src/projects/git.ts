@@ -77,23 +77,53 @@ export async function statusPaths(path: string): Promise<string[]> {
   return parseStatusZ(await git(path, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]));
 }
 
+/** Names of the repo's remotes. */
+export async function listRemotes(path: string): Promise<string[]> {
+  return (await git(path, ["remote"]).catch(() => "")).split("\n").map((s) => s.trim()).filter(Boolean);
+}
+
+/**
+ * The remote a repo's work is based on: the upstream remote of `branch` (usually the default branch) when set,
+ * else `origin`, else the only remote, else null.
+ */
+export async function baseRemote(path: string, branch?: string | null): Promise<string | null> {
+  const remotes = await listRemotes(path);
+  if (!remotes.length) return null;
+  if (branch) {
+    const configured = (await git(path, ["config", "--get", `branch.${branch}.remote`]).catch(() => "")).trim();
+    if (configured && remotes.includes(configured)) return configured;
+  }
+  if (remotes.includes("origin")) return "origin";
+  return remotes.length === 1 ? remotes[0]! : null;
+}
+
+/** Where `git push -u` for `branch` goes: its pushRemote, `remote.pushDefault`, its upstream remote, else the base remote. */
+export async function pushRemote(path: string, branch: string, defaultBranch?: string | null): Promise<string | null> {
+  const remotes = await listRemotes(path);
+  for (const key of [`branch.${branch}.pushRemote`, "remote.pushDefault", `branch.${branch}.remote`]) {
+    const v = (await git(path, ["config", "--get", key]).catch(() => "")).trim();
+    if (v && remotes.includes(v)) return v;
+  }
+  return baseRemote(path, defaultBranch ?? branch);
+}
+
 export const EMPTY_GIT: GitState = { branch: null, headSha: null, dirty: false, ahead: 0, behind: 0 };
 
-/** Branch, head, dirty, and ahead/behind origin/<defaultBranch>, plus the dirty paths. Not a repo: empty state. */
+/** Branch, head, dirty, and ahead/behind <base remote>/<defaultBranch>, plus the dirty paths. Not a repo: empty state. */
 export async function readGitState(path: string, defaultBranch: string): Promise<{ state: GitState; dirtyPaths: string[] }> {
   if (!isGitRepo(path)) return { state: { ...EMPTY_GIT }, dirtyPaths: [] };
-  const [branch, head, dirtyPaths, remotes] = await Promise.all([
+  const [branch, head, dirtyPaths, remote] = await Promise.all([
     git(path, ["symbolic-ref", "--short", "-q", "HEAD"]).catch(() => ""),
     git(path, ["rev-parse", "--verify", "--quiet", "HEAD"]).catch(() => ""),
     statusPaths(path).catch(() => [] as string[]),
-    git(path, ["remote"]).catch(() => ""),
+    baseRemote(path, defaultBranch),
   ]);
   let ahead = 0;
   let behind = 0;
   const local = `refs/heads/${defaultBranch}`;
-  const remote = `refs/remotes/origin/${defaultBranch}`;
-  if (remotes.split("\n").map((s) => s.trim()).includes("origin") && (await refExists(path, local)) && (await refExists(path, remote))) {
-    const counts = (await git(path, ["rev-list", "--left-right", "--count", `${local}...${remote}`]).catch(() => "0 0")).trim().split(/\s+/);
+  const remoteRef = `refs/remotes/${remote}/${defaultBranch}`;
+  if (remote && (await refExists(path, local)) && (await refExists(path, remoteRef))) {
+    const counts = (await git(path, ["rev-list", "--left-right", "--count", `${local}...${remoteRef}`]).catch(() => "0 0")).trim().split(/\s+/);
     ahead = Number(counts[0]) || 0;
     behind = Number(counts[1]) || 0;
   }
@@ -113,8 +143,11 @@ export function repoFromRemoteUrl(url: string): string | null {
   return m ? `${m[1]}/${m[2]}` : null;
 }
 
-export async function originRepo(path: string): Promise<string | null> {
-  const url = (await git(path, ["remote", "get-url", "origin"]).catch(() => "")).trim();
+/** `owner/name` of the base remote (see baseRemote), else null. */
+export async function originRepo(path: string, defaultBranch?: string | null): Promise<string | null> {
+  const remote = await baseRemote(path, defaultBranch);
+  if (!remote) return null;
+  const url = (await git(path, ["remote", "get-url", remote]).catch(() => "")).trim();
   return url ? repoFromRemoteUrl(url) : null;
 }
 
@@ -142,9 +175,10 @@ export async function addRemote(path: string, name: string, url: string): Promis
   await git(path, ["remote", "add", name, url]);
 }
 
-/** `git push -u origin <branch>` with the user's own git credentials. */
+/** `git push -u <remote> <branch>` with the user's own git credentials; the remote comes from pushRemote. */
 export async function pushUpstream(path: string, branch: string): Promise<void> {
-  await git(path, ["push", "--quiet", "-u", "origin", branch], PUSH_TIMEOUT_MS);
+  const remote = (await pushRemote(path, branch)) ?? "origin";
+  await git(path, ["push", "--quiet", "-u", remote, branch], PUSH_TIMEOUT_MS);
 }
 
 // ── branches and worktrees (read-only) ───────────────────────────────────────
@@ -189,9 +223,10 @@ export async function listWorktrees(path: string): Promise<WorktreeEntry[]> {
   return parseWorktreeList(await git(path, ["worktree", "list", "--porcelain"]));
 }
 
-/** origin/<default> when it exists, else <default>, else null. */
+/** <base remote>/<default> when it exists, else <default>, else null. */
 export async function defaultBase(path: string, defaultBranch: string): Promise<string | null> {
-  if (await refExists(path, `refs/remotes/origin/${defaultBranch}`)) return `refs/remotes/origin/${defaultBranch}`;
+  const remote = await baseRemote(path, defaultBranch);
+  if (remote && (await refExists(path, `refs/remotes/${remote}/${defaultBranch}`))) return `refs/remotes/${remote}/${defaultBranch}`;
   if (await refExists(path, `refs/heads/${defaultBranch}`)) return `refs/heads/${defaultBranch}`;
   return null;
 }

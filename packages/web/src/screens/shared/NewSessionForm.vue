@@ -8,6 +8,9 @@ import type {
   HarnessInfo,
   ModelInfo,
   PermissionMode,
+  ProjectBranch,
+  ProjectWorktree,
+  ProjectWorktrees,
   Session,
 } from '@odin/shared/api'
 import { findModel } from '@odin/shared/api'
@@ -22,13 +25,19 @@ import { IuComposer } from '@/components/Composer'
 import { IuIcon } from '@/components/Icon'
 import type { MenuItem } from '@/components/Menu'
 import { useToast } from '@/components/Toast'
-import { attachmentProblem, messageProblem, readAttachment } from '@/screens/session/attachments'
+import {
+  attachmentProblem,
+  chatAttachment,
+  messageProblem,
+  readAttachment,
+} from '@/screens/session/attachments'
 import ComposerChoice from './ComposerChoice.vue'
 import NativeControls from './NativeControls.vue'
 import { effortChoices, asEffort, pickerExtras } from './effort'
 import ComposerProjects from './ComposerProjects.vue'
 import ComposerWhere from './ComposerWhere.vue'
 import Murmuration from './Murmuration.vue'
+import { initialProjects, rememberProject } from './lastProject'
 import { lastRuntime, rememberRuntime } from './lastRuntime'
 import { harnessLabel, PERMISSION_MODE_LABELS } from './format'
 import {
@@ -203,8 +212,9 @@ watch(
   () => store.projects.value,
   list => {
     if (!props.project && !form.project) {
-      form.project = list.find(p => !p.missing)?.name ?? ''
-      form.projects = form.project ? [form.project] : []
+      const initial = initialProjects(list.filter(p => !p.missing).map(p => p.name))
+      form.project = initial?.project ?? ''
+      form.projects = initial?.projects ?? []
     }
   },
   { immediate: true },
@@ -266,6 +276,62 @@ const whereKeys = keyLabel(WHERE_KEYS)
 // The chosen project's own worktree default and recent branch prefixes, loaded when the project changes.
 const projectDefault = ref<{ defaultWorktree?: boolean } | null>(null)
 const recentPrefixes = ref<string[]>([])
+const branchList = ref<ProjectBranch[]>([])
+// Remote branches (`origin/x`) with no local `x`
+const remoteList = ref<string[]>([])
+// The project's checkout and worktrees, for the where picker and the shared-folder notice. Refreshed when the project
+// changes, when the picker opens and (debounced) when git or a session changes: never polled.
+const worktreeInfo = ref<ProjectWorktrees | null>(null)
+let worktreeRequest = 0
+async function refreshWorktrees() {
+  const name = form.project
+  const request = ++worktreeRequest
+  if (!name) {
+    worktreeInfo.value = null
+    return
+  }
+  try {
+    const next = await api.listProjectWorktrees(name)
+    if (request === worktreeRequest) worktreeInfo.value = next
+  } catch {
+    // not a repo or unreachable: the picker falls back to the plain labels
+    if (request === worktreeRequest) worktreeInfo.value = null
+  }
+}
+let refreshTimer: ReturnType<typeof setTimeout> | undefined
+function refreshSoon() {
+  clearTimeout(refreshTimer)
+  refreshTimer = setTimeout(() => void refreshWorktrees(), 400)
+}
+const stopEvents = api.subscribe(
+  e => {
+    if (e.type === 'git.changed' || e.type === 'session.updated' || e.type === 'session.removed')
+      refreshSoon()
+  },
+  () => void refreshWorktrees(),
+)
+onBeforeUnmount(() => {
+  stopEvents()
+  clearTimeout(refreshTimer)
+})
+watch(whereOpen, isOpen => {
+  if (isOpen) void refreshWorktrees()
+})
+// The place the session would share: the checkout or an existing worktree (a branch checked out elsewhere is that one).
+const sharedPlace = computed<ProjectWorktree | null>(() => {
+  const list = worktreeInfo.value?.worktrees
+  if (!list) return null
+  const where = form.existing
+  if (where?.kind === 'worktree') return list.find(w => w.path === where.path) ?? null
+  if (where?.kind === 'branch') return null
+  return form.worktree ? null : (list.find(w => w.main) ?? null)
+})
+const runningHere = computed(() => sharedPlace.value?.sessions.filter(x => x.running) ?? [])
+function useNewWorktree() {
+  form.existing = null
+  form.worktree = true
+  modeAnnouncement.value = 'Running in a new worktree'
+}
 function currentProject() {
   return projectDefault.value
 }
@@ -276,13 +342,28 @@ watch(
     const request = ++projectRequest
     projectDefault.value = null
     recentPrefixes.value = []
+    branchList.value = []
+    remoteList.value = []
+    worktreeInfo.value = null
+    form.existing = null
     if (!name) return
-    const [detail, branches] = await Promise.allSettled([
+    void refreshWorktrees()
+    const [detail, branches, remotes] = await Promise.allSettled([
       api.getProject(name),
       api.listProjectBranches(name),
+      api.gitBranches({ kind: 'project', id: name }),
     ])
     if (request !== projectRequest) return
-    if (branches.status === 'fulfilled') recentPrefixes.value = recentBranchPrefixes(branches.value)
+    if (branches.status === 'fulfilled') {
+      recentPrefixes.value = recentBranchPrefixes(branches.value)
+      branchList.value = branches.value
+      if (remotes.status === 'fulfilled') {
+        const local = new Set(branches.value.map(b => b.name))
+        remoteList.value = remotes.value.branches
+          .filter(b => b.remote && !local.has(b.name.slice(b.name.indexOf('/') + 1)))
+          .map(b => b.name)
+      }
+    }
     if (detail.status !== 'fulfilled') return
     const before = worktreeDefault(null, settings.value)
     projectDefault.value = { defaultWorktree: detail.value.settings.defaultWorktree }
@@ -296,6 +377,7 @@ watch(
   () => props.branch,
   branch => {
     if (!branch) return
+    form.existing = null
     form.worktree = true
     form.branch = branch
     whereOpen.value = true
@@ -304,7 +386,9 @@ watch(
 )
 function toggleWorktree() {
   if (starting.value || loadingDefaults.value) return
-  form.worktree = !form.worktree
+  // checkout <-> new worktree; an existing worktree or branch goes to a new worktree
+  form.worktree = !!form.existing || !form.worktree
+  form.existing = null
   if (!form.worktree) form.branch = ''
   modeAnnouncement.value = form.worktree ? 'Running in a new worktree' : 'Running in this checkout'
 }
@@ -351,16 +435,7 @@ async function onAttach(list: File[]) {
     }
     const id = crypto.randomUUID()
     payloads.set(id, result.attachment)
-    files.value = [
-      ...files.value,
-      {
-        id,
-        name: file.name,
-        size: file.size,
-        kind: result.attachment.mediaType.startsWith('image/') ? 'image' : 'file',
-        status: 'ready',
-      },
-    ]
+    files.value = [...files.value, chatAttachment(id, file, result.attachment)]
   }
 }
 
@@ -396,12 +471,15 @@ async function start(
       model: form.model,
       permissionMode: form.permissionMode,
     })
+    if (form.project) rememberProject(form.project, form.projects)
     for (const a of payload.attachments) payloads.delete(a.id)
     drafts.clear(DRAFT_KEY)
     // nothing is remembered between sends: the next composer starts from the default again
     form.worktree = worktreeDefault(currentProject(), settings.value)
     form.branch = ''
+    form.existing = null
     whereOpen.value = false
+    void refreshWorktrees()
     emit('started', session, background)
     if (background) {
       toast({
@@ -465,6 +543,10 @@ defineExpose({ focus })
       <ComposerWhere
         v-model:worktree="form.worktree"
         v-model:branch="form.branch"
+        v-model:existing="form.existing"
+        :info="worktreeInfo"
+        :branches="branchList"
+        :remote-branches="remoteList"
         v-model:open="whereOpen"
         :prompt="form.prompt"
         :recent-prefixes="recentPrefixes"
@@ -472,6 +554,22 @@ defineExpose({ focus })
         :disabled="starting || loadingDefaults"
       />
     </div>
+    <p class="new-session__shared" role="status" aria-live="polite">
+      <template v-if="runningHere.length">
+        {{ runningHere.length }} {{ runningHere.length === 1 ? 'session' : 'sessions' }} already
+        running here
+        <span aria-hidden="true">·</span>
+        <router-link
+          class="new-session__shared-link"
+          :to="{ name: 'session', params: { id: runningHere[0]!.id } }"
+          >{{ runningHere[0]!.title }}</router-link
+        >
+        <span aria-hidden="true">·</span>
+        <button type="button" class="new-session__shared-use" @click="useNewWorktree">
+          Use a new worktree
+        </button>
+      </template>
+    </p>
     <IuComposer
       v-model="form.prompt"
       v-model:attachments="files"
@@ -546,6 +644,29 @@ defineExpose({ focus })
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+}
+.new-session__shared {
+  margin: 0;
+  font-size: var(--iu-font-size-12);
+  color: var(--iu-text-muted);
+}
+.new-session__shared:empty {
+  display: none;
+}
+.new-session__shared-link,
+.new-session__shared-use {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--iu-text-2);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.new-session__shared-link:focus-visible,
+.new-session__shared-use:focus-visible {
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
 }
 .new-session__error {
   margin: 0;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { acpMcpServers, authMethod, canonicalModel, costUsd, grokPermission, grokRules, historyEntries, mergeModels, modelsFrom, optionFor, permissionRequest, slashCommands, tasksFromUpdates, textOf, toolCallInput, toolCallName, usageFrom } from "./map.ts";
+import { acpMcpServers, authMethod, canonicalModel, costUsd, grokPermission, grokRules, historyAttachment, historyEntries, mergeModels, modelsFrom, optionFor, permissionRequest, slashCommands, tasksFromUpdates, textOf, toolCallInput, toolCallName, usageFrom } from "./map.ts";
 
 test("permission modes use Grok session ids and auto or always-approve flags", () => {
   assert.deepEqual(grokPermission("default"), { modeId: "default", autoMode: false, yoloMode: false });
@@ -128,7 +128,21 @@ test("history keeps reasoning, web search, attachments and a dropped-image notic
       { name: "image-1.png", mediaType: "image/png" },
       { name: "notes.txt", mediaType: "text/plain" },
     ]);
+    assert.equal(entries[3].id, "grok-2");
   }
+  const lines = [
+    { type: "reasoning" },
+    { type: "backend_tool_call" },
+    {
+      type: "user",
+      content: [
+        { type: "text", text: "<image_files>\n1. C:\\sessions\\assets\\image-1.png\n</image_files>\n\n<user_query>\nWhat color is <attachment name=\"red.png\" media-type=\"image/png\" /> it?\n</user_query>\n\n<system-reminder><attached_files>\n<file_contents path=\"/odin-attachment/notes.txt\" isFullFile=\"true\">\n1→PELICAN\n</file_contents>\n</attached_files></system-reminder>" },
+        { type: "image", url: "data:image/png;base64,AAAA" },
+      ],
+    },
+  ];
+  assert.deepEqual(historyAttachment(lines, "grok-2", 0), { name: "image-1.png", mediaType: "image/png", data: "AAAA", encoding: "base64" });
+  assert.deepEqual(historyAttachment(lines, "grok-2", 1), { name: "notes.txt", mediaType: "text/plain", data: "1→PELICAN", encoding: "utf8" });
 });
 
 

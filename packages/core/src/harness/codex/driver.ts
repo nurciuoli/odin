@@ -32,6 +32,7 @@ import {
   EventQueue,
   itemEntry,
   policy,
+  userImageAt,
   userInput,
 } from "./map.ts";
 import {
@@ -804,6 +805,27 @@ export function createCodexHarness(options: CodexOptions): Harness {
           if (history) return history.transcript;
         }
         throw error;
+      }
+    },
+    async readAttachment(session, entryId, index) {
+      if (!mappedId(session)) return null;
+      const fromItem = (item: Wire | undefined) => item && item.type === "userMessage" && item.id === entryId ? userImageAt(item, index) : null;
+      try {
+        return await usingSession(session, async (rpc) => {
+          let cursor: string | null = null;
+          do {
+            const page: Wire = await rpc.request("thread/items/list", { threadId: nativeId(session), cursor, sortDirection: "asc", limit: 100 });
+            for (const row of page.data ?? []) {
+              const found = fromItem(row.item);
+              if (found) return found;
+            }
+            cursor = page.nextCursor ?? null;
+          } while (cursor);
+          return null;
+        });
+      } catch {
+        // A preview is optional. A stopped app-server or an imported rollout without bytes is a miss, not a failed request.
+        return null;
       }
     },
     async taskMessages(session, task) {

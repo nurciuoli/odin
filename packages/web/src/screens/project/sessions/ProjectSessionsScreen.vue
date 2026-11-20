@@ -16,6 +16,7 @@ import { useResource } from '@/screens/shared/useResource'
 import { useProject } from '../useProject'
 import BranchesSection from './BranchesSection.vue'
 
+const props = withDefaults(defineProps<{ compact?: boolean }>(), { compact: false })
 const api = useApi()
 const live = useSessions()
 const { toast } = useToast()
@@ -91,7 +92,13 @@ async function findTerminalSessions() {
             : 'Start a chat, or find the ones you ran from a terminal.'
         "
       />
-      <SessionsTable v-else :sessions="sessions" :other-projects-of="name" @changed="res.load()" />
+      <SessionsTable
+        v-else
+        :sessions="sessions"
+        :other-projects-of="name"
+        :compact="props.compact"
+        @changed="res.load()"
+      />
     </section>
 
     <BranchesSection :project="name" :trunk="detail.settings.defaultBranch" :sessions="sessions" />

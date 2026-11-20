@@ -23,6 +23,42 @@ test("HTTP session launch, queue edits and forks accept attachments above the fo
   } finally { await app.close(); }
 });
 
+test("GET /api/sessions/:id/attachments/:entry/:index returns the file from that turn", async () => {
+  const s = setup();
+  const app = await serve(s);
+  try {
+    const started = await app.post("/api/sessions", {
+      project: PROJECT,
+      prompt: {
+        text: "see",
+        attachments: [
+          { name: "pic.png", mediaType: "image/png", data: Buffer.from("png-bytes").toString("base64") },
+          { name: "notes.md", mediaType: "text/markdown", data: "# hello" },
+        ],
+      },
+    });
+    assert.equal(started.status, 201);
+    const session = await started.json();
+    await waitFor(() => s.sessions.get(session.id)?.state === "idle");
+    const detail = await (await app.api(`/api/sessions/${session.id}`)).json();
+    const user = detail.transcript.find((entry: { kind: string }) => entry.kind === "user");
+    assert.ok(user);
+    const image = await app.api(`/api/sessions/${session.id}/attachments/${encodeURIComponent(user.id)}/0`);
+    assert.equal(image.status, 200);
+    assert.equal(image.headers.get("content-type"), "image/png");
+    assert.equal(image.headers.get("x-content-type-options"), "nosniff");
+    assert.equal(Buffer.from(await image.arrayBuffer()).toString(), "png-bytes");
+    const note = await app.api(`/api/sessions/${session.id}/attachments/${encodeURIComponent(user.id)}/1`);
+    assert.equal(note.status, 200);
+    assert.equal(note.headers.get("content-type"), "text/plain; charset=utf-8");
+    assert.equal(await note.text(), "# hello");
+    assert.equal((await app.api(`/api/sessions/${session.id}/attachments/${encodeURIComponent(user.id)}/2`)).status, 404);
+    assert.equal((await app.api(`/api/sessions/${session.id}/attachments/${encodeURIComponent(user.id)}/no`)).status, 400);
+  } finally {
+    await app.close();
+  }
+});
+
 test("POST /api/sessions → 201, SSE session.updated + session.event, detail with transcript", async () => {
   const s = setup();
   const app = await serve(s);

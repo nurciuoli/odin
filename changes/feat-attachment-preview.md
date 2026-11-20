@@ -1,0 +1,1 @@
+- Images and other files attached to a chat message open in a preview. Images show a thumbnail; other files open as text.

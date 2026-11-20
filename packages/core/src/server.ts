@@ -37,6 +37,7 @@ import { getToolPathSource, setToolPathSource } from "./tools/resolve.ts";
 import { createFilesService } from "./files/service.ts";
 import { createCheckpointsService } from "./checkpoints/service.ts";
 import { createGitService } from "./git/service.ts";
+import { createGitTracker } from "./git/track.ts";
 import { createNotebooksService } from "./notebooks/service.ts";
 
 export interface AppOptions {
@@ -109,10 +110,12 @@ export function createApp(options: AppOptions): App {
   services.ingest = createIngestService(deps, services);
   services.metrics = createMetricsService(deps, services);
   services.checkpoints = createCheckpointsService(deps, services);
-  services.git = createGitService(deps, services);
+  const gitTracker = createGitTracker(deps, services);
+  services.git = createGitService(deps, services, gitTracker);
   services.sessions = createSessionsService(deps, services);
   services.files = createFilesService(deps, services);
   services.notebooks = createNotebooksService(deps, services);
+  gitTracker.start();
 
   const router = apiRouter(deps, services);
   const hub = new SseHub(bus, options.heartbeatMs);
@@ -158,6 +161,7 @@ export function createApp(options: AppOptions): App {
       new Promise((resolve) => server.listen(config.port, config.host, () => resolve(server.address() as AddressInfo))),
     async close() {
       hub.close();
+      gitTracker.close();
       for (const s of [services.sessions, services.notebooks, services.metrics, services.library, services.sync, services.projects]) await s.close();
       for (const harness of Object.values(deps.harnesses)) await harness.close?.();
       await new Promise<void>((resolve) => server.close(() => resolve()));

@@ -1,0 +1,1 @@
+- A session's branch now follows its folder: it updates after a checkout in Odin, a branch switch by the agent or in a terminal, the end of a turn, and hook events that report a different branch. Every session and project sharing a folder refreshes its git view together.

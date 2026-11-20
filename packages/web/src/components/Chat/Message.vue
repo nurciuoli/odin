@@ -331,6 +331,7 @@ async function onCopy() {
 .iu-message__files {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-start;
   gap: 6px;
   min-width: 0;
 }

@@ -9,7 +9,7 @@ import type {
 import { AUTO_STASH_PREFIX } from "@odin/shared/git";
 import { validBranchName } from "../git-policy.ts";
 import { HttpError } from "../http/util.ts";
-import { parseWorktreeList } from "../projects/git.ts";
+import { parseWorktreeList, pushRemote } from "../projects/git.ts";
 import type { Deps, GitService, Services } from "../services.ts";
 import {
   addedFileDiff, BRANCH_FORMAT, hunkPatch, LOG_FORMAT, parseBlamePorcelain, parseBranches, parseDiff, parseLog, parseNumstatZ,
@@ -17,6 +17,7 @@ import {
 } from "./parse.ts";
 import { classify, gitConflict, gitOut, NETWORK_TIMEOUT_MS, runGit } from "./run.ts";
 import { loadActions, runAction, runTrigger } from "./actions.ts";
+import { createGitTracker, type GitTracker } from "./track.ts";
 
 const MAX_UNTRACKED_BYTES = 1024 * 1024;
 const LOG_LIMIT_MAX = 200;
@@ -40,7 +41,8 @@ function validLogRef(ref: string): boolean {
 }
 const STASH_RE = /^stash@\{\d{1,4}\}$/;
 
-export function createGitService(deps: Deps, services: Services): GitService {
+export function createGitService(deps: Deps, services: Services, tracker?: GitTracker): GitService {
+  const track = tracker ?? createGitTracker(deps, services, { watching: false });
   const queues = new Map<string, Promise<unknown>>();
 
   function dir(t: GitTarget): string {
@@ -68,7 +70,8 @@ export function createGitService(deps: Deps, services: Services): GitService {
       return await next.catch((err) => { throw classify(err); });
     } finally {
       if (queues.get(cwd) === next) queues.delete(cwd);
-      deps.bus.emit({ type: "git.changed", target: { kind: t.kind, id: t.id } });
+      // Everything sharing this folder refreshes, not only the target that wrote; the stored branch follows too.
+      await track.changed(cwd, { kind: t.kind, id: t.id });
     }
   }
   async function read<T>(t: GitTarget, fn: (cwd: string) => Promise<T>): Promise<T> {
@@ -346,7 +349,7 @@ export function createGitService(deps: Deps, services: Services): GitService {
       let pushed = before.ahead;
       if (!before.upstream || before.upstreamGone) {
         if (req?.setUpstream === false) throw gitConflict("no-upstream", "This branch has no upstream yet.");
-        args.push("-u", "origin", before.branch);
+        args.push("-u", (await pushRemote(cwd, before.branch)) ?? "origin", before.branch);
         pushed = Number((await gitOut(cwd, ["rev-list", "--count", "HEAD", "--not", "--remotes"]).catch(() => "0")).trim()) || 0;
       }
       let warned: GitAction[] = [];

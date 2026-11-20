@@ -45,7 +45,7 @@ import {
   PERMISSION_MODE_LABELS,
 } from '@/screens/shared/format'
 import { useToast } from '@/components/Toast'
-import { attachmentProblem, messageProblem, readAttachment } from './attachments'
+import { attachmentProblem, chatAttachment, messageProblem, readAttachment } from './attachments'
 import { composerMode } from './sessionView'
 import { rememberRuntime } from '@/screens/shared/lastRuntime'
 import {
@@ -599,16 +599,7 @@ async function onAttach(list: File[]) {
     }
     const id = crypto.randomUUID()
     payloads.set(id, r.attachment)
-    files.value = [
-      ...files.value,
-      {
-        id,
-        name: file.name,
-        size: file.size,
-        kind: r.attachment.mediaType.startsWith('image/') ? 'image' : 'file',
-        status: 'ready',
-      },
-    ]
+    files.value = [...files.value, chatAttachment(id, file, r.attachment)]
   }
 }
 

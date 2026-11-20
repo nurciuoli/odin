@@ -13,7 +13,7 @@ import type { ModelInfo, PermissionAnswer, PermissionMode, UserMessage } from "@
 import { taskKey, type HarnessEvent, type SlashCommand, type TaskActivity, type TranscriptEntry } from "@odin/shared/harness";
 import type { Harness, HarnessSessionInfo, SessionHandle, StartOptions } from "../types.ts";
 import { startHostBridge, type HostBridge } from "./bridge.ts";
-import { listSessions, readMessages, readOwnedChild, sessionInfo } from "./history.ts";
+import { listSessions, readAttachment as attachmentFromHistory, readMessages, readOwnedChild, sessionInfo } from "./history.ts";
 import {
   EventQueue,
   GROK_MODES,
@@ -614,6 +614,10 @@ export function createGrokHarness(options: GrokOptions): Harness {
     async messages(sessionId, projectPath): Promise<TranscriptEntry[]> {
       if (!projectPath) return [];
       return readMessages(historyRoot, projectPath, nativeOf(sessionId));
+    },
+    async readAttachment(sessionId, entryId, index, projectPath) {
+      if (!projectPath) return null;
+      return attachmentFromHistory(historyRoot, projectPath, nativeOf(sessionId), entryId, index);
     },
     async taskMessages(sessionId, task, projectPath) {
       if (task.kind !== "agent" || !task.childSessionId || !projectPath) return { status: "unavailable", reason: "No native child conversation is available" };

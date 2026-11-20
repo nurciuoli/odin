@@ -29,8 +29,10 @@ const props = withDefaults(
      * one) as links, instead of every project as text.
      */
     otherProjectsOf?: string
+    /** A narrow panel: session, state, cost and actions only, no minimum width. */
+    compact?: boolean
   }>(),
-  { loading: false, showProject: true, otherProjectsOf: undefined },
+  { loading: false, showProject: true, otherProjectsOf: undefined, compact: false },
 )
 const emit = defineEmits<{ changed: [] }>()
 
@@ -96,6 +98,8 @@ const columns = computed<Column<Row>[]>(() => {
     },
     { key: 'actions', header: '', width: '48px' },
   ]
+  if (props.compact)
+    return cols.filter(c => ['title', 'state', 'cost', 'actions'].includes(c.key as string))
   if (props.otherProjectsOf)
     return cols.map(c => (c.key === 'project' ? { ...c, header: 'Also in', sortable: false } : c))
   return props.showProject ? cols : cols.filter(c => c.key !== 'project')
@@ -215,7 +219,7 @@ async function confirm() {
       :rows="rows"
       :row-key="r => r.id"
       density="compact"
-      min-width="900px"
+      :min-width="compact ? undefined : '900px'"
       :loading="loading"
       @row-activate="r => router.push({ name: 'session', params: { id: r.id } })"
     >

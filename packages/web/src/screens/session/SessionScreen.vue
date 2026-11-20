@@ -774,7 +774,6 @@ function onDeleted() {
           @updated="setRecord"
           @forked="onForked"
           @deleted="onDeleted"
-          @changes="openChanges"
         >
           <template #actions>
             <IuButton size="sm" variant="ghost" :aria-pressed="filesOpen" @click="toggleFiles"
@@ -856,6 +855,7 @@ function onDeleted() {
               </template>
             </IuCallout>
             <SessionThread
+              :session-id="session.id"
               :checkpoints="checkpointsByMessage"
               @rewind="openRewind"
               :rows="rows"
@@ -975,6 +975,7 @@ function onDeleted() {
               @open-file="openFile"
               @open-artifact="openArtifact"
               @open-task="openTask"
+              @changes="openChanges"
             />
           </IuSidePanel>
         </div>

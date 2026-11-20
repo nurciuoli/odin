@@ -3,12 +3,17 @@
 // context, outputs, changes, the plan, background tasks and, last, the files this session read or changed.
 import { computed, ref, watchEffect } from 'vue'
 import type { Session, SessionDetail } from '@odin/shared/api'
+import type { GitTarget } from '@odin/shared/git'
 import { useApi } from '@/api'
 import { hasDesktop, openPath, type OpenTarget } from '@/app/desktop'
 import { IuBadge } from '@/components/Badge'
 import { IuButton } from '@/components/Button'
 import { IuHoverCard } from '@/components/HoverCard'
 import ProjectHoverCard from '@/app/hovercards/ProjectHoverCard.vue'
+import PullHoverCard from '@/app/hovercards/PullHoverCard.vue'
+import WorktreeHoverCard from '@/app/hovercards/WorktreeHoverCard.vue'
+import { PULL_STATE, pullTone } from '@/app/hovercards/pullState'
+import '@/app/hovercards/hovercards.css'
 import { IuIcon } from '@/components/Icon'
 import { IuFilePath } from '@/components/FilePath'
 import { IuMeter } from '@/components/Meter'
@@ -21,7 +26,10 @@ import { IuStatusDot } from '@/components/StatusDot'
 import { useToast } from '@/components/Toast'
 import type { Status } from '@/styles/status'
 import { harnessLabel } from '@/screens/shared/format'
+import BranchChip from '@/screens/git/BranchChip.vue'
 import { contextWindow } from './sessionView'
+import BranchStatusCard from './BranchStatusCard.vue'
+import { useRuntimeConfig } from './useRuntimeConfig'
 import TaskLanes from './TaskLanes.vue'
 import TaskStrip from './TaskStrip.vue'
 import { buildTaskTree, limitRows } from './taskTree'
@@ -54,9 +62,15 @@ const emit = defineEmits<{
   openFile: [path: string]
   openArtifact: [id: number, version: number]
   openTask: [id: string]
+  /** The branch switcher's "Commit first": show the Changes tab. */
+  changes: []
 }>()
 
 const api = useApi()
+const runtimeProject = computed(() => props.session.project)
+const runtimeHarness = computed(() => props.session.harness)
+const { mcp, skills } = useRuntimeConfig(runtimeProject, runtimeHarness)
+const gitTarget = computed<GitTarget>(() => ({ kind: 'session', id: props.session.id }))
 
 // Sessions that took this one over on another harness. Side threads and forks are left out.
 const continuations = ref<Session[]>([])
@@ -202,17 +216,17 @@ function folderPath(name: string): string | null {
   if (name === props.session.project) return workspacePath.value
   return projectInfo.value[name]?.path ?? null
 }
-const branchUrl = computed(() => {
+function branchUrl(branch: string): string | null {
   const repo = projectInfo.value[props.session.project]?.repo
-  const b = props.session.branch
-  return repo && b
-    ? `https://github.com/${repo}/tree/${encodeURIComponent(b).replace(/%2F/g, '/')}`
+  return repo
+    ? `https://github.com/${repo}/tree/${encodeURIComponent(branch).replace(/%2F/g, '/')}`
     : null
-})
-const prState = computed(() => {
-  const pr = props.session.pull
-  return pr ? (pr.merged ? 'merged' : pr.state) : ''
-})
+}
+// The glyph carries the state; the hover card names it and adds the detail.
+const prTone = computed(() => (props.session.pull ? pullTone(props.session.pull) : null))
+const worktree = computed(() =>
+  props.session.workspace.kind === 'worktree' ? props.session.workspace : null,
+)
 
 // ── tags ──
 const newTag = ref('')
@@ -245,17 +259,23 @@ function addTag(e: KeyboardEvent) {
           :key="name"
           class="session-side__row"
         >
-          <IuIcon name="folder" :size="14" />
+          <IuHoverCard
+            v-if="name === session.project && worktree"
+            placement="bottom-start"
+            label="Worktree"
+          >
+            <span class="session-side__glyph" tabindex="0" role="img" aria-label="Worktree">
+              <IuIcon name="folderTree" :size="14" class="hc__tone--worktree" />
+            </span>
+            <template #card
+              ><WorktreeHoverCard :project="name" :path="worktree.path" :branch="worktree.branch"
+            /></template>
+          </IuHoverCard>
+          <IuIcon v-else name="folder" :size="14" />
           <IuHoverCard placement="bottom-start" :label="`${name} overview`">
             <RouterLink class="session-side__link" :to="`/p/${name}`">{{ name }}</RouterLink>
             <template #card><ProjectHoverCard :name="name" /></template>
           </IuHoverCard>
-          <IuBadge
-            v-if="name === session.project && session.workspace.kind === 'worktree'"
-            variant="tag"
-            size="xs"
-            >worktree</IuBadge
-          >
           <span class="session-side__grow" />
           <span v-if="folderPath(name)" class="session-side__acts">
             <IuButton
@@ -281,46 +301,162 @@ function addTag(e: KeyboardEvent) {
             </IuButton>
           </span>
         </div>
-        <div v-if="session.branch" class="session-side__row" aria-label="Branch">
-          <IuIcon name="gitBranch" :size="14" />
-          <span class="session-side__mono session-side__grow">{{ session.branch }}</span>
+        <div v-if="mcp" class="session-side__row" role="group" :aria-label="`MCP, ${mcp.summary}`">
+          <IuIcon name="database" :size="14" />
+          <IuHoverCard placement="right-start" label="MCP servers" :width="280">
+            <span class="session-side__config">
+              <span>MCP</span>
+              <span class="session-side__trail">
+                <span class="session-side__dot" :data-health="mcp.health" aria-hidden="true" />
+                <span class="session-side__mono">{{ mcp.entries.length }}</span>
+              </span>
+            </span>
+            <template #card>
+              <div class="hc">
+                <header class="hc__head"><span class="hc__title">MCP servers</span></header>
+                <p class="hc__state">{{ mcp.summary }}</p>
+                <ul v-if="mcp.entries.length" class="hc__list">
+                  <li v-for="entry in mcp.entries" :key="entry.id">
+                    <span
+                      class="session-side__dot"
+                      :data-health="entry.ok ? 'ok' : 'warn'"
+                      aria-hidden="true"
+                    />
+                    <span class="hc__mono">{{ entry.name }}</span>
+                    <span class="hc__dim hc__li-title">{{ entry.detail }}</span>
+                  </li>
+                </ul>
+              </div>
+            </template>
+          </IuHoverCard>
+        </div>
+        <div
+          v-if="skills"
+          class="session-side__row"
+          role="group"
+          :aria-label="`Skills, ${skills.summary}`"
+        >
+          <IuIcon name="sparkle" :size="14" />
+          <IuHoverCard placement="right-start" label="Skills" :width="280">
+            <span class="session-side__config">
+              <span>Skills</span>
+              <span class="session-side__trail">
+                <span class="session-side__dot" :data-health="skills.health" aria-hidden="true" />
+                <span class="session-side__mono">{{ skills.entries.length }}</span>
+              </span>
+            </span>
+            <template #card>
+              <div class="hc">
+                <header class="hc__head"><span class="hc__title">Skills</span></header>
+                <p class="hc__state">{{ skills.summary }}</p>
+                <ul v-if="skills.entries.length" class="hc__list">
+                  <li v-for="entry in skills.entries" :key="entry.id">
+                    <span
+                      class="session-side__dot"
+                      :data-health="entry.ok ? 'ok' : 'warn'"
+                      aria-hidden="true"
+                    />
+                    <span class="hc__mono">{{ entry.name }}</span>
+                    <span class="hc__dim hc__li-title">{{ entry.detail }}</span>
+                  </li>
+                </ul>
+              </div>
+            </template>
+          </IuHoverCard>
+        </div>
+        <BranchChip :session="session" @changes="emit('changes')">
+          <template #trigger="{ toggle, open, label, chipLabel, status, changedCount }">
+            <div class="session-side__row" aria-label="Branch">
+              <IuHoverCard placement="right-start" :label="`Branch ${label}`" :width="280">
+                <button
+                  type="button"
+                  class="session-side__branch"
+                  data-branch-trigger
+                  :aria-label="chipLabel"
+                  aria-haspopup="dialog"
+                  :aria-expanded="open"
+                  @click="toggle"
+                >
+                  <IuIcon name="gitBranch" :size="14" />
+                  <span>{{ label }}</span>
+                </button>
+                <template #card>
+                  <BranchStatusCard
+                    v-if="status"
+                    :status="status"
+                    :changed="changedCount"
+                    :target="gitTarget"
+                  />
+                </template>
+              </IuHoverCard>
+              <span class="session-side__acts">
+                <IuButton
+                  variant="ghost"
+                  size="sm"
+                  icon-only
+                  aria-label="Copy branch name"
+                  :title="`Copy branch: ${label}`"
+                  @click="copy('branch', label)"
+                >
+                  <template #icon><IuIcon name="copy" :size="14" /></template>
+                </IuButton>
+                <IuButton
+                  v-if="branchUrl(label)"
+                  as="a"
+                  variant="ghost"
+                  size="sm"
+                  icon-only
+                  aria-label="Open branch on GitHub"
+                  title="Open on GitHub"
+                  :href="branchUrl(label)!"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <template #icon><IuIcon name="external" :size="14" /></template>
+                </IuButton>
+              </span>
+            </div>
+          </template>
+        </BranchChip>
+        <div v-if="session.pull && prTone" class="session-side__row" aria-label="Pull request">
+          <IuIcon :name="PULL_STATE[prTone].icon" :size="14" :class="`hc__tone--${prTone}`" />
+          <IuHoverCard placement="bottom-start" :label="`PR #${session.pull.number}`">
+            <a
+              class="session-side__link"
+              :href="session.pull.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              :aria-label="`PR #${session.pull.number}, ${PULL_STATE[prTone].label.toLowerCase()}`"
+              >PR #{{ session.pull.number }}</a
+            >
+            <template #card><PullHoverCard :pull="session.pull" :session="session" /></template>
+          </IuHoverCard>
+          <span class="session-side__grow" />
           <span class="session-side__acts">
             <IuButton
               variant="ghost"
               size="sm"
               icon-only
-              aria-label="Copy branch name"
-              :title="`Copy branch: ${session.branch}`"
-              @click="copy('branch', session.branch)"
+              aria-label="Copy pull request link"
+              :title="`Copy link: ${session.pull.url}`"
+              @click="copy('link', session.pull.url)"
             >
               <template #icon><IuIcon name="copy" :size="14" /></template>
             </IuButton>
             <IuButton
-              v-if="branchUrl"
               as="a"
               variant="ghost"
               size="sm"
               icon-only
-              aria-label="Open branch on GitHub"
+              aria-label="Open pull request on GitHub"
               title="Open on GitHub"
-              :href="branchUrl"
+              :href="session.pull.url"
               target="_blank"
               rel="noopener noreferrer"
             >
               <template #icon><IuIcon name="external" :size="14" /></template>
             </IuButton>
           </span>
-        </div>
-        <div v-if="session.pull" class="session-side__row" aria-label="Pull request">
-          <IuIcon name="gitPullRequest" :size="14" />
-          <a
-            class="session-side__link"
-            :href="session.pull.url"
-            target="_blank"
-            rel="noopener noreferrer"
-            >PR #{{ session.pull.number }}</a
-          >
-          <IuBadge size="xs">{{ prState }}</IuBadge>
         </div>
         <div v-if="session.origin === 'external'" class="session-side__row">
           <IuIcon name="terminal" :size="14" />
@@ -504,15 +640,6 @@ function addTag(e: KeyboardEvent) {
           >{{ files.length }} files, +{{ totals.added }} -{{ totals.removed }}</span
         >
       </summary>
-      <a
-        v-if="session.pull"
-        class="session-side__pr"
-        :href="session.pull.url"
-        target="_blank"
-        rel="noopener noreferrer"
-        >PR #{{ session.pull.number }} -
-        {{ session.pull.merged ? 'merged' : session.pull.state }}</a
-      >
       <div
         v-if="files.length"
         class="session-side__totals"
@@ -660,6 +787,10 @@ function addTag(e: KeyboardEvent) {
 </template>
 
 <style>
+.session-side__glyph {
+  display: inline-flex;
+  flex: none;
+}
 .session-side__summary {
   display: flex;
   flex-wrap: wrap;
@@ -730,6 +861,71 @@ details[open] > .session-side__summary .session-side__caret {
 .session-side__row > .iu-icon {
   flex: none;
   color: var(--iu-text-muted);
+}
+.session-side__config {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.session-side__trail {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  color: var(--iu-text);
+  font-variant-numeric: tabular-nums;
+}
+.session-side__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--iu-text-muted);
+  flex: none;
+}
+.session-side__dot[data-health='ok'] {
+  background: var(--iu-positive);
+}
+.session-side__dot[data-health='warn'] {
+  background: var(--iu-warning);
+}
+.session-side__branch {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.session-side__branch > .iu-icon {
+  flex: none;
+  color: var(--iu-text-muted);
+}
+.session-side__branch > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--iu-font-mono);
+  font-size: var(--iu-font-size-12);
+  color: var(--iu-text);
+}
+.session-side__branch:hover > span {
+  text-decoration: underline;
+  text-decoration-color: var(--iu-border);
+  text-underline-offset: 3px;
+}
+.session-side__branch:focus-visible {
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
+  border-radius: var(--iu-radius-sm);
 }
 .session-side__grow {
   flex: 1;
@@ -830,7 +1026,7 @@ details[open] > .session-side__summary .session-side__caret {
 }
 .session-side__toggle:focus-visible,
 .session-side__open:focus-visible,
-.session-side__pr:focus-visible {
+.session-side__glyph:focus-visible {
   outline: var(--iu-focus-ring);
   outline-offset: var(--iu-focus-offset);
   border-radius: var(--iu-radius-sm);
@@ -931,17 +1127,6 @@ details[open] > .session-side__summary .session-side__caret {
   margin: 0;
   font-family: var(--iu-font-mono);
   font-size: var(--iu-font-size-12);
-}
-.session-side__pr {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--iu-text-2);
-  font-size: var(--iu-font-size-12);
-  text-decoration: none;
-}
-.session-side__pr:hover {
-  color: var(--iu-text);
 }
 .session-side__link {
   min-width: 0;

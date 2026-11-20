@@ -243,6 +243,23 @@ describe('the rail in the thread', () => {
     expect(wrapper.emitted('open-artifact')?.[0]).toEqual([3, 2])
     wrapper.unmount()
   })
+
+  it('renders an image attachment as a preview button', () => {
+    const entries = [
+      entry({
+        kind: 'user',
+        id: 'u',
+        text: 'see',
+        attachments: [{ name: 'shot.png', mediaType: 'image/png' }],
+      } as never),
+    ]
+    const wrapper = mount(SessionThread, {
+      props: { rows: buildRows(entries, ctx), entries, working: false, sessionId: 's 1' },
+    })
+    const button = wrapper.get('button[aria-label="Preview shot.png"]')
+    expect(button.find('img').attributes('src')).toBe('/api/sessions/s%201/attachments/u/0')
+    wrapper.unmount()
+  })
 })
 
 describe('opening a step in Files', () => {

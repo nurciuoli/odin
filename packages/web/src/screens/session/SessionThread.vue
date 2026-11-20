@@ -34,6 +34,8 @@ import {
 } from './steps'
 import { railRun } from './rail'
 import { useElapsed } from './useElapsed'
+import { transcriptAttachment } from './attachments'
+import { useIsMock } from '@/api'
 import { entryCell, entryFile, type CellRef } from './fileActivity'
 import { checkpointSummary } from './useCheckpoints'
 
@@ -53,11 +55,15 @@ const props = withDefaults(
     taskActions?: boolean
     /** The list's accessible name; a second thread on screen (a side thread) needs its own. */
     label?: string
+    /** When set, attachment chips open a preview of the stored file. */
+    sessionId?: string
     /** Checkpoints by the user message they precede; a message with one offers to rewind to it. */
     checkpoints?: Map<string, Checkpoint>
   }>(),
   { taskActions: true, label: 'Conversation' },
 )
+
+const mock = useIsMock()
 
 const items = computed(() => foldRuns(props.rows, props.entries ?? []))
 const times = computed(() => entryTimes(props.entries ?? []))
@@ -158,11 +164,17 @@ function message(row: Row): ChatMessage {
             ? [
                 {
                   type: 'attachments' as const,
-                  files: row.entry.attachments.map((a, i) => ({
-                    id: `${row.id}-${i}`,
-                    name: a.name,
-                    kind: a.mediaType.startsWith('image/') ? ('image' as const) : ('file' as const),
-                  })),
+                  files: row.entry.attachments.map((a, i) =>
+                    props.sessionId
+                      ? transcriptAttachment(props.sessionId, row.id, i, a, mock)
+                      : {
+                          id: `${row.id}-${i}`,
+                          name: a.name,
+                          kind: a.mediaType.startsWith('image/')
+                            ? ('image' as const)
+                            : ('file' as const),
+                        },
+                  ),
                 },
               ]
             : []),

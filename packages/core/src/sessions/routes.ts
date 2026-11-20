@@ -84,6 +84,20 @@ export const registerSessionsRoutes: RegisterRoutes = (router, deps, services) =
   });
 
   router.get("/api/sessions/:id/tasks/:taskKey", async ({ params }) => sessions.taskMessages(params.id!, params.taskKey!));
+  router.get("/api/sessions/:id/attachments/:entryId/:index", async ({ res, params }) => {
+    const index = Number(params.index);
+    if (!Number.isInteger(index) || index < 0) throw new HttpError(400, "index must be a non-negative integer");
+    const file = await sessions.readAttachment(params.id!, params.entryId!, index);
+    if (!file) throw new HttpError(404, "unknown attachment");
+    res.writeHead(200, {
+      "content-type": file.mediaType,
+      "content-length": file.body.length,
+      "content-disposition": file.disposition,
+      "cache-control": "private, max-age=300",
+      "x-content-type-options": "nosniff",
+      "content-security-policy": "default-src 'none'",
+    }).end(file.body);
+  });
 
   router.delete("/api/sessions/:id", async ({ params }) => {
     await sessions.remove(params.id!);

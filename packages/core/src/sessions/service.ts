@@ -8,15 +8,17 @@ import { randomUUID } from "node:crypto";
 import { resolve, sep } from "node:path";
 import type { SQLInputValue } from "node:sqlite";
 import type {
-  Checkpoint, ForkSessionRequest, HandoffPreview, HandoffRequest, PermissionAnswer, PermissionMode, Session, SessionCounts, SessionDetail, SessionHandoff, SessionFilter, SessionMetrics,
+  Attachment, Checkpoint, ForkSessionRequest, HandoffPreview, HandoffRequest, PermissionAnswer, PermissionMode, Session, SessionCounts, SessionDetail, SessionHandoff, SessionFilter, SessionMetrics,
   SessionState, StartSessionRequest, Todo, UpdateSessionRequest, UserMessage, Workspace,
 } from "@odin/shared/api";
 import type { HarnessEvent, PermissionRequest, SessionGoal, SlashCommand, TranscriptEntry } from "@odin/shared/harness";
 import { emptyMetrics, sessionBranch } from "@odin/shared/session";
 import { findModel } from "@odin/shared/api";
 import { applyHarnessEvent, reconcileTaskHistory } from "@odin/shared/transcript";
+import type { AttachmentContent } from "../harness/types.ts";
+import { attachmentPreview } from "./attachment-preview.ts";
 import { HttpError } from "../http/util.ts";
-import { PERMISSION_MODES, titleFromPrompt } from "../launch/service.ts";
+import { PERMISSION_MODES, titleFromPrompt, whereOf } from "../launch/service.ts";
 import type { Harness, SessionHandle, StartOptions } from "../harness/types.ts";
 import type { Deps, ExternalSessionInput, Services, SessionPatch, SessionsService } from "../services.ts";
 import { messageOutbox } from "./message-queue.ts";
@@ -255,6 +257,39 @@ export function createSessionsService(deps: Deps, services: Services, options: S
   const eventListeners = new Set<(id: string, e: HarnessEvent) => void>();
   let closed = false;
   const outbox = messageOutbox(db, now, (sessionId, queue) => bus.emit({ type: "session.queue", sessionId, queue }));
+  // Bytes from messages Odin just handed the harness, keyed once the user entry id is known. History is the copy
+  // that survives a restart; this covers the turn before that write is visible.
+  const pendingAttachments = new Map<string, Attachment[][]>();
+  const savedAttachments = new Map<string, Attachment[]>();
+  const savedAttachmentOrder = new Map<string, string[]>();
+  function stageAttachments(id: string, message: { attachments?: Attachment[] } | null | undefined): void {
+    if (!message?.attachments?.length) return;
+    const queue = pendingAttachments.get(id) ?? [];
+    queue.push(message.attachments);
+    pendingAttachments.set(id, queue);
+  }
+  function keepAttachments(id: string, entryId: string, files: Attachment[]): void {
+    const key = `${id}\0${entryId}`;
+    savedAttachments.set(key, files);
+    const order = savedAttachmentOrder.get(id) ?? [];
+    order.push(key);
+    while (order.length > 32) savedAttachments.delete(order.shift()!);
+    savedAttachmentOrder.set(id, order);
+  }
+  function claimAttachments(id: string, entryId: string, files: { name: string; mediaType: string }[]): void {
+    const queue = pendingAttachments.get(id);
+    if (!queue?.length) return;
+    const at = queue.findIndex((batch) => batch.length === files.length && batch.every((file, index) => file.name === files[index]?.name && file.mediaType === files[index]?.mediaType));
+    if (at < 0) return;
+    const [batch] = queue.splice(at, 1);
+    if (batch) keepAttachments(id, entryId, batch);
+  }
+  function rememberedAttachment(id: string, entryId: string, index: number): AttachmentContent | null {
+    const file = savedAttachments.get(`${id}\0${entryId}`)?.[index];
+    if (!file) return null;
+    const image = file.mediaType.toLowerCase().startsWith("image/");
+    return { name: file.name, mediaType: file.mediaType, data: file.data, encoding: image ? "base64" : "utf8" };
+  }
   outbox.recover();
   const pumping = new Set<string>();
   const nativeBusy = new Set<string>();
@@ -579,6 +614,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         if (e.entry.kind !== "user") l.acted = true;
         else if (!e.entry.parentToolUseId) void services.checkpoints.capture(l.id, "turn.start", e.entry.id);
         l.streaming.delete(e.entry.id);
+        if (e.entry.kind === "user" && e.entry.attachments?.length) claimAttachments(l.id, e.entry.id, e.entry.attachments);
         l.tail = applyHarnessEvent(l.tail, e);
         patchAndEmit(l.id, { updatedAt: now() });
         break;
@@ -602,6 +638,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         l.turnActive = false;
         l.settled = l.tail.length;
         if (HISTORY_REPLACES_TAIL.has(l.harness.id)) void trimSettled(l);
+        pendingAttachments.delete(l.id);
         if (l.releaseNext && (e.ok || e.error === "interrupted")) {
           l.releaseNext = false;
           outbox.settle(l.id, true);
@@ -646,6 +683,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
 
   /** The handle is gone: unregister it and settle the record. */
   function finish(l: Live, failure: string | null): void {
+    pendingAttachments.delete(l.id);
     approvals.cancel(l.id);
     l.releaseNext = false;
     l.pauseAfterRelease = false;
@@ -778,8 +816,10 @@ export function createSessionsService(deps: Deps, services: Services, options: S
           l.acted = false;
           clearIdle(l);
           patchAndEmit(id, { state: "running", waitingFor: null });
+          stageAttachments(id, next.message);
           l.handle.send(next.message);
         } else {
+          stageAttachments(id, next.message);
           const opts: StartOptions = { cwd: s.cwd, resume: id, prompt: next.message, hostTools: hostTools(id), mcpServers };
           if (s.model) opts.model = s.model;
           opts.effort = s.effort;
@@ -983,6 +1023,16 @@ export function createSessionsService(deps: Deps, services: Services, options: S
 
     get,
 
+    async readAttachment(id, entryId, index) {
+      const s = get(id);
+      if (!s) throw new HttpError(404, `unknown session ${id}`);
+      if (!Number.isInteger(index) || index < 0 || index > 100 || entryId.length > 512) return null;
+      const remembered = rememberedAttachment(id, entryId, index);
+      const harness = deps.harnesses[s.harness];
+      const stored = remembered ?? (harness?.readAttachment ? await harness.readAttachment(id, entryId, index, s.cwd) : null);
+      return stored ? attachmentPreview(stored) : null;
+    },
+
     async taskMessages(id, key) {
       const detail = await this.detail(id);
       if (!detail) throw new HttpError(404, `unknown session ${id}`);
@@ -1104,7 +1154,18 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       let cwd = project.path;
       let workspace: Workspace = { kind: "checkout" };
       let branch: string | null;
-      if (plan.worktree) {
+      if (plan.where.kind === "worktree") {
+        const wt = await services.projects.existingWorktree(project.name, plan.where.path);
+        cwd = wt.path;
+        branch = wt.branch;
+        if (!wt.main && wt.branch) workspace = { kind: "worktree", path: wt.path, branch: wt.branch };
+        else if (wt.main) branch = currentBranch(project.name);
+      } else if (plan.where.kind === "branch") {
+        const wt = await services.projects.openBranch(project.name, plan.where.branch);
+        cwd = wt.path;
+        branch = wt.branch;
+        workspace = { kind: "worktree", path: wt.path, branch: wt.branch };
+      } else if (plan.worktree) {
         const wt = await services.projects.createWorktree(project.name, plan.branch ?? sessionBranch(plan.title, id));
         cwd = wt.path;
         branch = wt.branch;
@@ -1123,7 +1184,10 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       const opts: StartOptions = { cwd, sessionId: id, hostTools: hostTools(id) };
       const named = chosenTitle(plan.title, plan.prompt?.text);
       if (named) opts.title = named;
-      if (plan.prompt) opts.prompt = plan.prompt;
+      if (plan.prompt) {
+        stageAttachments(id, plan.prompt);
+        opts.prompt = plan.prompt;
+      }
       if (plan.model) opts.model = plan.model;
       opts.effort = req.effort;
       if (plan.permissionMode) opts.permissionMode = plan.permissionMode;
@@ -1294,16 +1358,19 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       if (!req || typeof req !== "object") bad("invalid request");
       if (req.title !== undefined && (typeof req.title !== "string" || !req.title.trim())) bad("title must be a non-empty string");
       if (req.worktree !== undefined && typeof req.worktree !== "boolean") bad("worktree must be a boolean");
+      const where = whereOf(req.where);
+      if (where && req.worktree !== undefined) bad("where can't be combined with worktree");
+      const newWorktree = where ? where.kind === "new-worktree" : req.worktree === true;
       if (req.aside !== undefined && typeof req.aside !== "boolean") bad("aside must be a boolean");
       if (req.model !== undefined && (typeof req.model !== "string" || !req.model.trim())) bad("model must be a non-empty string");
       if (req.permissionMode !== undefined && !PERMISSION_MODES.includes(req.permissionMode)) bad("unknown permission mode");
       if (req.atMessageId !== undefined && (typeof req.atMessageId !== "string" || !req.atMessageId)) bad("atMessageId must be a non-empty string");
       if (req.restoreFiles !== undefined && typeof req.restoreFiles !== "boolean") bad("restoreFiles must be a boolean");
-      if (req.restoreFiles && (!req.atMessageId || !req.worktree)) bad("restoreFiles needs atMessageId and worktree: true");
+      if (req.restoreFiles && (!req.atMessageId || !newWorktree)) bad("restoreFiles needs atMessageId and a new worktree");
       const aside = req.aside === true;
       if (aside && req.prompt === undefined) bad("a side thread needs a prompt");
       if (aside && (req.atMessageId || req.restoreFiles)) bad("a side thread can't be cut at a message");
-      if (aside && req.worktree) bad("a side thread can't have a worktree");
+      if (aside && (newWorktree || where?.kind === "branch")) bad("a side thread can't have a worktree");
       const prompt = req.prompt !== undefined ? messageFor(id, req.prompt) : null;
       const harness = harnessFor(parent);
       const supports = (mode: PermissionMode) => !harness.capabilities || harness.capabilities.permissionModes.includes(mode);
@@ -1341,9 +1408,26 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       let cwd = parent.cwd;
       let workspace = parent.workspace;
       let branch = parent.branch;
-      if (req.worktree) {
-        // Always a new odin/ branch: the parent's would already be checked out.
-        const wt = await services.projects.createWorktree(parent.project, sessionBranch(title, newId));
+      if (where?.kind === "checkout") {
+        cwd = services.projects.get(parent.project)?.path ?? parent.cwd;
+        workspace = { kind: "checkout" };
+        branch = currentBranch(parent.project);
+      } else if (where?.kind === "worktree") {
+        const wt = await services.projects.existingWorktree(parent.project, where.path);
+        cwd = wt.path;
+        branch = wt.branch;
+        if (wt.main) {
+          workspace = { kind: "checkout" };
+          branch = currentBranch(parent.project);
+        } else workspace = wt.branch ? { kind: "worktree", path: wt.path, branch: wt.branch } : { kind: "checkout" };
+      } else if (where?.kind === "branch") {
+        const wt = await services.projects.openBranch(parent.project, where.branch);
+        cwd = wt.path;
+        branch = wt.branch;
+        workspace = { kind: "worktree", path: wt.path, branch: wt.branch };
+      } else if (newWorktree) {
+        // A new branch (default odin/...: the parent's would already be checked out) that continues from the parent's HEAD.
+        const wt = await services.projects.createWorktree(parent.project, (where?.kind === "new-worktree" ? where.branch : undefined) ?? sessionBranch(title, newId), { fromCwd: parent.cwd });
         cwd = wt.path;
         branch = wt.branch;
         workspace = { kind: "worktree", path: wt.path, branch: wt.branch };
@@ -1377,6 +1461,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       }
 
       if (prompt) {
+        stageAttachments(newId, prompt);
         // Cut at a message: the harness already made the stored fork, so resume it; otherwise fork while starting.
         const opts: StartOptions = req.atMessageId
           ? { cwd, resume: newId, prompt, title, hostTools: hostTools(newId), mcpServers }

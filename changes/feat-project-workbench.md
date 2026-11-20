@@ -1,0 +1,3 @@
+- The project page is now laid out like a session: the Overview is the page, and Files, Sessions, Outputs, Resources and Settings live in a docked panel on the right that resizes, hides and goes full screen (Esc exits). The Files tab browses folders, lists changed files and previews a file in place, with the heatmap one click away.
+- The Overview's Models card stays compact however many models a project has used: the top five show, the rest fold into one expandable list.
+- Pull request stats (open, merged in range, merge rate, review rounds) now sit in a header on the full-width branch graph, and busy branches no longer pile a row of overlapping circled letters across the top of it.

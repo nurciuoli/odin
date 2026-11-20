@@ -1,0 +1,1 @@
+- The session Details header shows worktree and pull request state with icons instead of pills: a folder-tree icon marks a worktree, and the pull request icon is coloured for open, merged or closed. Hover either for details such as the worktree path or the PR's branch, diff and commits. The PR row also gets copy-link and open-on-GitHub buttons.
