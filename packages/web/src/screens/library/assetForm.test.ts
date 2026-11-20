@@ -82,9 +82,16 @@ describe('MCP sign-in on save', () => {
   it('writes oauth when the server publishes it', async () => {
     const { attachMcpOAuth } = await import('./mcpDraft')
     const files = {
-      'canva.json': JSON.stringify({ name: 'Canva', type: 'http', url: 'https://mcp.canva.com/mcp' }),
+      'canva.json': JSON.stringify({
+        name: 'Canva',
+        type: 'http',
+        url: 'https://mcp.canva.com/mcp',
+      }),
     }
-    const prepared = await attachMcpOAuth(files, 'canva', async () => ({ oauth: true, scopes: ['read'] }))
+    const prepared = await attachMcpOAuth(files, 'canva', async () => ({
+      oauth: true,
+      scopes: ['read'],
+    }))
     expect(prepared.added).toBe(true)
     expect(prepared.signIn).toBe(true)
     expect(JSON.parse(prepared.files['canva.json']!).oauth).toEqual({})
