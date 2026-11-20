@@ -67,6 +67,8 @@ export const registerProjectsRoutes: RegisterRoutes = (router, _deps, services) 
 
   router.get("/api/projects/:name/branches", ({ params }) => services.projects.branches(params.name!));
 
+  router.get("/api/projects/:name/worktrees", ({ params }) => services.projects.worktrees(params.name!));
+
   router.delete("/api/projects/:name/worktrees", async ({ req, res, params }) => {
     const body = await readJson(req);
     if (!body || typeof body !== "object" || Array.isArray(body) || typeof body.path !== "string") throw new HttpError(400, "path is required");

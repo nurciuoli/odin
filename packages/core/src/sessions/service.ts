@@ -16,7 +16,7 @@ import { emptyMetrics, sessionBranch } from "@odin/shared/session";
 import { findModel } from "@odin/shared/api";
 import { applyHarnessEvent, reconcileTaskHistory } from "@odin/shared/transcript";
 import { HttpError } from "../http/util.ts";
-import { PERMISSION_MODES, titleFromPrompt } from "../launch/service.ts";
+import { PERMISSION_MODES, titleFromPrompt, whereOf } from "../launch/service.ts";
 import type { Harness, SessionHandle, StartOptions } from "../harness/types.ts";
 import type { Deps, ExternalSessionInput, Services, SessionPatch, SessionsService } from "../services.ts";
 import { messageOutbox } from "./message-queue.ts";
@@ -1093,7 +1093,18 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       let cwd = project.path;
       let workspace: Workspace = { kind: "checkout" };
       let branch: string | null;
-      if (plan.worktree) {
+      if (plan.where.kind === "worktree") {
+        const wt = await services.projects.existingWorktree(project.name, plan.where.path);
+        cwd = wt.path;
+        branch = wt.branch;
+        if (!wt.main && wt.branch) workspace = { kind: "worktree", path: wt.path, branch: wt.branch };
+        else if (wt.main) branch = currentBranch(project.name);
+      } else if (plan.where.kind === "branch") {
+        const wt = await services.projects.openBranch(project.name, plan.where.branch);
+        cwd = wt.path;
+        branch = wt.branch;
+        workspace = { kind: "worktree", path: wt.path, branch: wt.branch };
+      } else if (plan.worktree) {
         const wt = await services.projects.createWorktree(project.name, plan.branch ?? sessionBranch(plan.title, id));
         cwd = wt.path;
         branch = wt.branch;
@@ -1281,16 +1292,19 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       if (!req || typeof req !== "object") bad("invalid request");
       if (req.title !== undefined && (typeof req.title !== "string" || !req.title.trim())) bad("title must be a non-empty string");
       if (req.worktree !== undefined && typeof req.worktree !== "boolean") bad("worktree must be a boolean");
+      const where = whereOf(req.where);
+      if (where && req.worktree !== undefined) bad("where can't be combined with worktree");
+      const newWorktree = where ? where.kind === "new-worktree" : req.worktree === true;
       if (req.aside !== undefined && typeof req.aside !== "boolean") bad("aside must be a boolean");
       if (req.model !== undefined && (typeof req.model !== "string" || !req.model.trim())) bad("model must be a non-empty string");
       if (req.permissionMode !== undefined && !PERMISSION_MODES.includes(req.permissionMode)) bad("unknown permission mode");
       if (req.atMessageId !== undefined && (typeof req.atMessageId !== "string" || !req.atMessageId)) bad("atMessageId must be a non-empty string");
       if (req.restoreFiles !== undefined && typeof req.restoreFiles !== "boolean") bad("restoreFiles must be a boolean");
-      if (req.restoreFiles && (!req.atMessageId || !req.worktree)) bad("restoreFiles needs atMessageId and worktree: true");
+      if (req.restoreFiles && (!req.atMessageId || !newWorktree)) bad("restoreFiles needs atMessageId and a new worktree");
       const aside = req.aside === true;
       if (aside && req.prompt === undefined) bad("a side thread needs a prompt");
       if (aside && (req.atMessageId || req.restoreFiles)) bad("a side thread can't be cut at a message");
-      if (aside && req.worktree) bad("a side thread can't have a worktree");
+      if (aside && (newWorktree || where?.kind === "branch")) bad("a side thread can't have a worktree");
       const prompt = req.prompt !== undefined ? messageFor(id, req.prompt) : null;
       const harness = harnessFor(parent);
       const supports = (mode: PermissionMode) => !harness.capabilities || harness.capabilities.permissionModes.includes(mode);
@@ -1328,9 +1342,26 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       let cwd = parent.cwd;
       let workspace = parent.workspace;
       let branch = parent.branch;
-      if (req.worktree) {
-        // Always a new odin/ branch: the parent's would already be checked out.
-        const wt = await services.projects.createWorktree(parent.project, sessionBranch(title, newId));
+      if (where?.kind === "checkout") {
+        cwd = services.projects.get(parent.project)?.path ?? parent.cwd;
+        workspace = { kind: "checkout" };
+        branch = currentBranch(parent.project);
+      } else if (where?.kind === "worktree") {
+        const wt = await services.projects.existingWorktree(parent.project, where.path);
+        cwd = wt.path;
+        branch = wt.branch;
+        if (wt.main) {
+          workspace = { kind: "checkout" };
+          branch = currentBranch(parent.project);
+        } else workspace = wt.branch ? { kind: "worktree", path: wt.path, branch: wt.branch } : { kind: "checkout" };
+      } else if (where?.kind === "branch") {
+        const wt = await services.projects.openBranch(parent.project, where.branch);
+        cwd = wt.path;
+        branch = wt.branch;
+        workspace = { kind: "worktree", path: wt.path, branch: wt.branch };
+      } else if (newWorktree) {
+        // A new branch (default odin/...: the parent's would already be checked out) that continues from the parent's HEAD.
+        const wt = await services.projects.createWorktree(parent.project, (where?.kind === "new-worktree" ? where.branch : undefined) ?? sessionBranch(title, newId), { fromCwd: parent.cwd });
         cwd = wt.path;
         branch = wt.branch;
         workspace = { kind: "worktree", path: wt.path, branch: wt.branch };

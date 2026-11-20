@@ -355,6 +355,24 @@ Subagents (`invoke_subagent`) and background tasks map to Odin task activities. 
   when no worktree has it checked out; the project checkout counts and is the one with `current: true`),
   `sessionIds` = the project's sessions whose `branch` is this one (newest first) and `pull` = the stored PR whose
   head is this branch, or null. Read-only git, argv only. 404 unknown project; a missing project gives `[]`.
+- **Worktrees** (`GET /api/projects/:name/worktrees` → `ProjectWorktrees`, `ProjectsService.worktrees`): the project
+  checkout first (`main: true`), then every other entry of `git worktree list` (Odin's and the user's own; a folder
+  deleted by hand is skipped). Each has `path` (real path), `branch` (null when detached), `headSha`, `dirty`
+  (`git status` shows anything), `ahead`/`behind` against the base branch (as for branches; 0/0 when detached or no
+  base), `merged` (branch fully merged into the base; false for detached and for the base branch itself) and
+  `sessions`: the project's non-archived sessions whose `cwd` is exactly that folder, newest first, at most 20, each
+  `{ id, title, state, running }` with `running` true for state `running` or `waiting`. The top level also carries
+  `mainBranch` (the checkout's current branch) and `baseBranch` (the default branch, null without a base). It feeds
+  the composer's "where" picker and the "N sessions already running here" warning. 404 unknown project; a missing
+  project gives an empty list.
+- **Open an existing branch or worktree** (`ProjectsService.openBranch`, `existingWorktree`; used by launch, see
+  [Where a session runs](#where-a-session-runs)): `openBranch(name, branch)` takes a local name, `<remote>/x` or a bare
+  `x` that only a remote has. A remote branch becomes a local tracking branch `x` (`git worktree add --track -b x
+  <path> <remote>/x`); a local one is checked out into a new worktree under `<worktreesDir>/<project>/`. When `x` is
+  already checked out in a linked worktree (Odin's or the user's) that worktree is reused; when it is the project
+  checkout the answer is 409 with `code: "checked-out-elsewhere"`. 404 for a branch nobody has, 400 for an invalid
+  name. `existingWorktree(name, path)` accepts an absolute path that is one of `git worktree list` (the checkout
+  included), else 400.
 - **Remove a worktree** (`DELETE /api/projects/:name/worktrees`, body `RemoveWorktreeRequest { path }` → 204,
   `ProjectsService.removeWorktree`): only worktrees Odin created under `<worktreesDir>/<project>/`, never the
   project checkout (400 for any other path, or a path that isn't absolute). 409 when a session with a live handle
@@ -404,6 +422,41 @@ calls `projects.noteWritten`. Nothing is committed.
   recreating missing folders; 409 when something is at the original path. `DELETE .../files/trash/:id` or
   `DELETE .../files/trash` deletes one or all for good (204).
 - Rename, move and trash answer 409 when a running notebook kernel's folder is inside the path (`notebooks.usesPath`).
+
+### Where a session runs
+
+`StartSessionRequest.where?: LaunchWhere` says where a new session's cwd is:
+
+```ts
+type LaunchWhere =
+  | { kind: "checkout" }                                // the project's own folder
+  | { kind: "new-worktree"; branch?: string }           // a new worktree on a NEW branch (default odin/<slug>-<id8>)
+  | { kind: "branch"; branch: string }                  // a new worktree on an EXISTING local or remote branch
+  | { kind: "worktree"; path: string };                 // an EXISTING worktree of the project, by absolute path
+```
+
+`worktree?: boolean` and `branch?: string` stay as shorthands (`worktree: true` = `new-worktree` with `branch`,
+`false` = `checkout`); sending `where` together with either is 400. `launch.plan` validates `where` (unknown kind,
+invalid branch name or a relative path → 400) and returns the resolved placement as `LaunchPlan.where`
+(`new-worktree` always carries its branch); `LaunchPlan.worktree`/`branch` are kept for older callers. The sessions
+service then calls `createWorktree` (new-worktree), `openBranch` (branch) or `existingWorktree` (worktree), and
+records `workspace: { kind: "worktree", path, branch }` (a `worktree` that is the project checkout is a plain
+`checkout` session). `{{branch}}` in the prompt expands to the stored local branch (`origin/x` → `x`; for `worktree`
+the worktree's current branch). Errors surface as the start's 4xx: 409 `checked-out-elsewhere` (`branch` held by the project
+checkout), 404 unknown branch, 400 a path that isn't one of the project's worktrees.
+
+Remote branch names resolve against any remote (`upstream/x` as well as `origin/x`); a bare `x` is looked up on the
+base remote first, then the others. `ProjectsService.localBranchName(name, branch)` gives the local name without
+creating anything (the launch plan uses it).
+
+`ForkSessionRequest.where?: LaunchWhere` takes the same shape (400 together with `worktree`; `worktree: true` is
+`new-worktree`). Omitted, the fork stays in the parent's workspace. `checkout` is the project's own folder,
+`worktree` and `branch` as for start, and `new-worktree` starts the new branch at the parent's HEAD commit (not the base
+branch; `createWorktree(name, branch, { fromCwd })`). A side thread may use `checkout` or `worktree` but not
+`new-worktree` or `branch` (400); `restoreFiles` needs `new-worktree`.
+
+`resolveCwd` also maps a cwd inside any linked worktree of a project (read from `.git/worktrees/*/gitdir`, so
+worktrees made outside Odin's folder count) to that project.
 
 ### Project worktree default
 
@@ -1236,6 +1289,7 @@ The main routes; each module's `routes.ts` has the full list. All JSON. Errors: 
 | POST `/api/projects/:name/refresh` | 204 |
 | DELETE `/api/projects/:name` | 204 (unregisters; never deletes files) |
 | GET `/api/projects/:name/branches` | `ProjectBranch[]` |
+| GET `/api/projects/:name/worktrees` | `ProjectWorktrees` (checkout + worktrees with status, merged and sessions) |
 | DELETE `/api/projects/:name/worktrees` (`RemoveWorktreeRequest`) | 204; 400 not a Odin worktree of the project; 409 a live session's cwd is inside it, or the tree is dirty |
 | GET `/api/sessions?project=&state=a,b&tag=&model=&origin=&q=&archived=&pinned=&since=&limit=` | `Session[]` (newest `updatedAt` first; `archived` defaults to false) |
 | POST `/api/sessions` (`StartSessionRequest`) | `Session` (201) |
