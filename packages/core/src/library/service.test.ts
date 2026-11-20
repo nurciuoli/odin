@@ -518,3 +518,32 @@ describe("merge installs", () => {
     assert.equal(lib.installations("app")[0]!.state, "missing");
   });
 });
+
+describe("OAuth MCP installs", () => {
+  const OAUTH = { name: "Canva", type: "http", url: "https://mcp.example.test/mcp", oauth: {} };
+
+  test("an OAuth server is recorded as installed but never written to .mcp.json; forget works", async () => {
+    const { lib, install, proj, written } = setup();
+    lib.save("mcp", "canva", { "canva.json": JSON.stringify(OAUTH) });
+    write(proj(""), { ".mcp.json": JSON.stringify({ mcpServers: { mine: { command: "my-server" } } }) });
+    const r = await install({ kind: "mcp", id: "canva" });
+    assert.deepEqual(r.changed, []);
+    assert.deepEqual(written, []);
+    assert.deepEqual(JSON.parse(readFileSync(proj(".mcp.json"), "utf8")), { mcpServers: { mine: { command: "my-server" } } });
+    assert.equal(r.installation!.state, "current");
+    assert.deepEqual(lib.installations("app").map((i) => `${i.kind}/${i.id}:${i.state}`), ["mcp/canva:current"]);
+    const forgot = await lib.install("app", { action: "forget", kind: "mcp", id: "canva" });
+    assert.deepEqual(forgot.changed, []);
+    assert.deepEqual(lib.installations("app"), []);
+  });
+
+  test("installing an OAuth server takes a stale entry Odin wrote earlier out of .mcp.json", async () => {
+    const { lib, install, proj } = setup();
+    lib.save("mcp", "canva", { "canva.json": JSON.stringify(OAUTH) });
+    write(proj(""), { ".mcp.json": JSON.stringify({ mcpServers: { canva: { type: "http", url: "https://mcp.example.test/mcp", oauth: {} } } }) });
+    const r = await install({ kind: "mcp", id: "canva" });
+    assert.deepEqual(r.changed, [".mcp.json"]);
+    assert.deepEqual(JSON.parse(readFileSync(proj(".mcp.json"), "utf8")).mcpServers, {});
+    assert.equal(r.installation!.state, "current");
+  });
+});

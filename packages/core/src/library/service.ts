@@ -366,8 +366,12 @@ export function createLibraryService(deps: Deps, services: Services, opts: { git
       } catch (err) {
         throw new HttpError(409, (err as Error).message);
       }
-      if (entry === null || entry === undefined) return { files: null, paths: [target.target], unchanged: false };
       const merged = row?.merged ? JSON.parse(row.merged) : null;
+      if (entry === null || entry === undefined) {
+        // An OAuth server is installed without a file entry (see installMember): the recorded spec stands for it.
+        if (merged && typeof merged === "object" && merged.oauth) return { files: { [file]: formatJson({ name, description, ...merged }) }, paths: [], unchanged: true };
+        return { files: null, paths: [target.target], unchanged: false };
+      }
       const body = typeof entry === "object" && !Array.isArray(entry) ? (entry as Record<string, unknown>) : { value: entry };
       return { files: { [file]: formatJson({ name, description, ...body }) }, paths: [target.target], unchanged: merged !== null && deepEqual(entry, merged) };
     }
@@ -498,10 +502,21 @@ export function createLibraryService(deps: Deps, services: Services, opts: { git
         throw new HttpError(409, `${target.target} already has a server "${id}" that isn't from the library; pass force to overwrite`);
       }
       if (dry) return NOTHING;
-      const next = wrap(() => setMcpEntry(doc, id, spec));
-      wrap(() => writeFileAtomic(resolveInside(projectPath, target.target), formatJson(next)));
-      paths = [target.target];
-      changed = [target.target];
+      if ((spec as { oauth?: unknown }).oauth) {
+        // OAuth servers never go into the project file: harnesses would load the tokenless entry. Odin injects them
+        // with the token at session start; the row alone records the install. A stale entry Odin wrote is taken out.
+        const ours = existing !== null && (deepEqual(existing, spec) || (row?.merged ? deepEqual(existing, JSON.parse(row.merged)) : false));
+        if (existing !== null && (ours || force)) {
+          wrap(() => writeFileAtomic(resolveInside(projectPath, target.target), formatJson(removeMcpEntry(doc!, id))));
+          changed = [target.target];
+        } else changed = [];
+        paths = [];
+      } else {
+        const next = wrap(() => setMcpEntry(doc, id, spec));
+        wrap(() => writeFileAtomic(resolveInside(projectPath, target.target), formatJson(next)));
+        paths = [target.target];
+        changed = [target.target];
+      }
       merged = spec;
     } else {
       if (dry) return NOTHING;

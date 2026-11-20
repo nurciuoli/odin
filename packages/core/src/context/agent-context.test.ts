@@ -81,3 +81,29 @@ test("sessions take global context, let project files win, and a project can tur
     await app.close();
   }
 });
+
+test("an OAuth library server is injected with its token over a stale same-id project file entry, for grok and claude", async () => {
+  const app = await startApp({ harnesses: { claude: fakeHarness(), grok: fakeHarness() } });
+  const cwd = tempDir("odin-context-oauth-");
+  const stale = { type: "http", url: "https://mcp.example.test/mcp", oauth: {} };
+  writeFileSync(join(cwd, ".mcp.json"), JSON.stringify({ mcpServers: { canva: stale, local: { command: "local-mcp" } } }));
+  mkdirSync(join(cwd, ".grok"), { recursive: true });
+  writeFileSync(join(cwd, ".grok", "mcp.json"), JSON.stringify({ mcpServers: { canva: stale } }));
+  try {
+    const project = await app.json<ProjectDetail>("/api/projects", { method: "POST", body: JSON.stringify({ path: cwd }) });
+    await app.json(`/api/library/mcp/canva`, { method: "PUT", body: JSON.stringify({ files: { "canva.json": JSON.stringify({ name: "Canva", ...stale }) } }) });
+    const services = app.app.services;
+    services.mcpOAuth.accessToken = async (id: string) => `tok-${id}`;
+    for (const harness of ["grok", "claude"]) {
+      const resolved = await services.agentContext.resolve(project.name, cwd, harness);
+      const server = resolved.mcpServers.canva;
+      assert.ok(server && server.type !== "stdio", harness);
+      assert.equal(server.headers?.Authorization, "Bearer tok-canva", harness);
+      assert.equal(server.url, "https://mcp.example.test/mcp");
+    }
+    const claude = await services.agentContext.resolve(project.name, cwd, "claude");
+    assert.equal(claude.mcpServers.local, undefined);
+  } finally {
+    await app.close();
+  }
+});
