@@ -763,7 +763,8 @@ asset that is off globally.
   save). `sessionCount` per version counts sessions with that `agentVersion` (agents) or `templateId` (templates,
   current version only).
 - **Install** (`INSTALL_TARGETS`): agent/skill are copied to `.claude/agents/<id>.md`,
-  `.claude/skills/<id>/…`; mcp is merged into `.mcp.json` under `mcpServers.<id>`;
+  `.claude/skills/<id>/…`; mcp is merged into `.mcp.json` under `mcpServers.<id>` (except OAuth servers, see
+  Secrets → Install);
   settings into `.claude/settings.json` (permission rules appended without duplicates, hook entries added; the
   exact fragment kept in `installations.merged` so it can be diffed and removed). Instructions follow the Markdown
   merge rules above. Legacy prompts/templates/commands are inactive (400). Files are written,
@@ -812,7 +813,15 @@ Named values that library MCP specs refer to, so tokens and keys stay out of lib
   session does not start; the library asset keeps the placeholder. Specs with no reference never touch the vault.
 - **Install**: `.mcp.json` receives the spec as saved, placeholders included. A harness that reads `.mcp.json` on its
   own (a terminal Claude Code session in that project) does not know `${secret:…}` and will not fill it; only
-  sessions Odin launches get values.
+  sessions Odin launches get values. A server with `oauth` is never written to a project MCP file (a harness would
+  load it without the token): the installation row alone records it, drift reads it as `current` (or
+  `update-available`) from the recorded spec, and forget has no file to touch. Installing it takes an entry Odin
+  wrote earlier (equal to the spec or the recorded one) back out of `.mcp.json`; another same-id entry → 409 unless
+  `force`, which removes it. At session start an enabled OAuth library server is always injected from the library
+  with its token, and a project file entry of the same id is ignored, for every harness including Claude. Claude
+  still loads a stale `.mcp.json` entry natively alongside the injected one; Odin does not exclude it, so reinstall
+  (or delete the entry) to clean it up. A server Odin leaves out of a session (missing secret, no sign-in) is logged
+  with `console.warn` (id and message, never a token).
 
 ## MCP OAuth
 

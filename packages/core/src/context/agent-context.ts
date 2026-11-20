@@ -674,8 +674,13 @@ export function createAgentContextService(deps: Deps, services: Services) {
       const mcpRoots = [...MCP_FILES.filter((file) => file !== preferredMcp(harness)), preferredMcp(harness)];
       const mcpServers: Record<string, McpServerStart> = {};
       const mcpErrors = new Set<string>();
+      // A library server with OAuth always comes from the library (with its token): a project file entry of the same id
+      // carries no token, so it is ignored. docs/contracts.md#library (install).
+      const libraryMcp = pieces.filter((item) => item.kind === "mcp" && item.libraryEnabled && !item.error && !off("mcp", item.id));
+      const oauthIds = new Set(libraryMcp.filter((item) => !!item.meta.oauth).map((item) => item.id));
       for (const file of mcpRoots) {
         for (const item of scanned.filter((row) => row.kind === "mcp" && row.root === file)) {
+          if (oauthIds.has(item.id)) continue;
           if (item.error) {
             mcpErrors.add(item.id);
             continue;
@@ -685,23 +690,26 @@ export function createAgentContextService(deps: Deps, services: Services) {
           try {
             const library = pieces.find((piece) => piece.kind === "mcp" && piece.id === item.id);
             mcpServers[item.id] = await fillServer(item.id, spec.start, !!library?.meta.oauth);
-          } catch {
+          } catch (err) {
             delete mcpServers[item.id];
+            console.warn(`MCP server ${item.id} left out of the session: ${err instanceof Error ? err.message : "unknown error"}`);
           }
         }
       }
-      for (const piece of pieces.filter((item) => item.kind === "mcp" && item.libraryEnabled && !item.error && !off("mcp", item.id))) {
-        if (piece.id in mcpServers || projectIds("mcp").has(piece.id) || mcpErrors.has(piece.id)) continue;
+      for (const piece of libraryMcp) {
+        if (!oauthIds.has(piece.id) && (piece.id in mcpServers || projectIds("mcp").has(piece.id) || mcpErrors.has(piece.id))) continue;
         try {
           const resolved = await services.launch.resolveMcpServers([piece.id], { skipDisabled: true });
           const server = resolved[piece.id];
           if (server) mcpServers[piece.id] = server;
-        } catch {
-          // A global server that is missing a secret stays out of this session.
+        } catch (err) {
+          // A global server that is missing a secret (or a sign-in) stays out of this session.
+          console.warn(`MCP server ${piece.id} left out of the session: ${err instanceof Error ? err.message : "unknown error"}`);
         }
       }
       if (family(harness) === "claude") {
-        for (const item of scanned.filter((row) => row.kind === "mcp" && row.root === ".mcp.json")) delete mcpServers[item.id];
+        // Claude reads .mcp.json itself; OAuth library servers stay injected (the file entry has no token).
+        for (const item of scanned.filter((row) => row.kind === "mcp" && row.root === ".mcp.json")) if (!oauthIds.has(item.id)) delete mcpServers[item.id];
       }
 
       const settings: SettingsProfileSpec[] = [];

@@ -1,0 +1,1 @@
+- Installing a library MCP server that signs in with OAuth into a project no longer writes a tokenless copy to `.mcp.json`; Odin injects it with its token at session start, and ignores a stale same-named entry.
