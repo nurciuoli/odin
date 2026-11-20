@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { Session } from "@odin/shared/api";
 import { HttpError } from "../http/util.ts";
 import { PROJECT, setup, waitFor } from "./test-setup.ts";
+import { chosenTitle } from "./service.ts";
 
 const status = (n: number) => (e: unknown) => e instanceof HttpError && e.status === n;
 
@@ -349,6 +350,47 @@ test("discover gives hook-created sessions the harness's generated name, but kee
     await s.sessions.discover(PROJECT);
     assert.equal(s.sessions.get("hook-1")!.title, "Fix the login redirect");
     assert.equal(s.sessions.get("hook-2")!.title, "My name");
+  } finally {
+    await s.sessions.close();
+  }
+});
+
+test("chosenTitle withholds placeholders and prompt-derived titles", () => {
+  const prompt = "  \nFix the login redirect\nand more";
+  assert.equal(chosenTitle("Untitled session", prompt), undefined);
+  assert.equal(chosenTitle("  ", prompt), undefined);
+  assert.equal(chosenTitle("Fix the login redirect", prompt), undefined);
+  const long = "a".repeat(200);
+  assert.equal(chosenTitle(`${"a".repeat(119)}…`, long), undefined);
+  assert.equal(chosenTitle("Login work", prompt), "Login work");
+  assert.equal(chosenTitle("Login work", null), "Login work");
+});
+
+test("a session launched without a title takes the harness's generated name", async () => {
+  const s = setup();
+  try {
+    const text = "Please look into why the login redirect drops the return path after the OAuth callback";
+    const st = await s.sessions.start({ project: PROJECT, prompt: { text } });
+    await waitFor(() => s.sessions.get(st.id)!.state === "idle");
+    // The prompt-derived title isn't pushed to the harness as a chosen name: the fake falls back to its own.
+    assert.equal((await s.harness.info(st.id))!.title, text.slice(0, 60));
+    await s.harness.rename(st.id, "Fix OAuth return path");
+    await s.sessions.discover(PROJECT);
+    assert.equal(s.sessions.get(st.id)!.title, "Fix OAuth return path");
+  } finally {
+    await s.sessions.close();
+  }
+});
+
+test("a session launched with a title keeps it and passes it to the harness", async () => {
+  const s = setup();
+  try {
+    const st = await s.sessions.start({ project: PROJECT, title: "Login work", prompt: { text: "Fix the login redirect" } });
+    await waitFor(() => s.sessions.get(st.id)!.state === "idle");
+    assert.equal((await s.harness.info(st.id))!.title, "Login work");
+    await s.harness.rename(st.id, "Generated");
+    await s.sessions.discover(PROJECT);
+    assert.equal(s.sessions.get(st.id)!.title, "Login work");
   } finally {
     await s.sessions.close();
   }
