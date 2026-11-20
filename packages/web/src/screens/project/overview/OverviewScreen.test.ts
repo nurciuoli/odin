@@ -22,7 +22,6 @@ it('shows every panel for a git project with GitHub sync, in the planned order',
     'Typical session',
     'Code changed by sessions',
     'Branches',
-    'Pull requests',
     'Where things stand',
     'Planning',
     'Latest outputs',
@@ -31,6 +30,8 @@ it('shows every panel for a git project with GitHub sync, in the planned order',
   expect(wrapper.text()).toContain('Commits')
   expect(spanOf(wrapper, 'overview-sessions')).toBe('7')
   expect(spanOf(wrapper, 'overview-code')).toBe('8')
+  expect(spanOf(wrapper, 'overview-branches')).toBe('12')
+  expect(wrapper.find('.ov-branches__stats').text()).toContain('Merge rate')
   wrapper.unmount()
 })
 

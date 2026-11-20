@@ -29,6 +29,10 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ showMerged: [] }>()
 
+// A busy branch (main can carry dozens of sessions) would squeeze its chips down to circled first letters that pile
+// up over the name; show the first few and fold the rest into one "+N sessions" chip whose tooltip lists them.
+const MAX_SESSION_CHIPS = 2
+const MORE_TITLES = 12
 const LANE_GAP = 14
 const PAD = 12
 const laneX = (l: number) => PAD + l * LANE_GAP
@@ -49,6 +53,12 @@ const h = computed(() => ROW_HEIGHT[props.density])
 const height = computed(() => rows.value.length * h.value)
 const titles = computed(() => new Map(props.sessions.map(s => [s.id, s.title])))
 const active = ref<string | null>(null)
+function moreTitle(ids: string[]): string {
+  const rest = ids.slice(MAX_SESSION_CHIPS)
+  const names = rest.slice(0, MORE_TITLES).map(id => titles.value.get(id) ?? shortHash(id))
+  const more = rest.length - names.length
+  return names.join('\n') + (more > 0 ? `\n…and ${more} more` : '')
+}
 const cy = (i: number) => i * h.value + h.value / 2
 
 function elbow(i: number, lane: number): string {
@@ -157,12 +167,18 @@ function elbow(i: number, lane: number): string {
               >{{ relativeTime(r.branch.lastCommitAt) }}</time
             >
             <RouterLink
-              v-for="id in r.branch.sessionIds"
+              v-for="id in r.branch.sessionIds.slice(0, MAX_SESSION_CHIPS)"
               :key="id"
               :to="{ name: 'session', params: { id } }"
               class="ov-tree__chip"
               :title="`Open session: ${titles.get(id) ?? id}`"
               >{{ titles.get(id) ?? shortHash(id) }}</RouterLink
+            >
+            <span
+              v-if="r.branch.sessionIds.length > MAX_SESSION_CHIPS"
+              class="ov-tree__chip ov-tree__chip--more"
+              :title="moreTitle(r.branch.sessionIds)"
+              >+{{ r.branch.sessionIds.length - MAX_SESSION_CHIPS }} sessions</span
             >
             <a
               v-if="r.branch.pull"
@@ -266,7 +282,7 @@ g[data-active] .ov-tree__node {
   flex-wrap: nowrap;
   justify-content: flex-end;
   flex-shrink: 1;
-  max-width: 60%;
+  max-width: 70%;
 }
 .ov-tree__delta {
   white-space: nowrap;
@@ -314,6 +330,12 @@ g[data-active] .ov-tree__node {
 .ov-tree__chip:hover {
   border-color: var(--iu-border-strong);
   color: var(--iu-text);
+}
+.ov-tree__chip--more {
+  flex-shrink: 0;
+  max-width: none;
+  color: var(--iu-text-muted);
+  cursor: default;
 }
 .ov-tree__chip--pr {
   flex-shrink: 0;

@@ -1,0 +1,3 @@
+- The project page now has a side panel with the sections (and the project's running sessions) beside a preview pane that can go full screen, instead of tabs across the top.
+- The Overview's Models card stays compact however many models a project has used: the top five show, the rest fold into one expandable list.
+- Pull request stats (open, merged in range, merge rate, review rounds) now sit in a header on the full-width branch graph, and busy branches no longer pile a row of overlapping circled letters across the top of it.

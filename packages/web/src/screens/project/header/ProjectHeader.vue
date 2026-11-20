@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // The project page's header: one compact row (title with sync and uncommitted dots, branch chip, quick actions,
-// Start chat) over the tab strip. Folder, repository, branch, sync and working-tree details live in a hover card
+// Start chat). The sections live in the layout's side panel. Folder, repository, branch, sync and working-tree details live in a hover card
 // on the title; the branch chip, path and repository copy or open with one click.
 import { computed } from 'vue'
 import type { ProjectDetail, SyncStatus } from '@odin/shared/api'
@@ -10,7 +10,6 @@ import { IuHoverCard } from '@/components/HoverCard'
 import { IuIcon } from '@/components/Icon'
 import { IuMenu, type MenuItem } from '@/components/Menu'
 import { IuStatusDot } from '@/components/StatusDot'
-import { IuTabs, type Tab } from '@/components/Tabs'
 import { useToast } from '@/components/Toast'
 import { useCopy } from '@/composables/useCopy'
 import { relativeTime, SYNC_DISPLAY } from '@/screens/shared/format'
@@ -18,10 +17,7 @@ import { relativeTime, SYNC_DISPLAY } from '@/screens/shared/format'
 const props = defineProps<{
   detail: ProjectDetail
   sync?: SyncStatus
-  tabs: Tab[]
-  idBase: string
 }>()
-const section = defineModel<string>({ required: true })
 
 const { toast } = useToast()
 const pathCopy = useCopy()
@@ -163,13 +159,6 @@ const startTo = computed(() => ({
       </IuMenu>
       <IuButton as="RouterLink" :to="startTo" variant="primary" size="sm">Start chat</IuButton>
     </div>
-    <IuTabs
-      v-model="section"
-      :tabs="tabs"
-      :panels="false"
-      :id-base="idBase"
-      aria-label="Project sections"
-    />
   </header>
 </template>
 

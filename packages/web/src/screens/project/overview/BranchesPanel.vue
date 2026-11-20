@@ -1,5 +1,7 @@
 <script setup lang="ts">
-// Local branches against the default branch. Git projects only; removing worktrees stays in the Sessions tab.
+// Local branches against the default branch, full width, with the project's pull-request stats (open, merged in the
+// range, merge rate, median review rounds) as a header strip when GitHub sync is on. Git projects only; removing
+// worktrees stays in the Sessions tab.
 import { computed, ref } from 'vue'
 import type { ProjectBranch, Session } from '@odin/shared/api'
 import { IuBadge } from '@/components/Badge'
@@ -9,9 +11,11 @@ import { IuEmpty, IuErrorState } from '@/components/States'
 import { IuTable, type Column } from '@/components/Table'
 import type { LoadError } from '@/screens/shared/useResource'
 import { plural, relativeTime } from '@/screens/shared/format'
+import { pullsOf } from '../outputs/outputs'
 import BranchTree from './BranchTree.vue'
 import type { TreeDensity, TreeFilter } from './branchTree'
 import OverviewPanel from './OverviewPanel.vue'
+import { median, mergeRate } from './overview'
 
 const props = defineProps<{
   branches: ProjectBranch[] | null
@@ -21,8 +25,30 @@ const props = defineProps<{
   sessions?: Session[] | null
   loading: boolean
   error: LoadError | null
+  /** GitHub sync is on: show the pull-request stats header. */
+  github?: boolean
+  project?: string
+  /** Start of the Overview range (ISO), for "merged in range". */
+  since?: string
 }>()
 const emit = defineEmits<{ retry: [] }>()
+
+const withPull = computed(() => (props.sessions ?? []).filter(s => s.pull))
+const pulls = computed(() => pullsOf(withPull.value))
+const pullStats = computed(() => {
+  const open = pulls.value.filter(p => p.status === 'open').length
+  const merged = pulls.value.filter(
+    p => p.status === 'merged' && p.updatedAt >= (props.since ?? ''),
+  ).length
+  const rate = mergeRate(withPull.value)
+  const rounds = median(withPull.value.filter(s => s.pull?.merged).map(s => s.metrics.reviewRounds))
+  return [
+    { label: 'Open', value: String(open) },
+    { label: 'Merged in range', value: String(merged) },
+    { label: 'Merge rate', value: rate === null ? '—' : `${Math.round(rate * 100)}%` },
+    { label: 'Median review rounds', value: rounds === null ? '—' : String(rounds) },
+  ]
+})
 
 const view = ref('tree')
 const filter = ref<TreeFilter>('active')
@@ -93,6 +119,18 @@ const summary = computed(() => {
     <template v-if="branches" #actions>
       <span class="ov-branches__note">{{ summary }}</span>
     </template>
+    <dl v-if="github && pulls.length" class="ov-branches__stats" aria-label="Pull requests">
+      <div v-for="s in pullStats" :key="s.label" class="ov-branches__stat">
+        <dt>{{ s.label }}</dt>
+        <dd>{{ s.value }}</dd>
+      </div>
+      <RouterLink
+        v-if="project"
+        :to="{ name: 'project-outputs', params: { name: project } }"
+        class="ov-branches__all"
+        >All outputs</RouterLink
+      >
+    </dl>
     <div v-if="branches?.length" class="ov-branches__bar">
       <IuSegmented
         v-model="view"
@@ -187,6 +225,41 @@ const summary = computed(() => {
 </template>
 
 <style>
+.ov-branches__stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 28px;
+  margin: 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--iu-border-quiet);
+}
+.ov-branches__stat {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.ov-branches__stat dt {
+  font-size: var(--iu-font-size-12);
+  color: var(--iu-text-muted);
+}
+.ov-branches__stat dd {
+  margin: 0;
+  font-family: var(--iu-font-mono);
+  font-size: var(--iu-font-size-14);
+  font-weight: var(--iu-font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+.ov-branches__all {
+  margin-inline-start: auto;
+  font-size: var(--iu-font-size-12);
+  color: var(--iu-text-2);
+  font-weight: var(--iu-font-weight-medium);
+}
+.ov-branches__all:focus-visible {
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
+}
 .ov-branches__bar {
   display: flex;
   flex-wrap: wrap;

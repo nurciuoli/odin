@@ -28,7 +28,6 @@ import CodeChangedPanel from './CodeChangedPanel.vue'
 import ModelsPanel from './ModelsPanel.vue'
 import OverviewPanel from './OverviewPanel.vue'
 import ProjectPanel from './ProjectPanel.vue'
-import PullsPanel from './PullsPanel.vue'
 import SessionsPanel from './SessionsPanel.vue'
 import TotalsRow from './TotalsRow.vue'
 import TypicalPanel from './TypicalPanel.vue'
@@ -183,7 +182,6 @@ const pair = (a: boolean, b: boolean, wa: number, wb: number) => ({
 })
 const row4 = computed(() => pair(true, hasSessions.value, 7, 5))
 const row5 = computed(() => pair(hasSessions.value, git.value, 4, 8))
-const row6 = computed(() => pair(git.value, github.value, 7, 5))
 const row7 = computed(() => {
   if (showBrief.value && showPlanning.value) return { brief: 5, planning: 3, outputs: 4 }
   if (showBrief.value) return { brief: 7, planning: 0, outputs: 5 }
@@ -273,25 +271,17 @@ const span$ = (n: number) => ({ '--ov-span': String(n) })
       <BranchesPanel
         v-if="git"
         class="overview__cell"
-        :style="span$(row6.a)"
+        :style="span$(12)"
+        :project="name"
         :branches="branches.data.value"
         :default-branch="detail.settings.defaultBranch"
         :repo="detail.settings.repo"
         :sessions="sessions.data.value"
+        :github="github"
+        :since="since"
         :loading="branches.phase.value === 'loading'"
         :error="branches.error.value"
         @retry="branches.load()"
-      />
-      <PullsPanel
-        v-if="github"
-        class="overview__cell"
-        :style="span$(row6.b)"
-        :project="name"
-        :sessions="sessions.data.value"
-        :since="since"
-        :loading="sessions.phase.value === 'loading'"
-        :error="sessions.error.value"
-        @retry="sessions.load()"
       />
 
       <!-- Deterministic excerpts. Hidden until a status document is selected or discovery finds one. -->
