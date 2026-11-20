@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { SessionMessage } from "@anthropic-ai/claude-agent-sdk";
 import { foldHarnessEvents } from "@odin/shared/transcript";
-import { historyEntries } from "./history.ts";
+import { historyAttachment, historyEntries } from "./history.ts";
 import { createMapState, mapMessage } from "./map.ts";
 import { toSdkUserMessage } from "./input.ts";
 import stored from "./fixtures/session-messages.json" with { type: "json" };
@@ -68,6 +68,10 @@ test("a message the driver sent with attachments reads back with its attachment 
   assert.deepEqual(back, [
     { kind: "user", id: "u", text: "see", attachments: [{ name: "pic.png", mediaType: "image/png" }, { name: "notes.txt", mediaType: "text/plain" }], at: null, parentToolUseId: null },
   ]);
+  const stored = [{ type: "user", uuid: "u", session_id: "s", message: sent.message, parent_tool_use_id: null, parent_agent_id: null }];
+  assert.deepEqual(historyAttachment(stored as unknown as SessionMessage[], "u", 0), { name: "pic.png", mediaType: "image/png", data: "AAAA", encoding: "base64" });
+  assert.deepEqual(historyAttachment(stored as unknown as SessionMessage[], "u", 1), { name: "notes.txt", mediaType: "text/plain", data: "line 1\nline 2", encoding: "utf8" });
+  assert.equal(historyAttachment(stored as unknown as SessionMessage[], "u", 2), null);
 });
 
 const NOTIFICATION = [

@@ -711,11 +711,17 @@ export function createFixtures(now: number = Date.now()): Fixtures {
 
   const transcripts: Record<string, TranscriptEntry[]> = {
     [s.running]: [
-      u(
-        'r1',
-        'Make a plan first, then implement the streaming chat on branch odin/session-screen-3f9a1c2e.',
-        ago(40 * MIN),
-      ),
+      {
+        kind: 'user',
+        id: 'r1',
+        text: 'Make a plan first, then implement the streaming chat on branch odin/session-screen-3f9a1c2e.',
+        attachments: [
+          { name: 'layout.png', mediaType: 'image/png' },
+          { name: 'notes.md', mediaType: 'text/markdown' },
+        ],
+        at: ago(40 * MIN),
+        parentToolUseId: null,
+      },
       {
         kind: 'thinking',
         id: 'r2',

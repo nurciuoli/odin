@@ -855,6 +855,7 @@ function onDeleted() {
               </template>
             </IuCallout>
             <SessionThread
+              :session-id="session.id"
               :checkpoints="checkpointsByMessage"
               @rewind="openRewind"
               :rows="rows"

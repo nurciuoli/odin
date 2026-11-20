@@ -25,7 +25,7 @@ import type { ModelInfo, PermissionAnswer, PermissionMode, UserMessage } from "@
 import type { HarnessEvent, PermissionRequest } from "@odin/shared/harness";
 import { ODIN_MCP_SERVER } from "@odin/shared";
 import type { Harness, HarnessSessionInfo, HostTool, McpServerStart, SessionHandle, StartOptions } from "../types.ts";
-import { historyEntries } from "./history.ts";
+import { historyAttachment, historyEntries } from "./history.ts";
 import { InputQueue, toSdkUserMessage } from "./input.ts";
 import { commandsKnown, createMapState, mapMessage, setState } from "./map.ts";
 import { cancelledResult, toPermissionRequest, toPermissionResult } from "./permissions.ts";
@@ -484,6 +484,10 @@ export function createClaudeHarness(options: ClaudeHarnessOptions = {}): Harness
     },
     async messages(sessionId, projectPath) {
       return historyEntries(await api.getSessionMessages(sessionId, { ...(projectPath ? { dir: projectPath } : {}), includeSystemMessages: true }));
+    },
+    async readAttachment(sessionId, entryId, index, projectPath) {
+      const messages = await api.getSessionMessages(sessionId, { ...(projectPath ? { dir: projectPath } : {}), includeSystemMessages: true });
+      return historyAttachment(messages, entryId, index);
     },
     async taskMessages(sessionId, task, projectPath) {
       if (task.kind !== "agent" || !task.childSessionId) return { status: "unavailable", reason: "No native child conversation is available" };

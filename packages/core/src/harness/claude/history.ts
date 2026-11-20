@@ -4,6 +4,7 @@
 // task notifications the CLI injected as user text become normalized task entries, as they do live.
 import type { SessionMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { TranscriptEntry } from "@odin/shared/harness";
+import type { AttachmentContent } from "../types.ts";
 import { taskKey, type TaskActivity } from "@odin/shared/harness";
 import { taskEvents } from "./activity.ts";
 import { parseLocalCommand, type LocalCommandParts } from "./localcommand.ts";
@@ -13,7 +14,55 @@ import { assistantEntries, createMapState, injectedEntry, injectedId, isInterrup
 type Loose = Record<string, any>;
 
 const IMAGE_TAG = /^<attachment name="([^"]*)" media-type="([^"]*)" \/>$/;
-const TEXT_ATTACHMENT = /^<attachment name="([^"]*)" media-type="([^"]*)">\n[\s\S]*\n<\/attachment>$/;
+const TEXT_ATTACHMENT = /^<attachment name="([^"]*)" media-type="([^"]*)">\n([\s\S]*)\n<\/attachment>$/;
+
+type StoredAttachment = { name: string; mediaType: string; data?: string; encoding: "base64" | "utf8" };
+
+/** Attachments in the order historyEntries reports them. Text keeps its body; images keep base64 when the block has it. */
+export function contentAttachments(content: unknown): StoredAttachment[] {
+  if (!Array.isArray(content)) return [];
+  const attachments: StoredAttachment[] = [];
+  let announced: { name: string; mediaType: string } | null = null;
+  for (const b of content as Loose[]) {
+    if (b?.type === "tool_result") continue;
+    if (b?.type === "text" && typeof b.text === "string") {
+      const img = IMAGE_TAG.exec(b.text);
+      if (img) {
+        announced = { name: unescapeAttr(img[1]!), mediaType: unescapeAttr(img[2]!) };
+        continue;
+      }
+      const file = TEXT_ATTACHMENT.exec(b.text);
+      if (file) {
+        attachments.push({
+          name: unescapeAttr(file[1]!),
+          mediaType: unescapeAttr(file[2]!),
+          data: file[3] ?? "",
+          encoding: "utf8",
+        });
+      }
+    } else if (b?.type === "image") {
+      const named = announced ?? { name: "image", mediaType: String(b.source?.media_type ?? "image") };
+      const data = typeof b.source?.data === "string" ? b.source.data.replace(/\s/g, "") : "";
+      attachments.push(data ? { ...named, data, encoding: "base64" } : { ...named, encoding: "base64" });
+    }
+    if (b?.type !== "text") announced = null;
+  }
+  return attachments;
+}
+
+/** One attachment from a stored user message, or null when that index has no bytes. */
+export function historyAttachment(messages: readonly SessionMessage[], entryId: string, index: number): AttachmentContent | null {
+  for (const raw of messages) {
+    const m = raw as SessionMessage & Loose;
+    if (m.type !== "user" || m.uuid !== entryId || m.isMeta || m.isSynthetic) continue;
+    const file = contentAttachments((m.message as Loose | undefined)?.content)[index];
+    if (file?.data !== undefined && (file.encoding === "utf8" || file.data)) {
+      return { name: file.name, mediaType: file.mediaType, data: file.data, encoding: file.encoding };
+    }
+    return null;
+  }
+  return null;
+}
 
 const unescapeAttr = (s: string) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
 
@@ -63,7 +112,7 @@ export function historyEntries(messages: readonly SessionMessage[]): TranscriptE
       if (isInterruptMessage((m.message as Loose)?.content)) continue;
       const content = message.content;
       const texts: string[] = [];
-      const attachments: { name: string; mediaType: string }[] = [];
+      const attachments = contentAttachments(content).map(({ name, mediaType }) => ({ name, mediaType }));
       const notices: TaskNotice[] = [];
       const injected: Injected[] = [];
       const locals: LocalCommandParts[] = [];
@@ -81,7 +130,6 @@ export function historyEntries(messages: readonly SessionMessage[]): TranscriptE
       };
       if (typeof content === "string") addText(content);
       else if (Array.isArray(content)) {
-        let announced: { name: string; mediaType: string } | null = null;
         for (const b of content as Loose[]) {
           if (b?.type === "tool_result" && typeof b.tool_use_id === "string") {
             const i = tools.get(b.tool_use_id);
@@ -89,19 +137,7 @@ export function historyEntries(messages: readonly SessionMessage[]): TranscriptE
             if (cur?.kind === "tool") entries[i!] = { ...cur, result: toToolResult(b, { interruptedNext: isInterruptMessage((messages[at + 1] as Loose | undefined)?.message?.content) }) };
             continue;
           }
-          if (b?.type === "text" && typeof b.text === "string") {
-            const img = IMAGE_TAG.exec(b.text);
-            if (img) {
-              announced = { name: unescapeAttr(img[1]!), mediaType: unescapeAttr(img[2]!) };
-              continue;
-            }
-            const file = TEXT_ATTACHMENT.exec(b.text);
-            if (file) attachments.push({ name: unescapeAttr(file[1]!), mediaType: unescapeAttr(file[2]!) });
-            else addText(b.text);
-          } else if (b?.type === "image") {
-            attachments.push(announced ?? { name: "image", mediaType: String(b.source?.media_type ?? "image") });
-          }
-          if (b?.type !== "text") announced = null;
+          if (b?.type === "text" && typeof b.text === "string" && !IMAGE_TAG.test(b.text) && !TEXT_ATTACHMENT.test(b.text)) addText(b.text);
         }
       }
       notices.forEach((n, i) => {

@@ -1,5 +1,6 @@
 import type { PermissionMode, UserMessage } from "@odin/shared/api";
 import type { TranscriptEntry } from "@odin/shared/harness";
+import type { AttachmentContent } from "../types.ts";
 import { toolResult as sharedToolResult } from "@odin/shared/transcript";
 import type { Wire } from "./transport.ts";
 
@@ -41,6 +42,41 @@ export function userInput(message: UserMessage): Wire[] {
       });
   }
   return content;
+}
+
+const IMAGE_BLOCK = new Set(["image", "localImage", "inputImage", "input_image"]);
+
+function imageData(block: Wire): { mediaType: string; data: string } | null {
+  const url = [block.url, block.imageUrl, block.image_url].find((value) => typeof value === "string") as string | undefined;
+  const packed = url?.replace(/\s/g, "") ?? "";
+  const dataUrl = /^data:([^;,]+);base64,([A-Za-z0-9+/=]+)$/i.exec(packed);
+  const raw = typeof block.data === "string" ? block.data.replace(/\s/g, "") : "";
+  const data = dataUrl?.[2] ?? (/^[A-Za-z0-9+/]+={0,2}$/.test(raw) ? raw : "");
+  if (!data) return null;
+  const mediaType = (dataUrl?.[1] ?? (typeof block.mimeType === "string" ? block.mimeType : typeof block.mediaType === "string" ? block.mediaType : "image/png")).toLowerCase();
+  return { mediaType, data };
+}
+
+/** The image at the same index a userMessage transcript row uses. Null when that block kept no bytes. */
+export function userImageAt(item: Wire, index: number): AttachmentContent | null {
+  if (!Number.isInteger(index) || index < 0) return null;
+  const content = Array.isArray(item.content) ? item.content : [];
+  let at = 0;
+  for (const block of content) {
+    if (!block || !IMAGE_BLOCK.has(String(block.type))) continue;
+    if (at === index) {
+      const image = imageData(block);
+      if (!image) return null;
+      return {
+        name: typeof block.name === "string" && block.name ? block.name : "Image",
+        mediaType: image.mediaType,
+        data: image.data,
+        encoding: "base64",
+      };
+    }
+    at += 1;
+  }
+  return null;
 }
 
 const printable = (value: unknown): string =>

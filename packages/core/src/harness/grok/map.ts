@@ -1,6 +1,7 @@
 // Pure ACP → Odin event mapping. No process, no credentials.
 import type { Effort, PermissionMode, TokenUsage } from "@odin/shared/api";
 import type { HarnessEvent, PermissionRequest, SlashCommand, TaskActivity, ToolResult, TranscriptEntry } from "@odin/shared/harness";
+import type { AttachmentContent } from "../types.ts";
 import { TOOL_RESULT_MAX_CHARS, taskKey } from "@odin/shared/harness";
 import type { AgentSpec, McpServerStart } from "../types.ts";
 import type { Wire } from "./transport.ts";
@@ -285,8 +286,8 @@ export function optionFor(options: PermissionOption[], behavior: "allow" | "deny
 }
 
 const ATTACHMENT_TAG = /<attachment\s+name="([^"]*)"\s+media-type="([^"]*)"\s*\/>/g;
-const ATTACHMENT_BODY = /<attachment\s+name="([^"]*)"\s+media-type="([^"]*)">[\s\S]*?<\/attachment>/g;
-const FILE_CONTENTS = /<file_contents\s+path="([^"]*)"[^>]*>[\s\S]*?<\/file_contents>/g;
+const ATTACHMENT_BODY = /<attachment\s+name="([^"]*)"\s+media-type="([^"]*)">([\s\S]*?)<\/attachment>/g;
+const FILE_CONTENTS = /<file_contents\s+path="([^"]*)"[^>]*>([\s\S]*?)<\/file_contents>/g;
 const DROPPED = /<image_dropped_notice>([\s\S]*?)<\/image_dropped_notice>/g;
 const IMAGE_FILES = /<image_files>([\s\S]*?)<\/image_files>/;
 
@@ -297,9 +298,11 @@ function fileName(path: string): string {
   try { return decodeURIComponent(base); } catch { return base; }
 }
 
+type RichAttachment = { name: string; mediaType: string; data?: string; encoding?: "base64" | "utf8" };
+
 export interface UserFacing {
   text: string;
-  attachments: { name: string; mediaType: string }[];
+  attachments: RichAttachment[];
   notices: string[];
 }
 
@@ -319,15 +322,18 @@ export function userFacing(line: Wire): UserFacing {
   let raw = "";
   for (const block of contentBlocks(line.content)) {
     if (block.type === "image") {
-      const url = typeof block.url === "string" ? block.url : "";
-      const mime = /^data:([^;,]+)/i.exec(url)?.[1] ?? "image/png";
-      attachments.push({ name: "image", mediaType: mime });
+      const url = typeof block.url === "string" ? block.url.replace(/\s/g, "") : "";
+      const dataUrl = /^data:([^;,]+);base64,([A-Za-z0-9+/=]+)$/i.exec(url);
+      const rawData = typeof block.data === "string" ? block.data.replace(/\s/g, "") : "";
+      const data = dataUrl?.[2] ?? (/^[A-Za-z0-9+/]+={0,2}$/.test(rawData) ? rawData : "");
+      const mime = dataUrl?.[1] ?? (typeof block.mimeType === "string" ? block.mimeType : "image/png");
+      attachments.push({ name: "image", mediaType: mime, ...(data ? { data, encoding: "base64" as const } : { encoding: "base64" }) });
     } else raw += textOf(block);
   }
   for (const match of raw.matchAll(DROPPED)) if (match[1]?.trim()) notices.push(match[1].trim());
   for (const match of raw.matchAll(FILE_CONTENTS)) {
     const path = unescapeAttr(match[1] ?? "");
-    if (path) attachments.push({ name: fileName(path), mediaType: "text/plain" });
+    if (path) attachments.push({ name: fileName(path), mediaType: "text/plain", data: (match[2] ?? "").replace(/^\n/, "").replace(/\n$/, ""), encoding: "utf8" });
   }
   const listed: string[] = [];
   const imageList = IMAGE_FILES.exec(raw);
@@ -353,10 +359,18 @@ export function userFacing(line: Wire): UserFacing {
     }
   }
   if (!attachments.some((attachment) => attachment.mediaType.toLowerCase().startsWith("image"))) {
-    while (tagAt < tags.length) attachments.push(tags[tagAt++]!);
+    while (tagAt < tags.length) {
+      const tag = tags[tagAt++]!;
+      attachments.push({ name: tag.name, mediaType: tag.mediaType, encoding: "base64" });
+    }
   }
   for (const match of raw.matchAll(ATTACHMENT_BODY)) {
-    attachments.push({ name: unescapeAttr(match[1] ?? "") || "file", mediaType: unescapeAttr(match[2] ?? "") || "text/plain" });
+    attachments.push({
+      name: unescapeAttr(match[1] ?? "") || "file",
+      mediaType: unescapeAttr(match[2] ?? "") || "text/plain",
+      data: (match[3] ?? "").replace(/^\n/, "").replace(/\n$/, ""),
+      encoding: "utf8",
+    });
   }
   let clean = raw
     .replace(IMAGE_FILES, "")
@@ -373,6 +387,22 @@ export function userFacing(line: Wire): UserFacing {
   }
   clean = clean.replace(/^@((?:[A-Za-z]:[\\/])?[^\s]*[\\/][^\s]+)\s+/, "");
   return { text: clean.trim(), attachments, notices };
+}
+
+/** Bytes for one attachment on a Grok history line. The entry id is the line index historyEntries uses. */
+export function historyAttachment(lines: Wire[], entryId: string, index: number): AttachmentContent | null {
+  const at = /^grok-(\d+)$/.exec(entryId);
+  if (!at) return null;
+  const line = lines[Number(at[1])];
+  if (!line || line.type !== "user") return null;
+  const file = userFacing(line).attachments[index];
+  if (!file || file.data === undefined || (file.encoding === "base64" && !file.data)) return null;
+  return {
+    name: file.name,
+    mediaType: file.mediaType,
+    data: file.data,
+    encoding: file.encoding === "utf8" ? "utf8" : "base64",
+  };
 }
 
 /** Grok persists its prompt scaffolding as user messages, alongside actual queries. */
@@ -643,7 +673,7 @@ export function historyEntries(lines: Wire[]): TranscriptEntry[] {
     if (type === "user") {
       const face = userFacing(line);
       face.notices.forEach((notice, i) => entries.push({ kind: "system", id: `${id}:notice:${i}`, level: "warning", text: notice, at: null, parentToolUseId: null }));
-      if (face.text || face.attachments.length) entries.push({ kind: "user", id, text: face.text, ...(face.attachments.length ? { attachments: face.attachments } : {}), at: null, parentToolUseId: null });
+      if (face.text || face.attachments.length) entries.push({ kind: "user", id, text: face.text, ...(face.attachments.length ? { attachments: face.attachments.map(({ name, mediaType }) => ({ name, mediaType })) } : {}), at: null, parentToolUseId: null });
     } else if (type === "assistant") {
       const text = textOf(line.content);
       if (text) entries.push({ kind: "assistant", id, text, model: typeof line.model_id === "string" ? line.model_id : null, at: null, parentToolUseId: null });

@@ -22,7 +22,12 @@ import { IuComposer } from '@/components/Composer'
 import { IuIcon } from '@/components/Icon'
 import type { MenuItem } from '@/components/Menu'
 import { useToast } from '@/components/Toast'
-import { attachmentProblem, messageProblem, readAttachment } from '@/screens/session/attachments'
+import {
+  attachmentProblem,
+  chatAttachment,
+  messageProblem,
+  readAttachment,
+} from '@/screens/session/attachments'
 import ComposerChoice from './ComposerChoice.vue'
 import NativeControls from './NativeControls.vue'
 import { effortChoices, asEffort, pickerExtras } from './effort'
@@ -351,16 +356,7 @@ async function onAttach(list: File[]) {
     }
     const id = crypto.randomUUID()
     payloads.set(id, result.attachment)
-    files.value = [
-      ...files.value,
-      {
-        id,
-        name: file.name,
-        size: file.size,
-        kind: result.attachment.mediaType.startsWith('image/') ? 'image' : 'file',
-        status: 'ready',
-      },
-    ]
+    files.value = [...files.value, chatAttachment(id, file, result.attachment)]
   }
 }
 

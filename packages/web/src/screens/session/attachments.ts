@@ -1,6 +1,7 @@
 // Files picked, pasted or dropped on the composer, turned into the API's `Attachment`: images as base64, text files
 // as UTF-8. Anything else (and anything over 5 MB) is refused with a reason the screen can show.
 import type { Attachment, UserMessage } from '@odin/shared/api'
+import type { Attachment as ChatAttachment } from '@/components/Chat'
 import {
   MAX_ATTACHMENT_BYTES,
   MAX_ATTACHMENTS,
@@ -47,6 +48,53 @@ const TEXT_TYPES = new Set([
 ])
 const TEXT_EXTENSIONS =
   /\.(txt|md|markdown|json|jsonc|ya?ml|toml|ini|cfg|conf|csv|tsv|log|xml|html?|css|scss|less|js|mjs|cjs|jsx|ts|mts|cts|tsx|vue|svelte|py|rb|go|rs|java|kt|swift|c|h|cc|cpp|hpp|cs|php|sh|bash|zsh|fish|sql|graphql|gql|diff|patch|env\.example|gitignore|dockerfile)$/i
+
+const PREVIEW_IMAGE = /^image\/(png|jpe?g|gif|webp)$/i
+
+/** 1×1 PNG so mock sessions can open an image preview without a server. */
+export const MOCK_PREVIEW_PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+
+/** A composer chip that can open a preview from the bytes already in memory. */
+export function chatAttachment(
+  id: string,
+  file: { name: string; size?: number },
+  payload: Attachment,
+): ChatAttachment {
+  const type = payload.mediaType.toLowerCase()
+  const image = PREVIEW_IMAGE.test(type)
+  return {
+    id,
+    name: file.name,
+    ...(file.size === undefined ? {} : { size: file.size }),
+    kind: type.startsWith('image/') ? 'image' : 'file',
+    status: 'ready',
+    ...(image
+      ? { src: `data:${type === 'image/jpg' ? 'image/jpeg' : type};base64,${payload.data}` }
+      : { text: payload.data }),
+  }
+}
+
+/** A transcript chip. Images point at the preview route; text is fetched when opened. */
+export function transcriptAttachment(
+  sessionId: string,
+  entryId: string,
+  index: number,
+  file: { name: string; mediaType: string },
+  mock = false,
+): ChatAttachment {
+  const type = file.mediaType.toLowerCase()
+  const image = PREVIEW_IMAGE.test(type)
+  const previewUrl = `/api/sessions/${encodeURIComponent(sessionId)}/attachments/${encodeURIComponent(entryId)}/${index}`
+  return {
+    id: `${entryId}-${index}`,
+    name: file.name,
+    kind: type.startsWith('image/') ? 'image' : 'file',
+    ...(image ? { src: mock ? MOCK_PREVIEW_PNG : previewUrl } : {}),
+    ...(!image && mock ? { text: `${file.name}\n\nThis demo only has the file name.` } : {}),
+    ...(!image && !mock ? { previewUrl } : {}),
+  }
+}
 
 export type AttachmentKind = 'image' | 'text'
 

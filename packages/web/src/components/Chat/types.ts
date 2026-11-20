@@ -27,6 +27,12 @@ export interface Attachment {
   status?: 'uploading' | 'ready' | 'failed'
   /** 0–1 while uploading */
   progress?: number
+  /** Image URL (data URL or same-origin preview). Shown as a thumbnail and in the preview. */
+  src?: string
+  /** Text already in memory. The preview shows it without a request. */
+  text?: string
+  /** Fetched when the chip is opened. Used for text the transcript did not carry. */
+  previewUrl?: string
 }
 
 export type ApprovalState = 'pending' | 'approved' | 'denied' | 'always'

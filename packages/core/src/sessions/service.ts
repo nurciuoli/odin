@@ -8,13 +8,15 @@ import { randomUUID } from "node:crypto";
 import { resolve, sep } from "node:path";
 import type { SQLInputValue } from "node:sqlite";
 import type {
-  Checkpoint, ForkSessionRequest, HandoffPreview, HandoffRequest, PermissionAnswer, PermissionMode, Session, SessionCounts, SessionDetail, SessionHandoff, SessionFilter, SessionMetrics,
+  Attachment, Checkpoint, ForkSessionRequest, HandoffPreview, HandoffRequest, PermissionAnswer, PermissionMode, Session, SessionCounts, SessionDetail, SessionHandoff, SessionFilter, SessionMetrics,
   SessionState, StartSessionRequest, Todo, UpdateSessionRequest, UserMessage, Workspace,
 } from "@odin/shared/api";
 import type { HarnessEvent, PermissionRequest, SessionGoal, SlashCommand, TranscriptEntry } from "@odin/shared/harness";
 import { emptyMetrics, sessionBranch } from "@odin/shared/session";
 import { findModel } from "@odin/shared/api";
 import { applyHarnessEvent, reconcileTaskHistory } from "@odin/shared/transcript";
+import type { AttachmentContent } from "../harness/types.ts";
+import { attachmentPreview } from "./attachment-preview.ts";
 import { HttpError } from "../http/util.ts";
 import { PERMISSION_MODES, titleFromPrompt } from "../launch/service.ts";
 import type { Harness, SessionHandle, StartOptions } from "../harness/types.ts";
@@ -242,6 +244,39 @@ export function createSessionsService(deps: Deps, services: Services, options: S
   const eventListeners = new Set<(id: string, e: HarnessEvent) => void>();
   let closed = false;
   const outbox = messageOutbox(db, now, (sessionId, queue) => bus.emit({ type: "session.queue", sessionId, queue }));
+  // Bytes from messages Odin just handed the harness, keyed once the user entry id is known. History is the copy
+  // that survives a restart; this covers the turn before that write is visible.
+  const pendingAttachments = new Map<string, Attachment[][]>();
+  const savedAttachments = new Map<string, Attachment[]>();
+  const savedAttachmentOrder = new Map<string, string[]>();
+  function stageAttachments(id: string, message: { attachments?: Attachment[] } | null | undefined): void {
+    if (!message?.attachments?.length) return;
+    const queue = pendingAttachments.get(id) ?? [];
+    queue.push(message.attachments);
+    pendingAttachments.set(id, queue);
+  }
+  function keepAttachments(id: string, entryId: string, files: Attachment[]): void {
+    const key = `${id}\0${entryId}`;
+    savedAttachments.set(key, files);
+    const order = savedAttachmentOrder.get(id) ?? [];
+    order.push(key);
+    while (order.length > 32) savedAttachments.delete(order.shift()!);
+    savedAttachmentOrder.set(id, order);
+  }
+  function claimAttachments(id: string, entryId: string, files: { name: string; mediaType: string }[]): void {
+    const queue = pendingAttachments.get(id);
+    if (!queue?.length) return;
+    const at = queue.findIndex((batch) => batch.length === files.length && batch.every((file, index) => file.name === files[index]?.name && file.mediaType === files[index]?.mediaType));
+    if (at < 0) return;
+    const [batch] = queue.splice(at, 1);
+    if (batch) keepAttachments(id, entryId, batch);
+  }
+  function rememberedAttachment(id: string, entryId: string, index: number): AttachmentContent | null {
+    const file = savedAttachments.get(`${id}\0${entryId}`)?.[index];
+    if (!file) return null;
+    const image = file.mediaType.toLowerCase().startsWith("image/");
+    return { name: file.name, mediaType: file.mediaType, data: file.data, encoding: image ? "base64" : "utf8" };
+  }
   outbox.recover();
   const pumping = new Set<string>();
   const nativeBusy = new Set<string>();
@@ -566,6 +601,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         if (e.entry.kind !== "user") l.acted = true;
         else if (!e.entry.parentToolUseId) void services.checkpoints.capture(l.id, "turn.start", e.entry.id);
         l.streaming.delete(e.entry.id);
+        if (e.entry.kind === "user" && e.entry.attachments?.length) claimAttachments(l.id, e.entry.id, e.entry.attachments);
         l.tail = applyHarnessEvent(l.tail, e);
         patchAndEmit(l.id, { updatedAt: now() });
         break;
@@ -589,6 +625,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         l.turnActive = false;
         l.settled = l.tail.length;
         if (HISTORY_REPLACES_TAIL.has(l.harness.id)) void trimSettled(l);
+        pendingAttachments.delete(l.id);
         if (l.releaseNext && (e.ok || e.error === "interrupted")) {
           l.releaseNext = false;
           outbox.settle(l.id, true);
@@ -633,6 +670,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
 
   /** The handle is gone: unregister it and settle the record. */
   function finish(l: Live, failure: string | null): void {
+    pendingAttachments.delete(l.id);
     approvals.cancel(l.id);
     l.releaseNext = false;
     l.pauseAfterRelease = false;
@@ -765,8 +803,10 @@ export function createSessionsService(deps: Deps, services: Services, options: S
           l.acted = false;
           clearIdle(l);
           patchAndEmit(id, { state: "running", waitingFor: null });
+          stageAttachments(id, next.message);
           l.handle.send(next.message);
         } else {
+          stageAttachments(id, next.message);
           const opts: StartOptions = { cwd: s.cwd, resume: id, prompt: next.message, hostTools: hostTools(id), mcpServers };
           if (s.model) opts.model = s.model;
           opts.effort = s.effort;
@@ -972,6 +1012,16 @@ export function createSessionsService(deps: Deps, services: Services, options: S
 
     get,
 
+    async readAttachment(id, entryId, index) {
+      const s = get(id);
+      if (!s) throw new HttpError(404, `unknown session ${id}`);
+      if (!Number.isInteger(index) || index < 0 || index > 100 || entryId.length > 512) return null;
+      const remembered = rememberedAttachment(id, entryId, index);
+      const harness = deps.harnesses[s.harness];
+      const stored = remembered ?? (harness?.readAttachment ? await harness.readAttachment(id, entryId, index, s.cwd) : null);
+      return stored ? attachmentPreview(stored) : null;
+    },
+
     async taskMessages(id, key) {
       const detail = await this.detail(id);
       if (!detail) throw new HttpError(404, `unknown session ${id}`);
@@ -1110,7 +1160,10 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       });
 
       const opts: StartOptions = { cwd, sessionId: id, title: plan.title, hostTools: hostTools(id) };
-      if (plan.prompt) opts.prompt = plan.prompt;
+      if (plan.prompt) {
+        stageAttachments(id, plan.prompt);
+        opts.prompt = plan.prompt;
+      }
       if (plan.model) opts.model = plan.model;
       opts.effort = req.effort;
       if (plan.permissionMode) opts.permissionMode = plan.permissionMode;
@@ -1364,6 +1417,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       }
 
       if (prompt) {
+        stageAttachments(newId, prompt);
         // Cut at a message: the harness already made the stored fork, so resume it; otherwise fork while starting.
         const opts: StartOptions = req.atMessageId
           ? { cwd, resume: newId, prompt, title, hostTools: hostTools(newId), mcpServers }

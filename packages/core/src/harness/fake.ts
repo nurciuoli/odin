@@ -302,7 +302,8 @@ export function fakeHarness(options: FakeHarnessOptions = {}): FakeHarness {
       const started = Date.now();
       interrupted = false;
       emit({ type: "state", state: "running" });
-      emit({ type: "entry", entry: { kind: "user", id: nextId("user"), text: message.text, at: at(), parentToolUseId: null } });
+      const attachments = (message.attachments ?? []).map((file) => ({ name: file.name, mediaType: file.mediaType }));
+      emit({ type: "entry", entry: { kind: "user", id: nextId("user"), text: message.text, ...(attachments.length ? { attachments } : {}), at: at(), parentToolUseId: null } });
       let ok = true;
       for (const step of script(message, turn, opts)) {
         if (interrupted || closed) {

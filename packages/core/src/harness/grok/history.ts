@@ -1,8 +1,9 @@
 // On-disk Grok sessions. ~/.grok/sessions/<encodeURIComponent(cwd)>/<id>/. No live process.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import type { HarnessSessionInfo } from "../types.ts";
-import { historyEntries, tasksFromUpdates, userText } from "./map.ts";
+import type { AttachmentContent, HarnessSessionInfo } from "../types.ts";
+import { historyAttachment, historyEntries, tasksFromUpdates, userText } from "./map.ts";
+import type { Wire } from "./transport.ts";
 import type { TranscriptEntry } from "@odin/shared/harness";
 
 export function encodedCwd(cwd: string): string {
@@ -107,9 +108,14 @@ function readJsonl(file: string): Record<string, unknown>[] {
   });
 }
 
+export function readAttachment(historyRoot: string, projectPath: string, sessionId: string, entryId: string, index: number): AttachmentContent | null {
+  const dir = join(historyRoot, encodedCwd(projectPath), sessionId);
+  return historyAttachment(readJsonl(join(dir, "chat_history.jsonl")) as Wire[], entryId, index);
+}
+
 export function readMessages(historyRoot: string, projectPath: string, sessionId: string): TranscriptEntry[] {
   const dir = join(historyRoot, encodedCwd(projectPath), sessionId);
-  const messages = historyEntries(readJsonl(join(dir, "chat_history.jsonl")));
+  const messages = historyEntries(readJsonl(join(dir, "chat_history.jsonl")) as Wire[]);
   const tasks = tasksFromUpdates(readJsonl(join(dir, "updates.jsonl")));
   return [...messages, ...tasks];
 }

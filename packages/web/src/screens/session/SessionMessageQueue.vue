@@ -3,8 +3,11 @@ import { computed, ref, watch } from 'vue'
 import type { MessageQueue, QueuedMessage } from '@odin/shared/api'
 import { useApi } from '@/api'
 import { IuButton } from '@/components/Button'
+import { IuAttachment } from '@/components/Chat'
+import type { Attachment as ChatAttachment } from '@/components/Chat'
 import { IuCallout } from '@/components/Callout'
 import { IuTextarea } from '@/components/Fields'
+import { chatAttachment } from './attachments'
 
 const props = withDefaults(defineProps<{ sessionId: string; queue: MessageQueue }>(), {})
 const emit = defineEmits<{ updated: [queue: MessageQueue] }>()
@@ -15,6 +18,13 @@ const editing = ref<string | null>(null)
 const text = ref('')
 const confirming = ref<string | null>(null)
 const hasUncertain = computed(() => props.queue.messages.some(m => m.state === 'uncertain'))
+function queuedFile(
+  id: string,
+  index: number,
+  file: { name: string; mediaType: string; data: string },
+): ChatAttachment {
+  return chatAttachment(`${id}-${index}`, { name: file.name }, file)
+}
 /** A handed-off message is already in the transcript. The queue shows what is still waiting. */
 const visible = computed(() => props.queue.messages.filter(m => m.state !== 'sending'))
 const nextQueued = computed(() => visible.value.some(m => m.state === 'queued'))
@@ -130,7 +140,9 @@ function label(message: QueuedMessage) {
           class="message-queue__files"
           aria-label="Attached files"
         >
-          <li v-for="(file, index) in message.message.attachments" :key="index">{{ file.name }}</li>
+          <li v-for="(file, index) in message.message.attachments" :key="index">
+            <IuAttachment :file="queuedFile(message.id, index, file)" />
+          </li>
         </ul>
         <div
           v-if="message.state === 'queued' && editing !== message.id"
@@ -231,6 +243,10 @@ function label(message: QueuedMessage) {
   font-size: var(--iu-font-size-13);
 }
 .message-queue__files {
-  padding-left: 18px;
+  padding-left: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 </style>

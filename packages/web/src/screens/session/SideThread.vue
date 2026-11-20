@@ -224,6 +224,7 @@ async function discard() {
       <div class="side-thread__thread">
         <SessionThread
           label="Side conversation"
+          :session-id="session.id"
           :rows="rows"
           :entries="entries"
           :root="session.cwd"
