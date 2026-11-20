@@ -1,0 +1,1 @@
+- The home composer now starts on the project you last started a session in, instead of always the first project; it falls back to the first when that project is gone.

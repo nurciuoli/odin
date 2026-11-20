@@ -29,6 +29,7 @@ import { effortChoices, asEffort, pickerExtras } from './effort'
 import ComposerProjects from './ComposerProjects.vue'
 import ComposerWhere from './ComposerWhere.vue'
 import Murmuration from './Murmuration.vue'
+import { initialProjects, rememberProject } from './lastProject'
 import { lastRuntime, rememberRuntime } from './lastRuntime'
 import { harnessLabel, PERMISSION_MODE_LABELS } from './format'
 import {
@@ -203,8 +204,9 @@ watch(
   () => store.projects.value,
   list => {
     if (!props.project && !form.project) {
-      form.project = list.find(p => !p.missing)?.name ?? ''
-      form.projects = form.project ? [form.project] : []
+      const initial = initialProjects(list.filter(p => !p.missing).map(p => p.name))
+      form.project = initial?.project ?? ''
+      form.projects = initial?.projects ?? []
     }
   },
   { immediate: true },
@@ -396,6 +398,7 @@ async function start(
       model: form.model,
       permissionMode: form.permissionMode,
     })
+    if (form.project) rememberProject(form.project, form.projects)
     for (const a of payload.attachments) payloads.delete(a.id)
     drafts.clear(DRAFT_KEY)
     // nothing is remembered between sends: the next composer starts from the default again
