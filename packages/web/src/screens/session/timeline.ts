@@ -83,3 +83,29 @@ export function stepIndex(current: number, delta: number, count: number): number
   if (count <= 0) return 0
   return Math.min(count - 1, Math.max(0, current + delta))
 }
+
+/**
+ * How much of the rail each step gets: how long it ran (the gap to the next message, capped at half an hour), or, for
+ * the last step and steps without timestamps, how many tool calls it made. Log-scaled so one long step doesn't flatten
+ * the rest, with a floor so a quick one still has something to point at.
+ */
+export function stepWeights(steps: TimelineStep[]): number[] {
+  return steps.map((s, i) => {
+    const t0 = s.at ? Date.parse(s.at) : NaN
+    const t1 = steps[i + 1]?.at ? Date.parse(steps[i + 1]!.at!) : NaN
+    const minutes =
+      Number.isNaN(t0) || Number.isNaN(t1)
+        ? Math.min(s.tools, 20) * 0.5
+        : Math.min(30, Math.max(0, (t1 - t0) / 60000))
+    return Math.log(1 + minutes) + 0.6
+  })
+}
+
+/** The step on screen: the last one whose message has scrolled up to `top` (or the first, before any has). */
+export function currentStep(tops: number[], top: number): number {
+  let at = 0
+  tops.forEach((t, i) => {
+    if (t <= top) at = i
+  })
+  return at
+}

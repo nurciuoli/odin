@@ -1,0 +1,1 @@
+- The session thread has a thin rail down its left side, one mark per message of yours, that grows as the session goes on. Point at a mark to preview that step, click it to jump there, and use "Back to step N" to return. ⌥T still opens the full timeline.
