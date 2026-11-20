@@ -1,1 +1,1 @@
-- Home's clouds sit higher in the pane, closer to the app bar, while staying below it.
+- Home's clouds sit higher in the pane, closer to the app bar and closer together, while staying below it.
