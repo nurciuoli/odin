@@ -5,7 +5,7 @@ export interface LastProject {
   projects: string[]
 }
 
-/** The working project and the projects picked with it by the last session started from a composer. */
+/** The working project and the projects last picked in a composer. */
 export function lastProject(): LastProject | undefined {
   try {
     const value = JSON.parse(localStorage.getItem(key) ?? 'null')

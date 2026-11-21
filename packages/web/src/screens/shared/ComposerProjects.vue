@@ -50,7 +50,7 @@ function select(id: string) {
     if (working.value === id) working.value = next[0] ?? ''
   } else {
     projects.value = [...projects.value, id]
-    if (!working.value) working.value = id
+    working.value = id
   }
 }
 </script>
