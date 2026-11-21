@@ -105,21 +105,25 @@ onBeforeUnmount(() => dispose())
 </script>
 
 <template>
-  <canvas
-    ref="canvas"
-    class="murmuration"
+  <div
     aria-hidden="true"
     @pointermove="point"
     @pointerleave="input.pointer = null"
     @pointercancel="input.pointer = null"
-  />
+  >
+    <canvas ref="canvas" class="murmuration" />
+  </div>
 </template>
 
 <style>
 .murmuration {
+  /* Home's isolated sky layers put StormSky at -1, in front of the flock. */
+  position: relative;
+  z-index: -2;
   display: block;
   width: 100%;
   height: 280px;
+  pointer-events: none;
 }
 @media (max-width: 540px) {
   .murmuration {
