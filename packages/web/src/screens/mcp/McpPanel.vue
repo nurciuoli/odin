@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// The MCP servers tab of the Library: the library's servers with whether each can start (signed in, secrets set), a Connect button for the
+// The MCP servers section of the Library: the library's servers with whether each can start (signed in, secrets set), a Connect button for the
 // ones that use OAuth, and the secrets vault their specs refer to.
 import { computed, ref, watch } from 'vue'
 import type { McpOAuthStatus, SecretsResponse } from '@odin/shared/api'
@@ -8,11 +8,10 @@ import { IuBadge } from '@/components/Badge'
 import { IuButton } from '@/components/Button'
 import { IuCallout } from '@/components/Callout'
 import { IuDialog } from '@/components/Modal'
-import { IuSwitch } from '@/components/Fields'
+import { IuCheckbox, IuSwitch } from '@/components/Fields'
 import { IuIcon } from '@/components/Icon'
 import { IuMenu } from '@/components/Menu'
 import { IuEmpty, IuErrorState, IuSkeleton } from '@/components/States'
-import { IuTable, type Column } from '@/components/Table'
 import { useToast } from '@/components/Toast'
 import { plural, relativeTime } from '@/screens/shared/format'
 import { useResource, useServerEvents } from '@/screens/shared/useResource'
@@ -63,15 +62,21 @@ watch(
 
 const attention = computed(() => rows.value.filter(needsAttention).length)
 
-type Row = McpRow & { used: number | null }
-const columns: Column<Row>[] = [
-  { key: 'name', header: 'Server', sortable: true, width: '22%' },
-  { key: 'target', header: 'Connects to' },
-  { key: 'auth', header: 'Sign-in', width: '24%' },
-  { key: 'used', header: 'Used in', width: '110px' },
-  { key: 'enabled', header: 'Enabled', width: '90px' },
-  { key: 'actions', header: '', align: 'end', width: '240px' },
-]
+const allSelected = computed(
+  () => rows.value.length > 0 && rows.value.every(r => selected.value.has(r.id)),
+)
+const someSelected = computed(
+  () => rows.value.some(r => selected.value.has(r.id)) && !allSelected.value,
+)
+function toggleAll(on: boolean) {
+  selected.value = on ? new Set(rows.value.map(r => r.id)) : new Set()
+}
+function toggleRow(id: string, on: boolean) {
+  const next = new Set(selected.value)
+  if (on) next.add(id)
+  else next.delete(id)
+  selected.value = next
+}
 
 function oauthState(row: McpRow): McpOAuthStatus | 'loading' | 'unknown' | null {
   return row.auth.kind === 'oauth' ? row.auth.status : null
@@ -105,12 +110,6 @@ const secretRows = computed<SecretRow[]>(() => {
     })),
   ]
 })
-const secretColumns: Column<SecretRow>[] = [
-  { key: 'name', header: 'Name', width: '30%' },
-  { key: 'usedBy', header: 'Used by' },
-  { key: 'updatedAt', header: 'Updated', width: '120px' },
-  { key: 'actions', header: '', align: 'end', width: '180px' },
-]
 const editing = ref<{ name?: string } | null>(null)
 const editOpen = computed({
   get: () => editing.value !== null,
@@ -159,8 +158,7 @@ async function remove() {
       @retry="refresh()"
     />
     <template v-else>
-      <section class="mcp__section" aria-labelledby="mcp-servers">
-        <h2 id="mcp-servers" class="mcp__h">Servers</h2>
+      <section class="mcp__section">
         <IuCallout v-if="attention" intent="warning" variant="inline">
           {{ plural(attention, 'server') }}
           won't start a session until you finish setting
@@ -178,68 +176,81 @@ async function remove() {
           title="No MCP servers yet"
           body="Add one with New MCP server. Remote servers can sign in with OAuth, and any server can keep tokens in the secrets below."
         />
-        <IuTable
-          v-else
-          v-model:selected="selected"
-          selectable="multi"
-          :columns="columns"
-          :rows="rows"
-          :row-key="r => r.id"
-        >
-          <template #cell:name="{ row }">
-            <RouterLink
-              class="mcp__name"
-              :to="{ name: 'library-asset', params: { kind: 'mcp', id: row.id } }"
-              >{{ row.name }}</RouterLink
-            >
-            <IuBadge v-if="!row.enabled" size="xs" intent="neutral">Disabled</IuBadge>
-            <span v-if="row.description" class="mcp__sub">{{ row.description }}</span>
-          </template>
-          <template #cell:target="{ row }">
-            <IuBadge variant="tag" size="xs">{{
-              row.transport === 'stdio' ? 'local' : row.transport
-            }}</IuBadge>
-            <code class="mcp__target">{{ row.target }}</code>
-          </template>
-          <template #cell:auth="{ row }">
-            <IuBadge v-if="row.auth.kind === 'error'" intent="danger" size="xs">Has errors</IuBadge>
-            <template v-else-if="row.auth.kind === 'oauth'">
-              <span v-if="oauthState(row) === 'loading'" class="mcp__sub">Checking…</span>
-              <IuBadge v-else-if="oauthState(row) === 'unknown'" intent="neutral" size="xs"
-                >Can't tell</IuBadge
-              >
-              <IuBadge
-                v-else-if="(oauthState(row) as McpOAuthStatus).state === 'connected'"
-                intent="positive"
-                dot
-                size="xs"
-                >Signed in</IuBadge
-              >
-              <IuBadge v-else intent="warning" size="xs">Needs sign-in</IuBadge>
-            </template>
-            <template v-else-if="row.auth.kind === 'secrets'">
-              <IuBadge v-if="row.missing.length" intent="warning" size="xs"
-                >Missing {{ row.missing.join(', ') }}</IuBadge
-              >
-              <IuBadge v-else intent="positive" dot size="xs">Secrets set</IuBadge>
-            </template>
-            <span v-else-if="row.auth.kind === 'local'" class="mcp__sub">Runs on this machine</span>
-            <span v-else class="mcp__sub">No sign-in</span>
-          </template>
-          <template #cell:used="{ row }">
-            <span v-if="row.used === null" class="mcp__sub">…</span>
-            <span v-else-if="row.used === 0" class="mcp__sub">Not installed</span>
-            <span v-else>{{ plural(row.used, 'project') }}</span>
-          </template>
-          <template #cell:enabled="{ row }">
+        <div v-else class="mcp__list">
+          <div class="mcp__list-head">
+            <span class="mcp__check">
+              <IuCheckbox
+                :model-value="allSelected"
+                :indeterminate="someSelected"
+                aria-label="Select all MCP servers"
+                @update:model-value="toggleAll"
+              />
+            </span>
+            <span>Server</span>
+            <span />
+            <span />
+            <span />
+          </div>
+          <div v-for="row in rows" :key="row.id" class="mcp__item">
+            <span class="mcp__check">
+              <IuCheckbox
+                :model-value="selected.has(row.id)"
+                :aria-label="`Select ${row.name}`"
+                @update:model-value="on => toggleRow(row.id, on)"
+              />
+            </span>
+            <div class="mcp__identity">
+              <div class="mcp__name-row">
+                <RouterLink
+                  class="mcp__name"
+                  :to="{ name: 'library-asset', params: { kind: 'mcp', id: row.id } }"
+                  >{{ row.name }}</RouterLink
+                >
+                <IuBadge v-if="!row.enabled" size="xs" intent="neutral">Disabled</IuBadge>
+                <IuBadge v-if="row.auth.kind === 'error'" intent="danger" size="xs"
+                  >Has errors</IuBadge
+                >
+                <template v-else-if="row.auth.kind === 'oauth'">
+                  <span v-if="oauthState(row) === 'loading'" class="mcp__hint">Checking…</span>
+                  <IuBadge v-else-if="oauthState(row) === 'unknown'" intent="neutral" size="xs"
+                    >Can't tell</IuBadge
+                  >
+                  <IuBadge
+                    v-else-if="(oauthState(row) as McpOAuthStatus).state === 'connected'"
+                    intent="positive"
+                    dot
+                    size="xs"
+                    >Signed in</IuBadge
+                  >
+                  <IuBadge v-else intent="warning" size="xs">Needs sign-in</IuBadge>
+                </template>
+                <template v-else-if="row.auth.kind === 'secrets'">
+                  <IuBadge v-if="row.missing.length" intent="warning" size="xs"
+                    >Missing {{ row.missing.join(', ') }}</IuBadge
+                  >
+                  <IuBadge v-else intent="positive" dot size="xs">Secrets set</IuBadge>
+                </template>
+                <span v-else-if="row.auth.kind === 'local'" class="mcp__hint">Local</span>
+              </div>
+              <span v-if="row.description" class="mcp__sub">{{ row.description }}</span>
+              <span class="mcp__target-line">
+                <IuBadge variant="tag" size="xs">{{
+                  row.transport === 'stdio' ? 'local' : row.transport
+                }}</IuBadge>
+                <code class="mcp__target">{{ row.target }}</code>
+              </span>
+            </div>
+            <span class="mcp__meta">
+              <span v-if="row.used === null">…</span>
+              <span v-else-if="row.used === 0">Not installed</span>
+              <span v-else>{{ plural(row.used, 'project') }}</span>
+            </span>
             <IuSwitch
               size="sm"
               :model-value="row.enabled"
               :aria-label="`Enable ${row.name}`"
               @update:model-value="emit('toggle', row.id, $event)"
             />
-          </template>
-          <template #cell:actions="{ row }">
             <div class="mcp__actions">
               <template v-if="row.enabled && row.oauth">
                 <IuButton
@@ -289,8 +300,8 @@ async function remove() {
                 </template>
               </IuMenu>
             </div>
-          </template>
-        </IuTable>
+          </div>
+        </div>
       </section>
 
       <section class="mcp__section" aria-labelledby="mcp-secrets">
@@ -315,34 +326,37 @@ async function remove() {
           title="No secrets yet"
           body="Add one when a server needs a token or key."
         />
-        <IuTable
-          v-else-if="secretRows.length"
-          :columns="secretColumns"
-          :rows="secretRows"
-          :row-key="r => r.name"
-        >
-          <template #cell:name="{ row }">
-            <code>{{ row.name }}</code>
-            <IuBadge v-if="row.missing" class="mcp__badge" intent="warning" size="xs"
-              >Not set</IuBadge
-            >
-          </template>
-          <template #cell:usedBy="{ row }">
-            <span v-if="row.usedBy.length">{{ row.usedBy.join(', ') }}</span>
-            <span v-else class="mcp__sub">No server uses it</span>
-          </template>
-          <template #cell:updatedAt="{ row }">
-            <template v-if="row.updatedAt">{{ relativeTime(row.updatedAt) }}</template>
-          </template>
-          <template #cell:actions="{ row }">
-            <IuButton size="sm" variant="ghost" @click="editing = { name: row.name }">{{
-              row.missing ? 'Set value' : 'Replace'
-            }}</IuButton>
-            <IuButton v-if="!row.missing" size="sm" variant="ghost" @click="removing = row.name"
-              >Delete</IuButton
-            >
-          </template>
-        </IuTable>
+        <div v-else-if="secretRows.length" class="mcp__secrets" role="table">
+          <div class="mcp__secret-head" role="row">
+            <span role="columnheader">Name</span>
+            <span role="columnheader">Used by</span>
+            <span role="columnheader">Updated</span>
+            <span role="columnheader" />
+          </div>
+          <div v-for="row in secretRows" :key="row.name" class="mcp__secret" role="row">
+            <span role="cell">
+              <code>{{ row.name }}</code>
+              <IuBadge v-if="row.missing" class="mcp__badge" intent="warning" size="xs"
+                >Not set</IuBadge
+              >
+            </span>
+            <span role="cell">
+              <span v-if="row.usedBy.length">{{ row.usedBy.join(', ') }}</span>
+              <span v-else class="mcp__sub">No server uses it</span>
+            </span>
+            <span class="mcp__used" role="cell">
+              <template v-if="row.updatedAt">{{ relativeTime(row.updatedAt) }}</template>
+            </span>
+            <span class="mcp__more" role="cell">
+              <IuButton size="sm" variant="ghost" @click="editing = { name: row.name }">{{
+                row.missing ? 'Set value' : 'Replace'
+              }}</IuButton>
+              <IuButton v-if="!row.missing" size="sm" variant="ghost" @click="removing = row.name"
+                >Delete</IuButton
+              >
+            </span>
+          </div>
+        </div>
       </section>
     </template>
 
@@ -367,13 +381,12 @@ async function remove() {
 .mcp {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  padding-top: 16px;
+  gap: 36px;
 }
 .mcp__section {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 .mcp__row {
   display: flex;
@@ -383,13 +396,54 @@ async function remove() {
 }
 .mcp__h {
   margin: 0;
-  font-size: var(--iu-font-size-14);
-  font-weight: var(--iu-font-weight-semibold);
+  font-family: var(--iu-font-mono);
+  font-size: var(--iu-font-size-11);
+  font-weight: var(--iu-font-weight-medium);
+  letter-spacing: var(--iu-tracking-caps);
+  text-transform: uppercase;
+  color: var(--iu-text-muted);
 }
 .mcp__note {
   margin: 0;
   color: var(--iu-text-2);
   font-size: var(--iu-font-size-13);
+}
+.mcp__list,
+.mcp__secrets {
+  border-top: 1px solid var(--iu-hairline);
+}
+.mcp__list-head,
+.mcp__item {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto 32px auto;
+  align-items: center;
+  gap: 8px 10px;
+  min-height: 38px;
+  border-bottom: 1px solid var(--iu-hairline);
+}
+.mcp__list-head,
+.mcp__secret-head {
+  min-height: 0;
+  padding: 6px 0;
+  font-family: var(--iu-font-mono);
+  font-size: var(--iu-font-size-10);
+  letter-spacing: var(--iu-tracking-caps);
+  text-transform: uppercase;
+  color: var(--iu-text-muted);
+}
+.mcp__check {
+  display: flex;
+  justify-content: center;
+}
+.mcp__identity {
+  min-width: 0;
+  padding: 8px 0;
+}
+.mcp__name-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 .mcp__name {
   font-weight: var(--iu-font-weight-medium);
@@ -401,6 +455,7 @@ async function remove() {
 .mcp__actions {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 4px;
 }
 .mcp__badge {
@@ -410,12 +465,55 @@ async function remove() {
   display: block;
   font-size: var(--iu-font-size-12);
   color: var(--iu-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mcp__target-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 .mcp__target {
-  margin-left: 8px;
+  min-width: 0;
   font-family: var(--iu-font-mono);
   font-size: var(--iu-font-size-12);
   color: var(--iu-text-2);
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mcp__meta {
+  font-family: var(--iu-font-mono);
+  font-size: var(--iu-font-size-11-5);
+  color: var(--iu-text-muted);
+  white-space: nowrap;
+}
+.mcp__hint {
+  font-size: var(--iu-font-size-12);
+  color: var(--iu-text-muted);
+}
+.mcp__used {
+  font-size: var(--iu-font-size-12);
+  color: var(--iu-text-muted);
+  text-align: right;
+}
+.mcp__more {
+  display: flex;
+  justify-content: flex-end;
+}
+.mcp__secret-head,
+.mcp__secret {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 72px auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  border-bottom: 1px solid var(--iu-hairline);
+}
+.mcp__secret code {
+  font-family: var(--iu-font-mono);
+  font-size: var(--iu-font-size-12);
 }
 </style>

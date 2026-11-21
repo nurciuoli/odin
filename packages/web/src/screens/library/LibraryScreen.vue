@@ -1,23 +1,20 @@
 <script setup lang="ts">
-// The library: reusable agents, skills, commands, prompts, templates, MCP servers and settings profiles. One tab per
-// kind, a table per tab, "New" per kind. The kind lives in the URL (?kind=).
+// The library: reusable agents, skills, commands, prompts, templates, MCP servers and settings profiles. A kind list
+// on the left, compact rows on the right (same shape as Settings). The kind lives in the URL (?kind=).
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { AssetKind, LibraryAsset } from '@odin/shared/api'
-import { LIBRARY_KINDS } from '@odin/shared/library'
+import { isInstallable, LIBRARY_KINDS } from '@odin/shared/library'
 import { ApiRequestError, useApi } from '@/api'
 import { useProjects } from '@/app/projects'
 import { IuBadge } from '@/components/Badge'
 import { IuButton } from '@/components/Button'
-import { IuSwitch } from '@/components/Fields'
+import { IuEyebrow } from '@/components/Eyebrow'
+import { IuCheckbox, IuSwitch } from '@/components/Fields'
 import { IuIcon } from '@/components/Icon'
 import { IuMenu } from '@/components/Menu'
-import { IuPageHeader } from '@/components/PageHeader'
 import { IuEmpty, IuErrorState, IuSkeleton } from '@/components/States'
-import { IuTable, type Column } from '@/components/Table'
-import { IuTabs } from '@/components/Tabs'
 import { useToast } from '@/components/Toast'
-import { isInstallable } from '@odin/shared/library'
 import { plural, relativeTime, shortHash } from '@/screens/shared/format'
 import { useResource, useServerEvents } from '@/screens/shared/useResource'
 import { assetDetail, isAssetKind, KIND_INFO, kindNoun } from './assetForm'
@@ -47,7 +44,7 @@ const kind = computed<AssetKind>({
   },
 })
 const selected = ref(new Set<string | number>())
-// Git actions aren't library assets (they live in each repo), but they get a tab here so they're found with the rest.
+// Git actions aren't library assets (they live in each repo), but they get a kind here so they're found with the rest.
 const GIT_TAB = 'git-actions'
 const tab = computed<string>({
   get: () => (route.query.kind === GIT_TAB ? GIT_TAB : kind.value),
@@ -136,19 +133,23 @@ const rows = computed<Row[]>(() =>
       error: a.error,
     })),
 )
-const columns = computed<Column<Row>[]>(
-  () =>
-    [
-      { key: 'name', header: 'Name', sortable: true, width: '28%' },
-      { key: 'description', header: 'Description' },
-      { key: 'updatedAt', header: 'Updated', sortable: true, width: '110px' },
-      ...(isInstallable(kind.value)
-        ? [{ key: 'installs', header: 'Used in', width: '130px' }]
-        : []),
-      { key: 'enabled', header: 'Enabled', width: '90px' },
-      { key: 'actions', header: '', align: 'end', width: '56px' },
-    ] as Column<Row>[],
+const currentLabel = computed(() => (onGitTab.value ? 'Git actions' : KIND_INFO[kind.value].plural))
+const installable = computed(() => !onGitTab.value && isInstallable(kind.value))
+const allSelected = computed(
+  () => rows.value.length > 0 && rows.value.every(r => selected.value.has(r.id)),
 )
+const someSelected = computed(
+  () => rows.value.some(r => selected.value.has(r.id)) && !allSelected.value,
+)
+function toggleAll(on: boolean) {
+  selected.value = on ? new Set(rows.value.map(r => r.id)) : new Set()
+}
+function toggleRow(id: string, on: boolean) {
+  const next = new Set(selected.value)
+  if (on) next.add(id)
+  else next.delete(id)
+  selected.value = next
+}
 
 const installTarget = ref<{ id: string; name: string } | null>(null)
 const installing = computed({
@@ -283,23 +284,6 @@ async function globalInstructions() {
 
 <template>
   <div class="library">
-    <IuPageHeader
-      title="Library"
-      subtitle="Instructions, skills, subagents, MCP servers, settings and plugins across projects"
-      icon="folder"
-    >
-      <template #actions>
-        <IuButton variant="secondary" @click="globalInstructions">Global instructions</IuButton>
-        <template v-if="!onGitTab">
-          <IuButton v-if="kind === 'plugin'" variant="secondary" @click="importing = true"
-            >Import…</IuButton
-          >
-          <IuButton variant="ghost" @click="rescan">Rescan</IuButton>
-          <IuButton variant="primary" @click="creating = true">New {{ kindNoun(kind) }}</IuButton>
-        </template>
-      </template>
-    </IuPageHeader>
-
     <IuSkeleton v-if="res.phase.value === 'loading'" shape="table" :rows="6" />
     <IuErrorState
       v-else-if="res.phase.value === 'error'"
@@ -308,16 +292,49 @@ async function globalInstructions() {
       :trace-id="`library.load.${res.error.value?.status ?? 0}`"
       @retry="res.load()"
     />
-    <IuTabs v-else v-model="tab" :tabs="tabs" :lazy="false" overflow="wrap">
-      <template #[`panel:${GIT_TAB}`]>
-        <div v-if="onGitTab" class="library__panel">
-          <GitActionsPanel @count="gitActionCount = $event" />
-        </div>
-      </template>
-      <template v-for="k in LIBRARY_KINDS" :key="k" #[`panel:${k}`]>
-        <div v-if="k === tab" class="library__panel">
-          <p v-if="rows.length && KIND_INFO[k].blurb" class="library__blurb">
-            {{ KIND_INFO[k].blurb }}
+    <div v-else class="library__layout">
+      <nav class="library__nav" aria-label="Library kinds">
+        <h1 class="library__title">Library</h1>
+        <ul class="library__links">
+          <li v-for="t in tabs" :key="t.id">
+            <button
+              type="button"
+              class="library__link"
+              :aria-current="tab === t.id ? 'true' : undefined"
+              @click="tab = t.id"
+            >
+              <span>{{ t.label }}</span>
+              <span v-if="t.badge" class="library__count">{{ t.badge }}</span>
+            </button>
+          </li>
+        </ul>
+      </nav>
+
+      <div class="library__main">
+        <section class="library__section" :aria-labelledby="`library-h-${tab}`">
+          <div class="library__section-head">
+            <IuEyebrow :id="`library-h-${tab}`" as="h2" size="md">{{ currentLabel }}</IuEyebrow>
+            <div class="library__actions">
+              <IuButton variant="ghost" size="sm" @click="globalInstructions"
+                >Global instructions</IuButton
+              >
+              <template v-if="!onGitTab">
+                <IuButton
+                  v-if="kind === 'plugin'"
+                  variant="secondary"
+                  size="sm"
+                  @click="importing = true"
+                  >Import…</IuButton
+                >
+                <IuButton variant="ghost" size="sm" @click="rescan">Rescan</IuButton>
+                <IuButton variant="primary" size="sm" @click="creating = true"
+                  >New {{ kindNoun(kind) }}</IuButton
+                >
+              </template>
+            </div>
+          </div>
+          <p v-if="!onGitTab && KIND_INFO[kind].blurb" class="library__blurb">
+            {{ KIND_INFO[kind].blurb }}
           </p>
           <div v-if="picked.length" class="library__bar" role="toolbar" aria-label="Bulk actions">
             <strong>{{ picked.length }} selected</strong>
@@ -330,85 +347,110 @@ async function globalInstructions() {
             <IuButton size="sm" variant="secondary" @click="askDelete(picked)">Delete…</IuButton>
             <IuButton size="sm" variant="ghost" @click="selected = new Set()">Clear</IuButton>
           </div>
-          <IuEmpty
-            v-if="!rows.length"
-            :eyebrow="false"
-            :title="`No ${KIND_INFO[k].plural.toLowerCase()} yet`"
-            :body="`${KIND_INFO[k].blurb} Create one, or drop files into the library folder and rescan.`"
-          >
-            <template #action>
-              <IuButton variant="primary" @click="creating = true">New {{ kindNoun(k) }}</IuButton>
-            </template>
-          </IuEmpty>
+
+          <GitActionsPanel v-if="onGitTab" @count="gitActionCount = $event" />
           <McpPanel
-            v-else-if="k === 'mcp'"
+            v-else-if="kind === 'mcp'"
             v-model:selected="selected"
             :installs="installs"
             @action="onAction"
             @toggle="(id, on) => setEnabled([id], on)"
           />
-          <IuTable
-            v-else
-            v-model:selected="selected"
-            selectable="multi"
-            :columns="columns"
-            :rows="rows"
-            :row-key="r => r.id"
-            @row-activate="open($event.id)"
+          <IuEmpty
+            v-else-if="!rows.length"
+            :eyebrow="false"
+            :title="`No ${KIND_INFO[kind].plural.toLowerCase()} yet`"
+            :body="`${KIND_INFO[kind].blurb} Create one, or drop files into the library folder and rescan.`"
           >
-            <template #cell:name="{ row }">
-              <RouterLink
-                class="library__name"
-                :to="{ name: 'library-asset', params: { kind: k, id: row.id } }"
-                >{{ row.name }}</RouterLink
+            <template #action>
+              <IuButton variant="primary" @click="creating = true"
+                >New {{ kindNoun(kind) }}</IuButton
               >
-              <IuBadge v-if="row.error" intent="danger" size="xs">Has errors</IuBadge>
-              <IuBadge v-if="!row.enabled" intent="neutral" size="xs">Disabled</IuBadge>
-              <span v-if="row.name !== row.id" class="library__id">{{ row.id }}</span>
             </template>
-            <template #cell:description="{ row }">
-              <span class="library__desc">{{ row.description }}</span>
-              <span v-if="row.detail" class="library__id">{{ row.detail }}</span>
-            </template>
-            <template #cell:updatedAt="{ row }"
-              ><span :title="`Version ${row.version}`">{{ relativeTime(row.updatedAt) }}</span>
-            </template>
-            <template #cell:installs="{ row }">
-              <span v-if="row.installs === null" class="library__id">…</span>
-              <span v-else-if="row.installs === 0" class="library__none">Not installed</span>
-              <span v-else>{{ plural(row.installs, 'project') }}</span>
-            </template>
-            <template #cell:enabled="{ row }">
-              <IuSwitch
-                size="sm"
-                :model-value="row.enabled"
-                :aria-label="`Enable ${row.name}`"
-                @update:model-value="setEnabled([row.id], $event)"
-              />
-            </template>
-            <template #cell:actions="{ row }">
-              <IuMenu
-                :items="assetMenu(k, row.enabled)"
-                fixed
-                @select="onAction(row.id, $event as RowAction)"
-              >
-                <template #trigger="{ toggle }">
-                  <IuButton
-                    variant="ghost"
-                    size="sm"
-                    icon-only
-                    :aria-label="`More actions for ${row.name}`"
-                    @click.stop="toggle"
+          </IuEmpty>
+          <div
+            v-else
+            class="library__list"
+            :class="{ 'library__list--used': installable }"
+            role="table"
+          >
+            <div class="library__list-head" role="row">
+              <span class="library__check" role="columnheader">
+                <IuCheckbox
+                  :model-value="allSelected"
+                  :indeterminate="someSelected"
+                  :aria-label="`Select all ${KIND_INFO[kind].plural}`"
+                  @update:model-value="toggleAll"
+                />
+              </span>
+              <span role="columnheader">Name</span>
+              <span role="columnheader">Updated</span>
+              <span v-if="installable" role="columnheader">Used in</span>
+              <span role="columnheader">Enabled</span>
+              <span role="columnheader" />
+            </div>
+            <div v-for="row in rows" :key="row.id" class="library__item" role="row">
+              <span class="library__check" role="cell">
+                <IuCheckbox
+                  :model-value="selected.has(row.id)"
+                  :aria-label="`Select ${row.name}`"
+                  @update:model-value="on => toggleRow(row.id, on)"
+                />
+              </span>
+              <div class="library__identity" role="cell">
+                <div class="library__name-row">
+                  <RouterLink
+                    class="library__name"
+                    :to="{ name: 'library-asset', params: { kind, id: row.id } }"
+                    >{{ row.name }}</RouterLink
                   >
-                    <template #icon><IuIcon name="more" /></template>
-                  </IuButton>
-                </template>
-              </IuMenu>
-            </template>
-          </IuTable>
-        </div>
-      </template>
-    </IuTabs>
+                  <IuBadge v-if="row.error" intent="danger" size="xs">Has errors</IuBadge>
+                  <IuBadge v-if="!row.enabled" intent="neutral" size="xs">Disabled</IuBadge>
+                </div>
+                <span v-if="row.name !== row.id" class="library__id">{{ row.id }}</span>
+                <span v-if="row.description" class="library__desc">{{ row.description }}</span>
+                <span v-if="row.detail" class="library__id">{{ row.detail }}</span>
+              </div>
+              <span class="library__meta" role="cell" :title="`Version ${row.version}`">{{
+                relativeTime(row.updatedAt)
+              }}</span>
+              <span v-if="installable" class="library__meta" role="cell">
+                <span v-if="row.installs === null" class="library__none">…</span>
+                <span v-else-if="row.installs === 0" class="library__none">Not installed</span>
+                <span v-else>{{ plural(row.installs, 'project') }}</span>
+              </span>
+              <span class="library__enabled" role="cell">
+                <IuSwitch
+                  size="sm"
+                  :model-value="row.enabled"
+                  :aria-label="`Enable ${row.name}`"
+                  @update:model-value="setEnabled([row.id], $event)"
+                />
+              </span>
+              <span class="library__more" role="cell">
+                <IuMenu
+                  :items="assetMenu(kind, row.enabled)"
+                  fixed
+                  @select="onAction(row.id, $event as RowAction)"
+                >
+                  <template #trigger="{ toggle }">
+                    <IuButton
+                      variant="ghost"
+                      size="sm"
+                      icon-only
+                      :aria-label="`More actions for ${row.name}`"
+                      @click.stop="toggle"
+                    >
+                      <template #icon><IuIcon name="more" /></template>
+                    </IuButton>
+                  </template>
+                </IuMenu>
+              </span>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
 
     <InstallModal
       v-if="installTarget && isInstallable(kind)"
@@ -437,52 +479,215 @@ async function globalInstructions() {
 
 <style>
 .library {
+  padding: 8px 0 64px;
+  min-width: 0;
+}
+.library__layout {
+  display: grid;
+  grid-template-columns: minmax(120px, 168px) minmax(0, 640px);
+  justify-content: center;
+  gap: clamp(20px, 4vw, 56px);
+  align-items: start;
+}
+.library__layout > * {
+  min-width: 0;
+}
+.library__nav {
+  position: sticky;
+  top: 16px;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding-top: 16px;
 }
-.library__panel {
-  padding-top: 16px;
+.library__title {
+  margin: 0;
+  font-size: var(--iu-font-size-14);
+  font-weight: var(--iu-font-weight-medium);
+  color: var(--iu-text);
+}
+.library__links {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.library__link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 0 4px 14px;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: var(--iu-font-size-13);
+  color: var(--iu-text-muted);
+  text-align: left;
+  cursor: pointer;
+}
+.library__link:hover,
+.library__link[aria-current='true'] {
+  color: var(--iu-text);
+}
+.library__link[aria-current='true']::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  margin-top: -2px;
+  border-radius: 50%;
+  background: var(--iu-accent);
+}
+.library__link:focus-visible {
+  outline: var(--iu-focus-ring);
+  outline-offset: var(--iu-focus-offset);
+  border-radius: var(--iu-radius-sm);
+}
+.library__count {
+  font-family: var(--iu-font-mono);
+  font-size: var(--iu-font-size-11);
+  color: var(--iu-text-muted);
+}
+.library__main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.library__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  scroll-margin-top: 16px;
+}
+.library__section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.library__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
 }
 .library__blurb {
-  margin: 0 0 12px;
+  margin: 0;
   font-size: var(--iu-font-size-13);
   color: var(--iu-text-2);
+}
+.library__bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: var(--iu-font-size-13);
+}
+.library__bar strong {
+  margin-right: 4px;
+}
+.library__list {
+  border-top: 1px solid var(--iu-hairline);
+}
+.library__list-head,
+.library__item {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) 72px 64px 32px;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  border-bottom: 1px solid var(--iu-hairline);
+}
+.library__list--used .library__list-head,
+.library__list--used .library__item {
+  grid-template-columns: 22px minmax(0, 1fr) 72px 92px 64px 32px;
+}
+.library__list-head {
+  min-height: 0;
+  padding: 6px 0;
+  font-family: var(--iu-font-mono);
+  font-size: var(--iu-font-size-10);
+  letter-spacing: var(--iu-tracking-caps);
+  text-transform: uppercase;
+  color: var(--iu-text-muted);
+}
+.library__check {
+  display: flex;
+  justify-content: center;
+}
+.library__identity {
+  min-width: 0;
+  padding: 8px 0;
+}
+.library__name-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 .library__name,
 .library__name:hover {
   color: var(--iu-text);
   font-weight: var(--iu-font-weight-medium);
-  margin-right: 8px;
 }
 .library__name:hover {
   text-decoration: underline;
 }
-.library__bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  margin-bottom: 12px;
-  border: 1px solid var(--iu-border);
-  border-radius: var(--iu-radius-md);
-  background: var(--iu-surface-2);
-  font-size: var(--iu-font-size-13);
-}
-.library__bar strong {
-  margin-right: 8px;
-}
-.library__none {
-  color: var(--iu-text-muted);
+.library__id,
+.library__desc {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .library__id {
-  display: block;
   font-family: var(--iu-font-mono);
   font-size: var(--iu-font-size-12);
   color: var(--iu-text-muted);
 }
 .library__desc {
+  font-size: var(--iu-font-size-12);
   color: var(--iu-text-2);
+}
+.library__meta {
+  font-family: var(--iu-font-mono);
+  font-size: var(--iu-font-size-11-5);
+  color: var(--iu-text-muted);
+  text-align: right;
+  white-space: nowrap;
+}
+.library__none {
+  color: var(--iu-text-muted);
+}
+.library__enabled,
+.library__more {
+  display: flex;
+  justify-content: flex-end;
+}
+@media (max-width: 860px) {
+  .library__layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+  .library__nav {
+    position: static;
+  }
+  .library__links {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+  }
+  .library__link {
+    width: auto;
+    padding-left: 12px;
+  }
 }
 </style>

@@ -35,19 +35,24 @@ describe('LibraryScreen', () => {
     expect(router.currentRoute.value.fullPath).toBe('/library/instruction/global')
   })
 
-  it('lists a kind per tab with where it is used and an install action', async () => {
+  it('lists a kind per section with where it is used and an install action', async () => {
     const { wrapper } = await mountScreen(LibraryScreen, '/library?kind=agent')
     await flushPromises()
     const text = wrapper.text()
     expect(text).toContain('reviewer')
     expect(text).toContain('docs-writer')
-    expect(wrapper.find('thead').text()).toContain('Used in')
+    const heads = wrapper
+      .findAll('[role=columnheader]')
+      .map(h => h.text())
+      .join(' ')
+    expect(heads).toContain('Used in')
+    expect(heads).toContain('Enabled')
+    expect(heads).not.toContain('Version')
     expect(wrapper.find('button[aria-label^="More actions for"]').exists()).toBe(true)
-    expect(wrapper.find('thead').text()).toContain('Enabled')
-    expect(wrapper.find('thead').text()).not.toContain('Version')
     expect(
       wrapper
-        .findAll('[role=tab]')
+        .find('[aria-label="Library kinds"]')
+        .findAll('button')
         .map(t => t.text())
         .join(' '),
     ).toContain('MCP servers')
@@ -72,7 +77,7 @@ describe('LibraryScreen', () => {
     const { wrapper } = await mountScreen(LibraryScreen, '/library?kind=agent', api)
     await flushPromises()
     expect(wrapper.find('[role=toolbar]').exists()).toBe(false)
-    await wrapper.find('tbody input[type=checkbox]').setValue(true)
+    await wrapper.find('.library__item input[type=checkbox]').setValue(true)
     expect(wrapper.find('[role=toolbar]').text()).toContain('1 selected')
     await button(wrapper, 'Delete…')!.trigger('click')
     await flushPromises()
@@ -82,23 +87,24 @@ describe('LibraryScreen', () => {
     expect((await api.listLibrary('agent')).length).toBe(before - 1)
   })
 
-  it('shows MCP servers as a tab with their sign-in state', async () => {
+  it('shows MCP servers with their sign-in state', async () => {
     const { wrapper } = await mountScreen(LibraryScreen, '/library?kind=mcp')
     await flushPromises()
-    expect(wrapper.find('thead').text()).toContain('Sign-in')
+    expect(wrapper.text()).toMatch(/Signed in|Needs sign-in|Secrets set/)
     expect(wrapper.text()).toContain('Secrets')
   })
 
   it('puts instructions, skills and subagents in the library without launch workflows', async () => {
     const { wrapper } = await mountScreen(LibraryScreen, '/library')
     await flushPromises()
-    const tabs = wrapper
-      .findAll('[role=tab]')
+    const kinds = wrapper
+      .find('[aria-label="Library kinds"]')
+      .findAll('button')
       .map(t => t.text())
       .join(' ')
-    expect(tabs).toContain('AGENTS.md')
-    expect(tabs).toContain('Skills')
-    expect(tabs).not.toMatch(/Prompts|Templates|Commands/)
+    expect(kinds).toContain('AGENTS.md')
+    expect(kinds).toContain('Skills')
+    expect(kinds).not.toMatch(/Prompts|Templates|Commands/)
     expect(wrapper.text()).toContain('Global AGENTS.md')
   })
 
