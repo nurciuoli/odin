@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// The Details column: where the session runs (repository, branch, pull request, quick links, tags), then usage and
-// context, outputs, changes, the plan, background tasks and, last, the files this session read or changed.
+// The Details column: where the session runs (repository, branch, pull request, to-dos, quick links, tags), then
+// usage and context, outputs, changes, background tasks and, last, the files this session read or changed.
 import { computed, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
 import type { Session, SessionDetail } from '@odin/shared/api'
 import type { GitTarget } from '@odin/shared/git'
@@ -51,11 +51,13 @@ const props = withDefaults(
   defineProps<{
     session: SessionDetail
     tasks?: ActivityItem[]
-    /** The same tasks with their times and parents, for the branch graph. */
+    /** Tasks still on the live view: running work, and finished agents until they age out. */
     taskActivity?: TaskActivity[]
+    /** Every task this session recorded, including ones the live view has cleared. */
+    taskHistory?: TaskActivity[]
     now?: number
   }>(),
-  { tasks: () => [], taskActivity: () => [], now: () => Date.now() },
+  { tasks: () => [], taskActivity: () => [], taskHistory: () => [], now: () => Date.now() },
 )
 const emit = defineEmits<{
   updated: [session: Session]
@@ -106,9 +108,6 @@ function openPlan() {
   else planOpen.value = !planOpen.value
 }
 const todosDone = computed(() => props.session.todos.filter(t => t.status === 'completed').length)
-const todosPct = computed(() =>
-  props.session.todos.length ? (todosDone.value / props.session.todos.length) * 100 : 0,
-)
 
 // ── files and changes ──
 const files = computed(() => fileChanges(props.session.transcript))
@@ -146,7 +145,20 @@ const mostChanged = computed(() => Math.max(1, ...files.value.map(f => f.added +
 const contextOpen = ref(false)
 const liveTasks = computed(() => props.tasks.filter(t => t.status === 'running'))
 const doneTasks = computed(() => props.tasks.filter(t => t.status !== 'running'))
-const taskRows = computed(() => limitRows(buildTaskTree(props.taskActivity, props.now), 14))
+// Recent is the live view, which drops finished commands at once and finished agents after a few minutes.
+// Full is every process still on this session's transcript, so a cleared branch can be opened again.
+const treeView = ref('recent')
+watch(
+  () => props.session.id,
+  () => {
+    treeView.value = 'recent'
+  },
+)
+const recentRows = computed(() => limitRows(buildTaskTree(props.taskActivity, props.now), 14))
+const historyNodes = computed(() => buildTaskTree(props.taskHistory, props.now))
+const laneRows = computed(() =>
+  treeView.value === 'all' ? { shown: historyNodes.value, hidden: 0 } : recentRows.value,
+)
 const ctxPct = computed(() =>
   ctxUsed.value === null || !(ctxMax.value > 0)
     ? null
@@ -507,6 +519,48 @@ function addTag(e: KeyboardEvent) {
             `${session.goal.iterations} ${session.goal.iterations === 1 ? 'check' : 'checks'}`
           }}</IuBadge>
         </div>
+        <div
+          v-if="session.todos.length"
+          class="session-side__row"
+          role="group"
+          :aria-label="`To-dos, ${todosDone} of ${session.todos.length} done`"
+        >
+          <IuIcon name="circleCheck" :size="14" />
+          <IuHoverCard placement="right-start" label="To-dos" :width="320">
+            <span class="session-side__config">
+              <span>To-dos</span>
+              <span class="session-side__trail">
+                <span
+                  class="session-side__dot"
+                  :data-health="todosDone === session.todos.length ? 'ok' : undefined"
+                  aria-hidden="true"
+                />
+                <span class="session-side__mono">{{ todosDone }}/{{ session.todos.length }}</span>
+              </span>
+            </span>
+            <template #card>
+              <div class="hc">
+                <header class="hc__head"><span class="hc__title">To-dos</span></header>
+                <p class="hc__state">{{ todosDone }} of {{ session.todos.length }} done</p>
+                <ul class="hc__list">
+                  <li v-for="(t, i) in session.todos" :key="i" class="session-side__todo">
+                    <IuStatusDot
+                      :status="TODO_STATUS[t.status].status"
+                      :label="TODO_STATUS[t.status].label"
+                    />
+                    <span
+                      class="session-side__todo-text"
+                      :class="{ 'session-side__done': t.status === 'completed' }"
+                      >{{
+                        t.status === 'in_progress' && t.activeForm ? t.activeForm : t.content
+                      }}</span
+                    >
+                  </li>
+                </ul>
+              </div>
+            </template>
+          </IuHoverCard>
+        </div>
         <div v-if="plan" class="session-side__row" aria-label="Plan">
           <IuIcon name="file" :size="14" />
           <span>Plan</span>
@@ -736,37 +790,6 @@ function addTag(e: KeyboardEvent) {
       <p v-else class="session-side__none">No edits yet.</p>
     </details>
 
-    <details v-if="session.todos.length" class="session-side__section" aria-labelledby="side-todos">
-      <summary id="side-todos" class="session-side__summary">
-        <span>To-dos</span>
-        <IuIcon name="chevronRight" :size="14" class="session-side__caret" />
-        <span class="session-side__summary-value"
-          >{{ todosDone }}/{{ session.todos.length }} done</span
-        >
-      </summary>
-      <div
-        class="session-side__bar session-side__bar--thin"
-        role="img"
-        :aria-label="`${todosDone} of ${session.todos.length} steps done`"
-      >
-        <span
-          class="session-side__seg session-side__seg--done"
-          :style="{ width: `${todosPct}%` }"
-        />
-      </div>
-      <ul class="session-side__list">
-        <li v-for="(t, i) in session.todos" :key="i" class="session-side__todo">
-          <IuStatusDot
-            :status="TODO_STATUS[t.status].status"
-            :label="TODO_STATUS[t.status].label"
-          />
-          <span :class="{ 'session-side__done': t.status === 'completed' }">{{
-            t.status === 'in_progress' && t.activeForm ? t.activeForm : t.content
-          }}</span>
-        </li>
-      </ul>
-    </details>
-
     <details class="session-side__section" aria-labelledby="side-tasks">
       <summary id="side-tasks" class="session-side__summary">
         <span>Background tasks</span>
@@ -776,17 +799,27 @@ function addTag(e: KeyboardEvent) {
         >
         <!-- shown only while the section is closed: the shape of the run, the expanded graph's small cousin -->
         <TaskStrip
-          v-if="taskRows.shown.length"
+          v-if="recentRows.shown.length"
           class="session-side__strip"
-          :nodes="taskRows.shown"
+          :nodes="recentRows.shown"
           :now="now"
         />
       </summary>
+      <IuSegmented
+        v-if="historyNodes.length"
+        v-model="treeView"
+        class="session-side__view"
+        label="Task history"
+        :options="[
+          { value: 'recent', label: 'Recent' },
+          { value: 'all', label: 'Full tree' },
+        ]"
+      />
       <TaskLanes
-        v-if="taskRows.shown.length"
-        :nodes="taskRows.shown"
+        v-if="laneRows.shown.length"
+        :nodes="laneRows.shown"
         :now="now"
-        :hidden="taskRows.hidden"
+        :hidden="laneRows.hidden"
         :running="liveTasks.length > 0"
         @select="emit('openTask', $event)"
       />
@@ -1115,8 +1148,7 @@ details[open] > .session-side__summary .session-side__caret {
 .session-side__seg--cacheWrite {
   background: var(--iu-border-strong);
 }
-.session-side__seg--active,
-.session-side__seg--done {
+.session-side__seg--active {
   background: var(--iu-positive);
 }
 .session-side__seg--added {
@@ -1191,13 +1223,14 @@ details[open] > .session-side__summary .session-side__caret {
   flex-direction: column;
   gap: 8px;
 }
-.session-side__todo {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: var(--iu-font-size-13);
+.hc__list li.session-side__todo {
+  align-items: flex-start;
+}
+.session-side__todo-text {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
   line-height: var(--iu-leading-normal);
-  color: var(--iu-text);
 }
 .session-side__done {
   color: var(--iu-text-muted);

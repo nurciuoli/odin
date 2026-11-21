@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TaskActivity } from '@odin/shared/harness'
-import { buildTaskTree, limitRows, placeTree, spanLabel } from './taskTree'
+import { buildTaskTree, limitRows, placeTree, spanLabel, TREE_START_WINDOW_MS } from './taskTree'
 
 const at = (s: number) => new Date(Date.UTC(2026, 10, 18, 12, 0, s)).toISOString()
 const NOW = Date.parse(at(60))
@@ -77,6 +77,29 @@ describe('placeTree', () => {
     }
     expect(len('long')).toBeGreaterThan(len('blip'))
     expect(len('blip')).toBe(6)
+  })
+
+  it('draws a new run on a five-minute window so the head moves across', () => {
+    const nodes = buildTaskTree([task({ taskId: 'a', startedAt: at(0) })], Date.parse(at(30)))
+    const { trunkEnd } = placeTree(nodes, Date.parse(at(30)), {
+      width: 300,
+      row: 10,
+      min: 4,
+      pad: 0,
+    })
+    // 30s of the five-minute window, not the full width.
+    expect(trunkEnd).toBeCloseTo((30 / (TREE_START_WINDOW_MS / 1000)) * 300)
+    expect(trunkEnd).toBeLessThan(60)
+  })
+
+  it('fits the whole run once it is longer than five minutes', () => {
+    const end = Date.parse(at(600))
+    const nodes = buildTaskTree(
+      [task({ taskId: 'a', startedAt: at(0), state: 'completed', completedAt: at(600) })],
+      end,
+    )
+    const { trunkEnd } = placeTree(nodes, end, { width: 300, row: 10, min: 4, pad: 0 })
+    expect(trunkEnd).toBeCloseTo(300)
   })
 
   it('forks a child from its parent lane and a root from the trunk', () => {
