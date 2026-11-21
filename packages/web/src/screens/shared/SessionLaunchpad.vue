@@ -12,7 +12,8 @@ import { applyHarnessEvent } from '@odin/shared/transcript'
 import { useApi } from '@/api'
 import { useProjects } from '@/app/projects'
 import { useSessions } from '@/app/sessions'
-import { activityAt, isUnread, markAllSeen, mostRecentActivityFirst } from '@/app/seen'
+import { isUnread, markAllSeen } from '@/app/seen'
+import { lastRunAt, mostRecentRunFirst } from '@odin/shared/session'
 import { IuButton } from '@/components/Button'
 import { IuEmpty, IuErrorState, IuSkeleton } from '@/components/States'
 import { IuFlock } from '@/components/Spinner'
@@ -182,7 +183,7 @@ const stopped = computed(() =>
 )
 // the newest few; any more go to Earlier so the active list stays short
 const allUnread = computed(() =>
-  stopped.value.filter(s => isUnread(s, now.value)).sort(mostRecentActivityFirst),
+  stopped.value.filter(s => isUnread(s, now.value)).sort(mostRecentRunFirst),
 )
 const unread = computed(() =>
   showAllUnread.value ? allUnread.value : allUnread.value.slice(0, MAX_UNREAD),
@@ -208,10 +209,19 @@ watch(
 )
 
 // ── earlier ──
-const recent = computed(() => stopped.value.filter(s => !allUnread.value.includes(s)).slice(0, 5))
+const recent = computed(() =>
+  stopped.value
+    .filter(s => !allUnread.value.includes(s))
+    .sort(mostRecentRunFirst)
+    .slice(0, 5),
+)
 
 const history = { name: 'history' }
 const sessionFor = (id: string) => active.value.find(s => s.id === id)
+function liveRunTime(id: string) {
+  const session = sessionFor(id)
+  return session ? relativeTime(lastRunAt(session) ?? '', now.value) : ''
+}
 const projectSummary = (s: Session) => {
   const title = projects.projects.value.find(p => p.name === s.project)?.title
   return sessionPlace(s, title)
@@ -297,7 +307,7 @@ const title = (s: Session) =>
               :title="s.title"
               >{{ s.title }}</RouterLink
             >
-            <span class="launchpad__perch-time">{{ relativeTime(activityAt(s) ?? '', now) }}</span>
+            <span class="launchpad__perch-time">{{ relativeTime(lastRunAt(s) ?? '', now) }}</span>
             <span class="launchpad__perch-project">{{ projectSummary(s) }}</span>
             <div class="launchpad__perch-label">
               <span class="launchpad__perch-activity">Not opened yet</span>
@@ -312,9 +322,7 @@ const title = (s: Session) =>
             <RouterLink :to="p.to" class="launchpad__perch-title" :title="p.title">{{
               p.title
             }}</RouterLink>
-            <span class="launchpad__perch-time">{{
-              relativeTime(sessionFor(p.id)?.updatedAt ?? '')
-            }}</span>
+            <span class="launchpad__perch-time">{{ liveRunTime(p.id) }}</span>
             <span class="launchpad__perch-project">{{
               sessionFor(p.id) ? projectSummary(sessionFor(p.id)!) : ''
             }}</span>
@@ -379,7 +387,7 @@ const title = (s: Session) =>
               :title="s.title"
               >{{ s.title }}</RouterLink
             >
-            <span class="launchpad__perch-time">{{ relativeTime(activityAt(s) ?? '', now) }}</span>
+            <span class="launchpad__perch-time">{{ relativeTime(lastRunAt(s) ?? '', now) }}</span>
             <span class="launchpad__perch-project">{{ projectSummary(s) }}</span>
             <div class="launchpad__perch-label">
               <span class="launchpad__perch-activity">Not opened yet</span>
@@ -420,9 +428,15 @@ const title = (s: Session) =>
               class="launchpad__session"
               :title="s.title"
               ><span class="launchpad__session-title">{{ s.title }}</span>
-              <span class="launchpad__session-meta"
-                >{{ title(s) }} · {{ relativeTime(s.updatedAt) }}</span
-              >
+              <span class="launchpad__session-meta">
+                {{ title(s) }}
+                <template v-if="lastRunAt(s)">
+                  ·
+                  <time :datetime="lastRunAt(s) ?? undefined" :title="`Last run ${lastRunAt(s)}`">
+                    {{ relativeTime(lastRunAt(s) ?? '', now) }}
+                  </time>
+                </template>
+              </span>
             </RouterLink>
           </li>
         </ul>

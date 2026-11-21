@@ -47,6 +47,7 @@ describe("projects routes", () => {
     sessions.ensureExternal({ id: "span-2", harness: "claude", project: "span", cwd: "/x", at: "2026-10-05T00:00:00.000Z" });
     const old = sessions.ensureExternal({ id: "span-0", harness: "claude", project: "span", cwd: "/x", at: "2026-09-01T00:00:00.000Z" });
     await sessions.update(old.id, { archived: true });
+    await sessions.update("span-1", { title: "Renamed much later" });
     const d = await app.json<any>("/api/projects/span");
     assert.equal(d.firstSessionAt, "2026-10-02T00:00:00.000Z");
     assert.equal(d.lastSessionAt, sessions.get("span-2")!.updatedAt);

@@ -110,6 +110,7 @@ export function createIngestService(deps: Deps, services: Services): IngestServi
       agent: e.agent ?? null,
       at: e.ts,
       activityAt: activityAt(e, project, harness),
+      lastRunAt: hasActivity(e) ? e.ts : null,
     });
     return { session };
   }
@@ -121,6 +122,7 @@ export function createIngestService(deps: Deps, services: Services): IngestServi
     patch.updatedAt = Date.parse(e.ts) > Date.parse(updatedAt) ? e.ts : updatedAt;
     const at = activityAt(e, session.project, session.harness);
     if (at && (!patch.activityAt || patch.activityAt < at)) patch.activityAt = at;
+    if (hasActivity(e) && (!patch.lastRunAt || Date.parse(e.ts) > Date.parse(patch.lastRunAt))) patch.lastRunAt = e.ts;
     if (e.kind === "session.started") {
       if (!session.model && e.data.model && !patch.model) patch.model = e.data.model;
       // A resumed session that had ended is in use again.

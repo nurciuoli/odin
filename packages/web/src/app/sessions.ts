@@ -2,12 +2,13 @@
 // app (like the project store): the sidebar counts, Home's lists and the document title read it.
 import { computed, inject, ref, type ComputedRef, type InjectionKey, type Ref } from 'vue'
 import type { Session } from '@odin/shared/api'
+import { mostRecentRunFirst } from '@odin/shared/session'
 import type { TaskActivity } from '@odin/shared/harness'
 import { taskKey } from '@odin/shared/harness'
 import type { ServerEvent } from '@odin/shared/events'
 import type { Api } from '@/api/types'
 import { countWork, workTotal, type WorkCount } from './backgroundWork'
-import { activityAt, isUnread, mostRecentActivityFirst } from './seen'
+import { activityAt, isUnread } from './seen'
 
 export interface SessionsStore {
   /**
@@ -68,7 +69,7 @@ export function sidebarOrder(list: readonly Session[]): Session[] {
     if (group < 2) return b.createdAt.localeCompare(a.createdAt)
     const pinned = Number(b.pinned) - Number(a.pinned)
     if (pinned) return pinned
-    return group === 2 ? mostRecentActivityFirst(a, b) : b.updatedAt.localeCompare(a.updatedAt)
+    return mostRecentRunFirst(a, b)
   })
 }
 
@@ -144,9 +145,7 @@ export function createSessionsStore(api: Api): SessionsStore {
         if (session && !session.archived && !session.aside) next.set(id, session)
         else next.delete(id)
       }
-      recent.value = [...next.values()]
-        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-        .slice(0, SIDEBAR_LIMIT)
+      recent.value = [...next.values()].sort(mostRecentRunFirst).slice(0, SIDEBAR_LIMIT)
       trackWork(recent.value)
       recentPhase.value = 'ready'
     } catch {

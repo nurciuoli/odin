@@ -3,6 +3,7 @@
 // usage and context, outputs, changes, background tasks and, last, the files this session read or changed.
 import { computed, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
 import type { Session, SessionDetail } from '@odin/shared/api'
+import { lastRunAt } from '@odin/shared/session'
 import type { GitTarget } from '@odin/shared/git'
 import { useApi } from '@/api'
 import { hasDesktop, openPath, type OpenTarget } from '@/app/desktop'
@@ -19,7 +20,7 @@ import { IuFilePath } from '@/components/FilePath'
 import { IuMeter } from '@/components/Meter'
 import { IuSegmented } from '@/components/Segmented'
 import FileHeatmap, { type HeatItem } from '@/screens/shared/FileHeatmap.vue'
-import { IuPropertyList, type PropertyItem } from '@/components/PropertyList'
+import { IuProperty, IuPropertyList, type PropertyItem } from '@/components/PropertyList'
 import type { ActivityItem } from '@/components/ActivityStrip/ActivityStrip.vue'
 import type { TaskActivity } from '@odin/shared/harness'
 import { IuStatusDot } from '@/components/StatusDot'
@@ -69,6 +70,11 @@ const emit = defineEmits<{
 }>()
 
 const api = useApi()
+const runAt = computed(() => lastRunAt(props.session))
+const formatTimestamp = new Intl.DateTimeFormat(undefined, {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+})
 const runtimeProject = computed(() => props.session.project)
 const runtimeHarness = computed(() => props.session.harness)
 const { mcp, skills } = useRuntimeConfig(runtimeProject, runtimeHarness)
@@ -563,6 +569,22 @@ function addTag(e: KeyboardEvent) {
         />
       </div>
     </div>
+
+    <section class="session-side__section" aria-label="Session timestamps">
+      <IuPropertyList density="compact" label-width="96px">
+        <IuProperty label="Last run">
+          <time v-if="runAt" :datetime="runAt" :title="runAt">{{
+            formatTimestamp.format(new Date(runAt))
+          }}</time>
+          <span v-else>—</span>
+        </IuProperty>
+        <IuProperty label="Last updated">
+          <time :datetime="session.updatedAt" :title="session.updatedAt">{{
+            formatTimestamp.format(new Date(session.updatedAt))
+          }}</time>
+        </IuProperty>
+      </IuPropertyList>
+    </section>
 
     <section class="session-side__section" aria-labelledby="side-context">
       <h2 id="side-context" class="session-side__title">

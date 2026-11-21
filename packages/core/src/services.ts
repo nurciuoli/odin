@@ -117,6 +117,8 @@ export interface SessionPatch {
   updatedAt?: string;
   /** Advances only for new conversation activity. */
   activityAt?: string;
+  /** Run activity that may also belong to historical, already-read sessions. */
+  lastRunAt?: string;
   /** Merged into the stored metrics (shallow, per top-level key). */
   metrics?: Partial<SessionMetrics>;
 }
@@ -134,6 +136,7 @@ export interface ExternalSessionInput {
   at: string;
   /** Null when discovery is importing existing history. */
   activityAt?: string | null;
+  lastRunAt?: string | null;
 }
 
 export interface SessionsService extends Closeable {

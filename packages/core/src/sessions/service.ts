@@ -89,6 +89,7 @@ interface SessionRow {
   discovery_updated_at: string | null;
   discovery_title: string | null;
   activity_at: string | null;
+  last_run_at: string | null;
   ended_at: string | null;
   error: string | null;
   metrics: string;
@@ -164,6 +165,7 @@ function toSession(r: SessionRow): Session {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     activityAt: r.activity_at,
+    lastRunAt: r.last_run_at,
     endedAt: r.ended_at,
     error: r.error,
     metrics: { ...emptyMetrics(), ...parseJson<Partial<SessionMetrics>>(r.metrics, {}) },
@@ -388,6 +390,9 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       const previous = cur.activity_at ? Date.parse(cur.activity_at) : NaN;
       if (Number.isFinite(activity) && (!Number.isFinite(previous) || activity > previous)) set("activity_at", patch.activityAt);
     }
+    const runAt = patch.lastRunAt ?? patch.activityAt ?? (patch.state === "running" && cur.state !== "running" ? now() : undefined);
+    const runTime = discoveryDate(runAt ?? null);
+    if (runTime && (!cur.last_run_at || Date.parse(runTime) > Date.parse(cur.last_run_at))) set("last_run_at", runTime);
     if (patch.pull !== undefined) set("pull", patch.pull === null ? null : JSON.stringify(patch.pull));
     if (patch.tags !== undefined) set("tags", JSON.stringify(patch.tags));
     if (patch.pinned !== undefined) set("pinned", patch.pinned ? 1 : 0);
@@ -441,17 +446,18 @@ export function createSessionsService(deps: Deps, services: Services, options: S
     createdAt: string;
     updatedAt: string;
     activityAt?: string | null;
+    lastRunAt?: string | null;
     launchConfig?: string | null;
   }
 
   function insert(r: NewRecord & { effort?: import("@odin/shared/api").Effort | null }): Session {
     db.prepare(
       `INSERT INTO sessions (id, harness, project, title, first_prompt, tags, origin, state, cwd, workspace, branch, model, permission_mode,
-        agent, agent_version, template_id, parent_id, aside, created_at, updated_at, activity_at, metrics, projects, launch_config, handoff)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        agent, agent_version, template_id, parent_id, aside, created_at, updated_at, activity_at, last_run_at, metrics, projects, launch_config, handoff)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       r.id, r.harness, r.project, r.title, r.firstPrompt, JSON.stringify(r.tags), r.origin, r.state, r.cwd, JSON.stringify(r.workspace), r.branch,
-      r.model, r.permissionMode, r.agent, r.agentVersion, r.templateId, r.parentId, r.aside ? 1 : 0, r.createdAt, r.updatedAt, r.activityAt ?? null, JSON.stringify(emptyMetrics()),
+      r.model, r.permissionMode, r.agent, r.agentVersion, r.templateId, r.parentId, r.aside ? 1 : 0, r.createdAt, r.updatedAt, r.activityAt ?? null, discoveryDate(r.lastRunAt ?? null), JSON.stringify(emptyMetrics()),
       JSON.stringify(r.projects ?? [r.project]), r.launchConfig ?? null, r.handoff ? JSON.stringify(r.handoff) : null,
     );
     if (r.effort) db.prepare("UPDATE sessions SET effort = ? WHERE id = ?").run(r.effort, r.id);
@@ -898,6 +904,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       createdAt: input.createdAt ?? input.at,
       updatedAt: input.at,
       activityAt: input.activityAt,
+      lastRunAt: input.lastRunAt === undefined ? input.at : input.lastRunAt,
     });
     return s;
   }
@@ -935,6 +942,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         at,
         createdAt: createdAt ?? at,
         activityAt: nativeAt && nativeAt > baseline ? nativeAt : null,
+        lastRunAt: nativeAt ?? createdAt,
       });
       saveNativeObservation.run(nativeAt, nativeTitle, info.sessionId);
       return true;
@@ -1118,7 +1126,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         where.push("updated_at >= ?");
         args.push(filter.since);
       }
-      let sql = `SELECT * FROM sessions${where.length ? ` WHERE ${where.join(" AND ")}` : ""} ORDER BY updated_at DESC, created_at DESC, id`;
+      let sql = `SELECT * FROM sessions${where.length ? ` WHERE ${where.join(" AND ")}` : ""} ORDER BY last_run_at DESC, created_at DESC, id`;
       if (filter.limit !== undefined && filter.limit > 0) {
         sql += " LIMIT ?";
         args.push(Math.floor(filter.limit));
@@ -1285,7 +1293,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       insert({
         id, harness: harnessId, project: project.name, projects: [...new Set([project.name, ...(req.projects ?? []).map(n => n.trim()).filter(Boolean)])], title: plan.title, firstPrompt: plan.prompt?.text ?? null, tags: plan.tags,
         origin: "odin", state: "running", cwd, workspace, branch, model: plan.model, effort: req.effort, permissionMode: plan.permissionMode,
-        agent: null, agentVersion: null, templateId: null, parentId: null, createdAt: at, updatedAt: at,
+        agent: null, agentVersion: null, templateId: null, parentId: null, createdAt: at, updatedAt: at, lastRunAt: plan.prompt ? at : null,
         launchConfig: JSON.stringify({ mcpIds: Object.keys(plan.mcpServers), runtimeOptions: native }),
       });
 
@@ -1554,7 +1562,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         id: newId, harness: parent.harness, project: parent.project, projects: parent.projects, title, firstPrompt: prompt?.text ?? parentRow.first_prompt, tags: parent.tags,
         origin: "odin", state: prompt ? "running" : "idle", cwd, workspace, branch, model, effort, permissionMode,
         agent: parent.agent, agentVersion: parent.agentVersion, templateId: parent.templateId, parentId: id, aside,
-        createdAt: at, updatedAt: at,
+        createdAt: at, updatedAt: at, lastRunAt: prompt ? at : null,
         launchConfig: parentRow.launch_config,
       });
       try {
@@ -1642,7 +1650,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         id: newId, harness: target.id, project: s.project, projects: s.projects, title, firstPrompt: row(id)!.first_prompt, tags: s.tags,
         origin: "odin", state: "running", cwd: s.cwd, workspace: s.workspace, branch: s.branch, model, effort: null, permissionMode,
         agent: null, agentVersion: null, templateId: null, parentId: id, handoff: { from: id, harness: s.harness, at },
-        createdAt: at, updatedAt: at, launchConfig: JSON.stringify({ mcpIds }),
+        createdAt: at, updatedAt: at, lastRunAt: at, launchConfig: JSON.stringify({ mcpIds }),
       });
       const opts: StartOptions = { cwd: s.cwd, sessionId: newId, prompt, hostTools: hostTools(newId), effort: null };
       const named = chosenTitle(title, row(id)!.first_prompt);

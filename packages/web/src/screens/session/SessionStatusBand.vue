@@ -4,6 +4,7 @@
 // tinted; a running one stays calm. Idle and done sessions have no band, the header chip says it.
 import { computed, onBeforeUnmount, ref } from 'vue'
 import type { SessionDetail } from '@odin/shared/api'
+import { lastRunAt } from '@odin/shared/session'
 import { IuFlock } from '@/components/Spinner'
 import { buildPerch, perchParts } from '@/screens/shared/lanes'
 import { SESSION_DISPLAY, relativeTime } from '@/screens/shared/format'
@@ -28,7 +29,10 @@ const perch = computed(() => (live.value ? buildPerch({ detail: props.session },
 const parts = computed(() =>
   perch.value
     ? perchParts(perch.value)
-    : { word: SESSION_DISPLAY.failed.label, since: relativeTime(props.session.updatedAt) },
+    : {
+        word: SESSION_DISPLAY.failed.label,
+        since: relativeTime(lastRunAt(props.session) ?? '', now.value),
+      },
 )
 const context = computed(() => {
   if (perch.value) return perch.value.activity

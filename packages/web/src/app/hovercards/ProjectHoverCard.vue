@@ -2,6 +2,7 @@
 // The project overview shown on hover: health, what's running or needs you, and the latest sessions.
 import { computed, onMounted, shallowRef } from 'vue'
 import type { ProjectDetail, ProjectSummary, Session } from '@odin/shared/api'
+import { lastRunAt } from '@odin/shared/session'
 import { IuBadge } from '@/components/Badge'
 import { IuIcon } from '@/components/Icon'
 import IuStatusDot from '@/components/StatusDot/StatusDot.vue'
@@ -43,7 +44,7 @@ const status = computed(() => {
   const p = project.value
   return p ? projectStatus({ ...p, sessions: { ...p.sessions, ...counts.value } }) : 'idle'
 })
-const lastActive = computed(() => detail.value?.lastSessionAt ?? project.value?.updatedAt ?? null)
+const lastActive = computed(() => detail.value?.lastSessionAt ?? null)
 const git = computed(() => detail.value?.git ?? null)
 </script>
 
@@ -102,7 +103,7 @@ const git = computed(() => detail.value?.git ?? null)
         <li v-for="s in recent" :key="s.id">
           <IuStatusDot :status="SESSION_DISPLAY[s.state].status" :size="7" decorative />
           <span class="hc__li-title">{{ s.title }}</span>
-          <span class="hc__dim">{{ relativeTime(s.updatedAt) }}</span>
+          <span class="hc__dim">{{ relativeTime(lastRunAt(s) ?? '') }}</span>
         </li>
       </ul>
       <p v-else-if="recent" class="hc__dim">No sessions yet</p>

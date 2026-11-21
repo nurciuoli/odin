@@ -163,13 +163,16 @@ describe('SessionLaunchpad', () => {
     const imported = api.db.sessions.find(s => s.id === FIXTURE_SESSION_IDS.external)!
     imported.updatedAt = new Date().toISOString()
     imported.activityAt = null
+    imported.lastRunAt = new Date(Date.now() - 5 * 60_000).toISOString()
     const { wrapper, projects, sessions } = await mountScreen(SessionLaunchpad, '/', api)
     await flushPromises()
     const finished = () => wrapper.findAll('.launchpad__perch--finished').map(row => row.text())
     expect(finished().some(row => row.includes(imported.title))).toBe(false)
     expect(wrapper.find('.launchpad__list').text()).toContain(imported.title)
+    expect(wrapper.find(`time[datetime="${imported.lastRunAt}"]`).text()).toBe('5m ago')
 
     imported.activityAt = imported.updatedAt
+    imported.lastRunAt = imported.updatedAt
     api.emit({ type: 'session.updated', session: imported })
     await vi.waitFor(() => expect(finished().some(row => row.includes(imported.title))).toBe(true))
     expect(wrapper.find('.launchpad__list').text()).not.toContain(imported.title)

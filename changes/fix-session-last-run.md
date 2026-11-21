@@ -1,0 +1,1 @@
+- Session lists now show and sort by when sessions last ran. History and session details show the last update time separately.

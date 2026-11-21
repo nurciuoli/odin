@@ -18,6 +18,7 @@ test("the initial discovery pass starts without waiting for its first polling in
     assert.equal(s.sessions.get("external"), null);
     await setImmediate();
     assert.equal(s.sessions.get("external")?.activityAt, null);
+    assert.equal(s.sessions.get("external")?.lastRunAt, BEFORE);
   } finally {
     await s.sessions.close();
     s.services.library.close();
@@ -74,6 +75,30 @@ test("a generated title keeps the timestamps and later native activity can surfa
     s.harness.seed({ sessionId: "external", cwd: s.projectPath, title: "A generated title", updatedAt: LATEST });
     await s.sessions.discover(PROJECT);
     assert.equal(s.sessions.get("external")?.activityAt, LATEST);
+    assert.equal(s.sessions.get("external")?.lastRunAt, LATEST);
+  } finally {
+    await s.sessions.close();
+    s.services.library.close();
+    s.deps.db.close();
+  }
+});
+
+test("session list limits use the last run, while updates keep their own timestamp", async () => {
+  const s = setup();
+  try {
+    for (const [id, at] of [["older-run", BEFORE], ["newer-run", LATER]] as const)
+      s.sessions.ensureExternal({ id, at, harness: "claude", project: PROJECT, cwd: s.projectPath });
+
+    s.deps.now = () => new Date(LATEST);
+    const renamed = await s.sessions.update("older-run", { title: "Renamed", pinned: true });
+    assert.equal(renamed.updatedAt, LATEST);
+    assert.equal(renamed.lastRunAt, BEFORE);
+    assert.equal(s.sessions.list({ limit: 1 })[0]?.id, "newer-run");
+    assert.equal(s.sessions.list({ since: LATEST })[0]?.id, "older-run");
+
+    s.sessions.patch("older-run", { activityAt: LATEST });
+    assert.equal(s.sessions.get("older-run")?.lastRunAt, LATEST);
+    assert.equal(s.sessions.list({ limit: 1 })[0]?.id, "older-run");
   } finally {
     await s.sessions.close();
     s.services.library.close();
