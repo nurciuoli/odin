@@ -18,6 +18,8 @@ const props = withDefaults(
     number: number
     /** What to show under the source: the live outputs of a running cell, else the saved ones. */
     outputs: CellOutput[]
+    /** A streamed reference uses its persisted output position, independent of displayed stream chunks. */
+    outputIndexes?: (number | null)[]
     kernelId?: string
     /** The source cannot be edited (JupyterLab owns the notebook, or this is a file on disk). */
     readonly?: boolean
@@ -40,6 +42,7 @@ const props = withDefaults(
   }>(),
   {
     kernelId: undefined,
+    outputIndexes: undefined,
     readonly: false,
     blocked: false,
     locked: false,
@@ -133,9 +136,9 @@ const state = computed(() =>
         <div v-if="outputs.length" class="nb-cell__outputs" :aria-label="`Cell ${number} output`">
           <NotebookOutput
             v-for="(output, index) in outputs"
-            :key="index"
+            :key="output.type === 'reference' ? `${index}:${output.version ?? ''}` : index"
             :output="output"
-            :index="index"
+            :index="outputIndexes?.[index] ?? index"
             :kernel-id="kernelId"
             :cell-id="cell.id"
           />

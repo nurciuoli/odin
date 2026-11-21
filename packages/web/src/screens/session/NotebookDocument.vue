@@ -17,10 +17,13 @@ import {
 } from 'vue'
 import type { SessionDetail } from '@odin/shared/api'
 import type {
+  ConfigureNotebookKernelRequest,
   KernelLocation,
   NotebookDataFrame,
   NotebookEnvironment,
+  NotebookEnvironmentRequest,
   NotebookExecution,
+  NotebookKernelCandidate,
   NotebookOutput as CellOutput,
   NotebookVariable,
 } from '@odin/shared/notebooks'
@@ -35,13 +38,7 @@ import { statusLabel, type Status } from '@/styles/status'
 import DocumentHeader from './DocumentHeader.vue'
 import NotebookCell from './NotebookCell.vue'
 import { prefersReducedMotion } from './useMediaQuery'
-import {
-  copyCells,
-  draftDirty,
-  notebookDraft,
-  receiveNotebook,
-  type NotebookDraft,
-} from './notebookDraft'
+import { draftDirty, notebookDraft, receiveNotebook, type NotebookDraft } from './notebookDraft'
 import {
   formatDuration,
   outlineEntries,
@@ -73,6 +70,7 @@ const loadError = ref('')
 const error = ref('')
 const message = ref('')
 const busy = ref(false)
+const interrupting = ref(false)
 const tray = ref<'variables' | null>(null)
 /** A run was refused for want of Python. */
 const noEnvironment = ref(false)
@@ -85,10 +83,14 @@ const frameName = ref('')
 const frameSort = ref('')
 const descending = ref(false)
 const liveOutputs = ref<
-  Record<string, { execution: string; outputs: CellOutput[]; bytes: number }>
+  Record<
+    string,
+    { execution: string; outputs: CellOutput[]; indexes: (number | null)[]; bytes: number }
+  >
 >({})
 /** Per cell: running now, the last run's time and result, and why a run failed (shown on the cell). */
 const running = reactive<Record<string, true>>({})
+const hasRunningCell = computed(() => Object.keys(running).length > 0)
 const runInfo = reactive<Record<string, { state: string; duration: string }>>({})
 const cellErrors = reactive<Record<string, string>>({})
 
@@ -109,7 +111,7 @@ const widths = ref<number[]>([])
 const menuWidth = ref(0)
 const outlineOn = computed(() => showOutline(paneWidth.value))
 let resize: ResizeObserver | undefined
-function measure() {
+function measureToolbar() {
   const row = measureEl.value
   if (!row) return
   const buttons = [...row.querySelectorAll<HTMLElement>('[data-tool]')]
@@ -131,7 +133,7 @@ watch(toolbarEl, el => {
   if (el && resize) resize.observe(el)
 })
 watch(measureEl, el => {
-  if (el) void nextTick(measure)
+  if (el) void nextTick(measureToolbar)
 })
 
 const fail = (e: unknown) => {
@@ -244,13 +246,38 @@ const chipLabel = computed(() =>
 const chipTitle = computed(() =>
   needsEnvironment.value
     ? 'No Python environment: choose how this notebook runs'
-    : `${chipLabel.value}, kernel ${kernel.value?.state ?? ''}`,
+    : `${chipLabel.value}, kernel ${kernel.value?.state ?? ''}, working directory ${kernel.value?.cwd ?? ''}`,
 )
 const chipDot = computed<Status>(() => (needsEnvironment.value ? 'idle' : kernelStatus.value))
+const locationLabel = (at: KernelLocation) =>
+  at.kind === 'wsl' ? `WSL (${at.distro})` : 'this computer'
 const location = (): KernelLocation => {
   const at = kernel.value?.location
   return at ? { ...toRaw(at) } : { kind: 'native' }
 }
+const sameLocation = (a: KernelLocation, b: KernelLocation) =>
+  a.kind === 'wsl' ? b.kind === 'wsl' && a.distro === b.distro : b.kind === 'native'
+const candidates = computed<NotebookKernelCandidate[]>(() => {
+  const found = detected.value
+  if (!found) return []
+  const choices = found.candidates?.length
+    ? found.candidates
+    : found.interpreter
+      ? [
+          {
+            kind: 'python' as const,
+            name: interpreterName(found.interpreter),
+            interpreter: found.interpreter,
+            location: found.location,
+          },
+        ]
+      : []
+  return choices.filter(
+    candidate =>
+      candidate.interpreter !== kernel.value?.interpreter ||
+      !sameLocation(candidate.location, location()),
+  )
+})
 
 const kernelMenu = computed<MenuItem[]>(() => {
   const k = kernel.value
@@ -264,22 +291,37 @@ const kernelMenu = computed<MenuItem[]>(() => {
       description: k.interpreter,
     })
   else items.push({ type: 'label', label: 'No Python found' })
-  const found = detected.value
-  if (found?.interpreter && !found.needsSetup && found.interpreter !== k?.interpreter)
+  candidates.value.forEach((candidate, index) =>
     items.push({
-      id: 'env:use',
-      label: `Use ${interpreterName(found.interpreter)}`,
-      description: found.interpreter,
-      disabled: busy.value,
+      id: `env:use:${index}`,
+      label: `Use ${candidate.name}`,
+      description: candidate.interpreter,
+      disabled: busy.value || hasRunningCell.value,
+    }),
+  )
+  detected.value?.locations?.forEach((at, index) => {
+    if (!sameLocation(at, detected.value!.location))
+      items.push({
+        id: `env:find:${index}`,
+        label: `Find Python on ${locationLabel(at)}`,
+        disabled: busy.value || hasRunningCell.value,
+      })
+  })
+  if (k?.cwd)
+    items.push({
+      id: 'env:cwd',
+      label: 'Working directory',
+      description: k.cwd,
+      disabled: true,
     })
   items.push({
     id: 'env:setup',
     label: settingUp.value ? 'Setting up Python…' : 'Set up Python',
-    disabled: busy.value,
+    disabled: busy.value || hasRunningCell.value,
   })
   items.push(
     { type: 'separator' },
-    { id: 'interrupt', label: 'Interrupt kernel', icon: 'pause', disabled: busy.value },
+    { id: 'interrupt', label: 'Interrupt kernel', icon: 'pause', disabled: !canInterrupt.value },
     { id: 'restart', label: 'Restart kernel', icon: 'retry', disabled: busy.value },
     { id: 'stop', label: 'Stop kernel', icon: 'stop', disabled: busy.value },
     { type: 'separator' },
@@ -302,28 +344,45 @@ async function load() {
   }
 }
 /** Looks for Python when the notebook opens; if the notebook has none and one is found, it takes it. No banner. */
-async function detect(adopt = true) {
+function environmentRequest(): NotebookEnvironmentRequest {
+  const k = kernel.value
+  return {
+    kernelId: k?.id,
+    hint: k?.kernelHint,
+    location: k?.interpreter ? location() : undefined,
+  }
+}
+async function detect(adopt = true, at?: KernelLocation) {
   const k = kernel.value
   if (!k) return
   try {
     // A notebook that already runs somewhere keeps to it; otherwise the server picks where Python can run.
-    const found = await api.notebookEnvironment(
-      props.session.project,
-      k.interpreter ? location() : undefined,
-    )
+    const request = environmentRequest()
+    if (at) request.location = at
+    const found = await api.notebookEnvironment(props.session.project, request)
     detected.value = found
-    if (adopt && !k.interpreter && found.interpreter && !found.needsSetup)
+    if (adopt && !kernel.value?.interpreter && found.interpreter && !found.needsSetup)
       await configure({ interpreter: found.interpreter, location: found.location }, false)
   } catch {
+    if (at) throw new Error(`Could not check Python on ${locationLabel(at)}`)
     // Detection is a convenience: without it the chip says "Select kernel" and the menu still works.
   }
 }
+let reloadRequest: Promise<void> | undefined
 async function reload() {
-  const current = draft.value
-  if (!current) return
-  const snapshot = await api.getNotebook(current.base.kernel.id)
-  // update only the draft that asked
-  draft.value = receiveNotebook(current, snapshot)
+  const id = draft.value?.base.kernel.id
+  if (!id) return
+  const request: Promise<void> = api.getNotebook(id).then(async snapshot => {
+    if (reloadRequest !== request) return reloadRequest
+    const current = draft.value
+    if (current?.base.kernel.id === id) draft.value = receiveNotebook(current, snapshot)
+  })
+  reloadRequest = request
+  try {
+    await request
+  } finally {
+    if (reloadRequest === request) reloadRequest = undefined
+  }
 }
 function addCell(kind: 'code' | 'markdown') {
   draft.value?.cells.push({
@@ -337,11 +396,20 @@ function addCell(kind: 'code' | 'markdown') {
 async function saveActive() {
   const current = draft.value
   if (!current) return
-  const cells = copyCells(current.cells)
+  const cells = current.cells.map(({ id, kind, source }) => ({ id, kind, source }))
   const snapshot = await api.saveNotebook(current.base.kernel.id, current.base.revision, cells)
   // keep edits made while the request was in flight
   const next = notebookDraft(snapshot)
-  if (JSON.stringify(current.cells) !== JSON.stringify(cells)) next.cells = current.cells
+  const latest = draft.value?.cells ?? current.cells
+  const edited =
+    latest.length !== cells.length ||
+    latest.some(
+      (cell, index) =>
+        cell.id !== cells[index]?.id ||
+        cell.kind !== cells[index]?.kind ||
+        cell.source !== cells[index]?.source,
+    )
+  if (edited) next.cells = latest
   draft.value = next
 }
 async function save() {
@@ -364,23 +432,37 @@ function recordRun(execution: NotebookExecution) {
   }
   if (execution.state === 'failed') cellErrors[execution.cellId] = execution.error ?? ''
 }
+const lifetime = new AbortController()
+let runCancelled = false
+const canInterrupt = computed(
+  () =>
+    !interrupting.value &&
+    (hasRunningCell.value || kernel.value?.state === 'busy' || kernel.value?.state === 'starting'),
+)
 /** Runs one cell; a failure is said on that cell. Returns whether the run completed. */
 async function runOne(cellId: string): Promise<boolean> {
   delete cellErrors[cellId]
   running[cellId] = true
   try {
     if (dirty.value) await saveActive()
+    if (runCancelled || lifetime.signal.aborted) return false
     const current = draft.value
     if (!current) return false
-    const execution = await api.executeNotebook(current.base.kernel.id, {
+    let execution = await api.executeNotebook(current.base.kernel.id, {
       cellId,
       revision: current.base.revision,
     })
+    while (execution.state === 'queued' || execution.state === 'running') {
+      if (lifetime.signal.aborted) return false
+      execution = await api.waitNotebookExecution(execution.id, lifetime.signal)
+    }
+    if (lifetime.signal.aborted) return false
     recordRun(execution)
     message.value = `Cell ${execution.state}`
     await reload()
-    return execution.state === 'completed'
+    return execution.state === 'completed' && !runCancelled
   } catch (e) {
+    if (lifetime.signal.aborted) return false
     await reload().catch(() => {})
     // A refusal for want of Python is the chip's business, not an error to read.
     if (e instanceof ApiRequestError && e.status === 409 && /environment/i.test(e.message)) {
@@ -393,9 +475,14 @@ async function runOne(cellId: string): Promise<boolean> {
     delete running[cellId]
   }
 }
-const run = (cellId: string) => action(async () => void (await runOne(cellId)))
+const run = (cellId: string) =>
+  action(async () => {
+    runCancelled = false
+    await runOne(cellId)
+  })
 const runAll = () =>
   action(async () => {
+    runCancelled = false
     for (const cell of [...codeCells.value]) if (!(await runOne(cell.id))) return
   })
 const clearOutputs = () => {
@@ -408,12 +495,22 @@ const clearOutputs = () => {
 }
 const restart = () =>
   action(async () => {
-    // The kernel starts again, lazily, on the next run.
-    await api.stopNotebook(props.kernelId)
+    await api.restartNotebook(props.kernelId)
     await reload()
     message.value = 'Kernel restarted'
   })
-const interrupt = () => action(() => api.interruptNotebook(props.kernelId))
+async function interrupt() {
+  if (!canInterrupt.value) return
+  runCancelled = true
+  interrupting.value = true
+  try {
+    await api.interruptNotebook(props.kernelId)
+  } catch (e) {
+    fail(e)
+  } finally {
+    interrupting.value = false
+  }
+}
 function removeCell(index: number) {
   draft.value?.cells.splice(index, 1)
 }
@@ -428,13 +525,10 @@ function keepDraft() {
     current.remote = null
   }
 }
-async function configure(
-  environment: { interpreter: string; location: KernelLocation },
-  announce = true,
-) {
+async function configure(environment: ConfigureNotebookKernelRequest, announce = true) {
   const k = draft.value?.base.kernel
   if (!k) return
-  await api.openNotebook(props.session.project, { path: k.path, ...environment })
+  await api.configureNotebook(k.id, environment)
   noEnvironment.value = false
   await reload()
   if (announce) message.value = 'Python environment set'
@@ -446,10 +540,7 @@ async function setupEnvironment() {
   settingUp.value = true
   try {
     await action(async () => {
-      const found = await api.setupNotebookEnvironment(
-        props.session.project,
-        k.interpreter ? location() : undefined,
-      )
+      const found = await api.setupNotebookEnvironment(props.session.project, environmentRequest())
       detected.value = found
       if (found.interpreter)
         await configure({ interpreter: found.interpreter, location: found.location })
@@ -503,7 +594,7 @@ const tools = computed<Tool[]>(() => [
     disabled:
       busy.value || !draft.value?.cells.some(c => c.outputs.length || c.executionCount !== null),
   },
-  { id: 'interrupt', label: 'Interrupt', icon: 'pause', disabled: busy.value },
+  { id: 'interrupt', label: 'Interrupt', icon: 'pause', disabled: !canInterrupt.value },
   { id: 'variables', label: 'Variables', icon: 'database', disabled: busy.value },
 ])
 const shown = computed(() =>
@@ -524,7 +615,7 @@ async function onTool(id: string) {
 }
 watch(
   () => tools.value.map(t => t.label).join(),
-  () => void nextTick(measure),
+  () => void nextTick(measureToolbar),
 )
 
 const menu = computed<MenuItem[]>(() => [
@@ -545,10 +636,22 @@ async function onKernelMenu(id: string) {
       await api.stopNotebook(props.kernelId)
       await reload()
     })
-  else if (id === 'env:use' && detected.value?.interpreter)
-    await action(() =>
-      configure({ interpreter: detected.value!.interpreter!, location: detected.value!.location }),
-    )
+  else if (id.startsWith('env:use:')) {
+    const candidate = candidates.value[Number(id.slice('env:use:'.length))]
+    if (candidate)
+      await action(() =>
+        configure({ interpreter: candidate.interpreter, location: candidate.location }),
+      )
+  } else if (id.startsWith('env:find:')) {
+    const at = detected.value?.locations?.[Number(id.slice('env:find:'.length))]
+    if (at)
+      await action(async () => {
+        await detect(false, at)
+        message.value = candidates.value.length
+          ? `Python environments found on ${locationLabel(at)}`
+          : `No additional Python environments found on ${locationLabel(at)}`
+      })
+  }
 }
 
 const status = computed(() => {
@@ -582,7 +685,7 @@ async function refreshFromEvent() {
 }
 onMounted(() => {
   observe()
-  void nextTick(measure)
+  void nextTick(measureToolbar)
   void load()
   unsubscribe = api.subscribe(
     event => {
@@ -591,10 +694,17 @@ onMounted(() => {
         const live =
           current?.execution === event.executionId
             ? current
-            : { execution: event.executionId, outputs: [], bytes: 0 }
+            : { execution: event.executionId, outputs: [], indexes: [], bytes: 0 }
+        const outputIndex = event.outputIndex ?? null
+        if (event.output.type === 'reference' && outputIndex === null) return
+        const slot = outputIndex === null ? -1 : live.indexes.indexOf(outputIndex)
         const bytes = JSON.stringify(event.output).length
-        if (live.outputs.length < 100 && live.bytes + bytes < 4 * 1024 * 1024) {
+        if (slot !== -1) {
+          live.bytes += bytes - JSON.stringify(live.outputs[slot]).length
+          live.outputs[slot] = event.output
+        } else if (live.outputs.length < 100 && live.bytes + bytes < 4 * 1024 * 1024) {
           live.outputs.push(event.output)
+          live.indexes.push(outputIndex)
           live.bytes += bytes
         }
         liveOutputs.value[event.cellId] = live
@@ -625,6 +735,7 @@ onMounted(() => {
   )
 })
 onBeforeUnmount(() => {
+  lifetime.abort()
   unsubscribe?.()
   resize?.disconnect()
 })
@@ -642,7 +753,12 @@ onBeforeUnmount(() => {
         @close="emit('close')"
       >
         <template #actions>
-          <IuMenu v-if="phase === 'ready' && kernel" :items="kernelMenu" @select="onKernelMenu">
+          <IuMenu
+            v-if="phase === 'ready' && kernel"
+            :items="kernelMenu"
+            fixed
+            @select="onKernelMenu"
+          >
             <template #trigger="{ toggle, open }">
               <IuButton
                 class="nb-chip"
@@ -849,6 +965,7 @@ onBeforeUnmount(() => {
             :cell="cell"
             :number="index + 1"
             :outputs="liveOutputs[cell.id]?.outputs ?? cell.outputs"
+            :output-indexes="liveOutputs[cell.id]?.indexes"
             :kernel-id="kernel.id"
             :blocked="busy || !!draft.remote"
             :locked="busy"

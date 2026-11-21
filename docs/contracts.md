@@ -1003,7 +1003,7 @@ Plugins come from and go to Claude Code plugins. Sources are a git address or a 
 
 A notebook is an ordinary `.ipynb` file in the project, addressed by a project-relative path (forward slashes, ends
 in `.ipynb`, checked against the project root). `@odin/shared/notebooks` defines one kernel record per
-(root, path) (`NotebookKernel.path`; `name` is the file basename), immutable interpreter/OS/distro, notebook
+(root, path) (`NotebookKernel.path`; `name` is the file basename), selectable interpreter/OS/distro, notebook
 snapshots with revisions and stable cell IDs, execution receipts. The kernel process starts
 lazily on first execute; opening a notebook starts nothing. A kernel belongs to its file, not to a session; there are no
 session links. One lazy Jupyter host serves each project/location. Notebooks are not
@@ -1016,7 +1016,8 @@ and the execution receipts' `session_id`. `.ipynb` remains the
 source of truth for cells/outputs. Saves use revision checks and atomic rename; conflicts return 409. Edits made to
 the file outside Odin (an editor, git, another tool) surface through the same revision check: a save or execute
 with a stale revision returns 409 and the client refetches. There is no external-editor hand-off. Execution
-is serialized per kernel. Cells carry no authorship: `NotebookCell` has no `author`, no
+is serialized per kernel. Running an unchanged cell checks the revision without rewriting its source or saved outputs.
+The editor saves cell IDs, kinds and source and core retains outputs for unchanged cells. Cells carry no authorship: `NotebookCell` has no `author`, no
 cell metadata is written beyond what the file already holds, and an `odin_author` entry in an existing file is
 ignored. Agent tools are scoped to their session's project; `notebook_create` and `notebook_open` take a
 project-relative `path`, and `notebook_status`/`notebook_wait` take the execution id. Nothing is delivered into
@@ -1031,16 +1032,20 @@ snapshot tools need no execution approval. Inspecting Python objects is executio
 
 REST: GET `/api/projects/:name/notebooks` lists kernels; POST `/api/projects/:name/notebooks/open` with
 `OpenNotebookRequest` `{path, sessionId?, create?, interpreter?, location?}` (with `sessionId`, which must belong to that project else 400, `path` is relative to that session's cwd, e.g. a worktree, instead of the project root; the absolute root is stored on the kernel so saves and runs hit the same file; host tools always use the calling session's cwd) returns the existing record for that path or
-creates one (`create` writes an empty nbformat-4 file when missing, else 404); GET/PUT/DELETE `/api/notebooks/:id`
+creates one (`create` writes an empty nbformat-4 file when missing, else 404); GET/PUT/PATCH/DELETE `/api/notebooks/:id`
+(PATCH selects an interpreter and location, stopping an existing kernel before the change)
 (DELETE removes the record and stops the kernel, never the file);
-POST `/api/notebooks/:id/execute`, `/interrupt`, `/stop`;
+POST `/api/notebooks/:id/execute`, `/interrupt`, `/restart`, `/stop`;
 GET `/api/notebook-executions/:id`; POST `/api/notebook-executions/:id/wait`.
 Updates stream as notebook.updated, notebook.execution and bounded notebook.output frames. Clients refetch
-snapshots on reconnect; SSE is not a durable output store. Long tools return execution handles promptly.
+snapshots on reconnect; SSE is not a durable output store. Long tools return execution handles promptly. Run All
+waits for each execution receipt before submitting the next cell. A disconnected kernel settles its pending
+receipts. Restart creates a fresh kernel without submitting cells.
 
-Rich HTML/JavaScript/SVG output is served only at `/a/notebooks/:id/:cellId/:index` with artifact sandbox/CSP
-headers and embedded only in the existing scripts/forms sandbox. Native output rendering permits text and
-raster images; it never inserts HTML into the app DOM. Jupyter credentials stay inside core, absent from agent
+Rich HTML/JavaScript/SVG and Plotly output is served at `/a/notebooks/:id/:cellId/:index` with artifact sandbox/CSP
+headers and embedded only in the existing scripts/forms sandbox. Plotly uses a bundled offline renderer. Large
+display outputs are represented by MIME types and byte size in snapshots and events, with their payloads in the
+`.ipynb` after persistence. Native output rendering permits text and raster images. Jupyter credentials stay inside core, absent from agent
 results, browser responses and logs; kernel child environments omit Odin tokens. Environment provisioning is
 an explicit action.
 
@@ -1049,12 +1054,18 @@ bundled standard widget classes, never CDN modules. The user explicitly enables 
 messages are accepted only from that frame's window with matching kernel/model identity and size bounds.
 Widget callbacks execute Python and keep kernels busy until the protocol reports idle. Stop revokes bridges.
 
-Environment detect/setup use POST `/api/projects/:name/notebook-environment/{detect,setup}`. Setup is explicit,
+Environment detect/setup use POST `/api/projects/:name/notebook-environment/{detect,setup}`. A `kernelId` uses that
+notebook's working directory and must belong to the project. Detection can return Python candidates and execution
+locations, and can check the selected interpreter and managed host separately. Notebook kernelspec metadata helps
+rank installed Python kernels and Conda environments. Setup is explicit,
 creates the Odin-managed Jupyter environment, adds only ipykernel to an existing project environment, or creates
 a .venv with the analysis baseline (built with uv when installed, else `python -m venv` and pip, so only Python is
 required). `location` in the body is optional: when omitted the server picks where Python runs (this machine, or on
 Windows the first WSL distro with Python when the machine has none) and returns it as `location`. A second setup
-request while one runs joins it. Variable/dataframe inspection is explicit Python execution via
+request for the same target while one runs joins it. A project can opt specific application environment variables into
+kernel execution with `notebookEnv` in `PROJECT.md` frontmatter. Only named keys from the project's `.env` are loaded
+in the kernel process. Existing process values take precedence, and Odin credentials and runtime-control names are
+reserved. Variable/dataframe inspection is explicit Python execution via
 POST `/api/notebooks/:id/{variables,dataframe}`. GET `/api/notebooks/:id/widgets` returns bounded live widget
 models; POST `/api/notebooks/:id/comm` sends a validated callback.
 

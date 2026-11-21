@@ -182,11 +182,26 @@ export function mockNotebooks(options: {
     async getNotebook(id) {
       return copy(get(id))
     },
+    async configureNotebook(id, request) {
+      const notebook = get(id)
+      notebook.kernel.interpreter = request.interpreter
+      notebook.kernel.location = { ...request.location }
+      notebook.kernel.state = 'stopped'
+      notebook.kernel.error = null
+      changed(notebook)
+      return copy(notebook.kernel)
+    },
     async saveNotebook(id, revision, cells) {
       const snapshot = get(id)
       if (snapshot.revision !== revision)
         throw new ApiRequestError(409, 'Notebook changed; reload before saving')
-      snapshot.cells = copy(cells)
+      const previous = new Map(snapshot.cells.map(cell => [cell.id, cell]))
+      snapshot.cells = cells.map(cell => {
+        const prior = previous.get(cell.id)
+        return prior?.source === cell.source && prior.kind === cell.kind
+          ? prior
+          : { ...cell, outputs: [], executionCount: null }
+      })
       changed(snapshot)
       return copy(snapshot)
     },
@@ -226,12 +241,21 @@ export function mockNotebooks(options: {
       if (!execution) throw new ApiRequestError(404, 'Execution not found')
       return copy(execution)
     },
+    async waitNotebookExecution(id): Promise<NotebookExecution> {
+      const execution = executions.get(id)
+      if (!execution) throw new ApiRequestError(404, 'Execution not found')
+      return copy(execution)
+    },
     async interruptNotebook(id) {
       get(id).kernel.state = 'idle'
       changed(get(id))
     },
     async stopNotebook(id) {
       get(id).kernel.state = 'stopped'
+      changed(get(id))
+    },
+    async restartNotebook(id) {
+      get(id).kernel.state = 'idle'
       changed(get(id))
     },
     async removeNotebook(id) {
@@ -250,12 +274,15 @@ export function mockNotebooks(options: {
     | 'notebookDataFrame'
     | 'listNotebooks'
     | 'openNotebook'
+    | 'configureNotebook'
     | 'getNotebook'
     | 'saveNotebook'
     | 'executeNotebook'
     | 'notebookExecution'
+    | 'waitNotebookExecution'
     | 'interruptNotebook'
     | 'stopNotebook'
+    | 'restartNotebook'
     | 'removeNotebook'
     | 'notebookOutputUrl'
   >

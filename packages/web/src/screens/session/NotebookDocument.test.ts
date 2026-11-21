@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { API_KEY, ApiRequestError } from '@/api'
 import { createMockApi } from '@/api/mock'
 import { FIXTURE_SESSION_IDS } from '@/api/fixtures'
+import type { NotebookEnvironment, NotebookExecution } from '@odin/shared/notebooks'
 import NotebookDocument from './NotebookDocument.vue'
 import NotebookOutput from './NotebookOutput.vue'
 
@@ -11,7 +12,7 @@ const editor = {
   props: ['modelValue', 'readonly', 'label'],
   template: '<div />',
 }
-async function setup(interpreter = '.venv/bin/python', detect?: () => typeof missing) {
+async function setup(interpreter = '.venv/bin/python', detect?: () => NotebookEnvironment) {
   const api = createMockApi()
   if (detect) api.notebookEnvironment = async () => detect()
   const session = await api.getSession(FIXTURE_SESSION_IDS.idle)
@@ -26,8 +27,6 @@ async function setup(interpreter = '.venv/bin/python', detect?: () => typeof mis
       id: 'cell',
       kind: 'code',
       source: 'print(1)',
-      outputs: [],
-      executionCount: null,
     },
   ])
   const wrapper = mount(NotebookDocument, {
@@ -148,6 +147,63 @@ describe('notebook document', () => {
     expect(wrapper.text()).toContain('Mock output')
     wrapper.unmount()
   })
+  it('waits for a queued receipt before running the next cell', async () => {
+    const { api, wrapper, kernel, click } = await setup()
+    const snapshot = await api.getNotebook(kernel.id)
+    await api.saveNotebook(kernel.id, snapshot.revision, [
+      ...snapshot.cells,
+      { id: 'next', kind: 'code', source: 'print(2)' },
+    ])
+    await flushPromises()
+    const execute = api.executeNotebook.bind(api)
+    const queued: NotebookExecution = {
+      id: 'first-run',
+      kernelId: kernel.id,
+      cellId: 'cell',
+      state: 'queued',
+      startedAt: null,
+      finishedAt: null,
+      error: null,
+    }
+    let finish!: (value: NotebookExecution) => void
+    const pending = new Promise<NotebookExecution>(resolve => (finish = resolve))
+    const runs = vi.spyOn(api, 'executeNotebook').mockResolvedValueOnce(queued)
+    const wait = vi.spyOn(api, 'waitNotebookExecution').mockReturnValueOnce(pending)
+    await click('Run all')
+    expect(runs).toHaveBeenCalledTimes(1)
+    expect(wait).toHaveBeenCalledWith(queued.id, expect.any(AbortSignal))
+    const interrupt = wrapper.findAll('button').find(button => button.text() === 'Interrupt')
+    expect(interrupt?.element.disabled).toBe(false)
+    const current = await api.getNotebook(kernel.id)
+    finish(await execute(kernel.id, { cellId: 'cell', revision: current.revision }))
+    await flushPromises()
+    expect(runs.mock.calls.map(([, request]) => request.cellId)).toEqual(['cell', 'next'])
+    wrapper.unmount()
+  })
+  it('switches an already configured notebook to a discovered kernel', async () => {
+    const location = { kind: 'native' as const }
+    const candidate = {
+      kind: 'conda' as const,
+      name: 'quant',
+      interpreter: 'C:/Miniconda/envs/quant/python.exe',
+      location,
+    }
+    const { api, kernel, wrapper, chipMenu } = await setup(undefined, () => ({
+      ...missing,
+      kind: 'conda',
+      interpreter: candidate.interpreter,
+      needsSetup: false,
+      candidates: [candidate],
+    }))
+    const configure = vi.spyOn(api, 'configureNotebook')
+    await chipMenu('Use quant')
+    expect(configure).toHaveBeenCalledWith(kernel.id, {
+      interpreter: candidate.interpreter,
+      location,
+    })
+    expect(chip(wrapper).text()).toContain('Python (quant)')
+    wrapper.unmount()
+  })
   it('preserves the local draft across an agent update and offers explicit conflict resolution', async () => {
     const { api, wrapper, kernel, click } = await setup()
     const source = () => wrapper.findComponent({ name: 'NotebookTestEditor' })
@@ -238,6 +294,27 @@ describe('notebook document', () => {
     expect(wrapper.find('iframe').attributes('sandbox')).toBe('allow-scripts allow-forms')
     expect(wrapper.find('iframe').attributes('src')).toBe('/a/notebooks/k/c/0')
     expect(wrapper.html()).not.toContain('danger()')
+    wrapper.unmount()
+  })
+  it('loads referenced Plotly output lazily from the sandboxed route', () => {
+    const api = createMockApi()
+    const wrapper = mount(NotebookOutput, {
+      props: {
+        kernelId: 'k',
+        cellId: 'c',
+        index: 2,
+        output: {
+          type: 'reference',
+          bytes: 5_500_000,
+          mimeTypes: ['application/vnd.plotly.v1+json'],
+        },
+      },
+      global: { provide: { [API_KEY as symbol]: api } },
+    })
+    const frame = wrapper.find('iframe')
+    expect(frame.attributes('loading')).toBe('lazy')
+    expect(frame.attributes('sandbox')).toBe('allow-scripts allow-forms')
+    expect(frame.attributes('src')).toBe('/a/notebooks/k/c/2')
     wrapper.unmount()
   })
 })

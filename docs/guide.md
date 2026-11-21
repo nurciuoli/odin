@@ -120,8 +120,14 @@ and HTML, and create new files from the **New** menu.
 
 ![A Markdown file previewed beside the chat](assets/screenshots/session-file-preview.png)
 
-`.ipynb` files open as notebooks you can run. Odin detects your project's Python environment, shows the kernel in the
-header, and agents can drive the same kernel. Pick a different environment in the **Environment** tab.
+`.ipynb` files open as notebooks you can run. The kernel menu shows the active interpreter and working directory.
+Use it to switch to a detected Python environment, including Conda, or to set up the Jupyter host and kernel.
+**Kernel details** opens the Environment tab, where you can check the project's setup. Agents can drive the
+same kernel. **Run all** runs cells in order and stops at a failed or interrupted cell.
+
+For notebooks that read credentials from environment variables, list the variable names under `notebookEnv`
+in the project's `PROJECT.md` frontmatter (for example, `notebookEnv: [FRED_API_KEY]`). Keep the values in the
+project's `.env`. Restart the kernel after changing these settings.
 
 ![A notebook open beside the chat, with its kernel, toolbar and cells](assets/screenshots/session-notebook.png)
 

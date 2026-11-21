@@ -17,7 +17,12 @@ export function createHttpApi(options: HttpApiOptions = {}): Api {
   const doFetch =
     options.fetch ?? ((...args: Parameters<typeof fetch>) => globalThis.fetch(...args))
 
-  async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  async function request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    signal?: AbortSignal,
+  ): Promise<T> {
     let res: Response
     try {
       res = await doFetch(`${base}${path}`, {
@@ -27,8 +32,10 @@ export function createHttpApi(options: HttpApiOptions = {}): Api {
             ? { accept: 'application/json' }
             : { accept: 'application/json', 'content-type': 'application/json' },
         body: body === undefined ? undefined : JSON.stringify(body),
+        signal,
       })
-    } catch {
+    } catch (error) {
+      if (signal?.aborted) throw error
       throw new ApiRequestError(0, "Can't reach Odin. Is the server running?")
     }
     if (!res.ok) {
@@ -69,18 +76,22 @@ export function createHttpApi(options: HttpApiOptions = {}): Api {
     notebookVariables: id => send('POST', `/api/notebooks/${seg(id)}/variables`, {}),
     notebookDataFrame: (id, name, query) =>
       send('POST', `/api/notebooks/${seg(id)}/dataframe`, { name, ...query }),
-    notebookEnvironment: (name, location) =>
-      send('POST', `${project(name)}/notebook-environment/detect`, { location }),
-    setupNotebookEnvironment: (name, location) =>
-      send('POST', `${project(name)}/notebook-environment/setup`, { location }),
+    notebookEnvironment: (name, options = {}) =>
+      send('POST', `${project(name)}/notebook-environment/detect`, options),
+    setupNotebookEnvironment: (name, options = {}) =>
+      send('POST', `${project(name)}/notebook-environment/setup`, options),
     listNotebooks: name => get(`${project(name)}/notebooks`),
     openNotebook: (name, req) => send('POST', `${project(name)}/notebooks/open`, req),
+    configureNotebook: (id, req) => send('PATCH', `/api/notebooks/${seg(id)}`, req),
     getNotebook: id => get(`/api/notebooks/${seg(id)}`),
     saveNotebook: (id, revision, cells) =>
       send('PUT', `/api/notebooks/${seg(id)}`, { revision, cells }),
     executeNotebook: (id, req) => send('POST', `/api/notebooks/${seg(id)}/execute`, req),
     notebookExecution: id => get(`/api/notebook-executions/${seg(id)}`),
+    waitNotebookExecution: (id, signal) =>
+      request('POST', `/api/notebook-executions/${seg(id)}/wait`, { timeoutMs: 5000 }, signal),
     interruptNotebook: id => send('POST', `/api/notebooks/${seg(id)}/interrupt`),
+    restartNotebook: id => send('POST', `/api/notebooks/${seg(id)}/restart`),
     stopNotebook: id => send('POST', `/api/notebooks/${seg(id)}/stop`),
     removeNotebook: id => send('DELETE', `/api/notebooks/${seg(id)}`),
     notebookOutputUrl: (id, cellId, index) =>

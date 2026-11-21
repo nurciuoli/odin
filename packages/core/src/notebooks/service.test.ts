@@ -9,6 +9,7 @@ import type { NotebookComm } from "@odin/shared/notebooks";
 import { createNotebooksService, type ServiceRuntime } from "./service.ts";
 import { stubServices, testDeps } from "../test-helpers.ts";
 import { HttpError } from "../http/util.ts";
+import { EMPTY_NOTEBOOK, NOTEBOOK_MAX_BYTES } from "./storage.ts";
 
 function setup(execute?: ServiceRuntime["execute"]) {
   const deps = testDeps();
@@ -18,7 +19,7 @@ function setup(execute?: ServiceRuntime["execute"]) {
   for (const id of ["a", "b", "w"]) deps.db.prepare("INSERT INTO sessions(id, project, title, harness, origin, state, cwd, created_at, updated_at, metrics) VALUES (?, 'demo', 'test', 'claude', 'odin', 'idle', ?, ?, ?, '{}')").run(id, path, at, at);
   const calls: string[] = [], written: string[][] = [], detect = { interpreter: join(path, ".venv", "python") as string | null };
   let interrupted = 0, stopped = 0;
-  const runtime: ServiceRuntime = { async start() {}, async createKernel(input) { calls.push("create:" + input.cwd); return input.id; }, async execute(id, source, output) { calls.push(source); if (execute) await execute(id, source, output); else output({ type: "stream", content: { name: "stdout", text: "42\n" } }); }, async interrupt() { interrupted++; }, async stop() { stopped++; }, async close() {} };
+  const runtime: ServiceRuntime = { async start() {}, async createKernel(input) { calls.push("create:" + input.cwd); return input.id; }, async execute(id, source, output) { calls.push(source); if (execute) return execute(id, source, output); output({ type: "stream", content: { name: "stdout", text: "42\n" } }); }, async interrupt() { interrupted++; }, async stop() { stopped++; }, async close() {} };
   const services = stubServices({ projects: { get: (name: string) => name === "demo" ? { name, path } : null, resolveCwd: (value: string) => value === path ? "demo" : null, noteWritten(_name: string, paths: string[]) { written.push(paths); } } as never, sessions: { get: (id: string) => ["a", "b"].includes(id) ? { id, project: "demo", cwd: path, harness: "claude" } as Session : id === "w" ? { id, project: "demo", cwd: path + "-wt", harness: "claude" } as Session : id === "x" ? { id, project: "other", cwd: path, harness: "claude" } as Session : null } as never });
   const notebooks = createNotebooksService(deps, services, { runtimeFactory: () => runtime, idleTimeoutMs: 0, detectEnvironment: async () => ({ kind: detect.interpreter ? "venv" as const : "missing" as const, interpreter: detect.interpreter, managedHostPython: "managed-python", needsSetup: !detect.interpreter, location: { kind: "native" as const } }) }); services.notebooks = notebooks;
   return { deps, path, notebooks, open: (file = "analysis.ipynb") => notebooks.open("demo", { path: file, create: true }), calls, written, detect, runtime, services, interrupted: () => interrupted, stopped: () => stopped, async close() { await notebooks.close(); deps.db.close(); rmSync(join(deps.config.home, ".."), { recursive: true, force: true }); } };
@@ -38,6 +39,43 @@ test("persisted notebook execution retains state and writes plain .ipynb cells",
     assert.equal(ipynb.nbformat, 4); assert.equal(ipynb.cells[0].outputs[0].output_type, "stream");
     assert.equal("odin_author" in ipynb.cells[0].metadata, false);
     assert.equal(s.calls.filter(value => value.startsWith("create:")).length, 1);
+  } finally { await s.close(); }
+});
+
+test("a large imported notebook stays untouched during unchanged execution preflight", async () => {
+  const mime = "application/vnd.plotly.v1+json";
+  const points = Array.from({ length: 1_500_000 }, () => 101);
+  const original = {
+    ...EMPTY_NOTEBOOK(),
+    nbformat_minor: 2,
+    cells: [
+      { cell_type: "code", source: ["seconds = 10"], metadata: { tags: ["run"] }, execution_count: 1, outputs: [] },
+      { cell_type: "code", source: ["surface()"], metadata: {}, execution_count: 2,
+        outputs: [{ output_type: "display_data", data: { [mime]: { data: [{ type: "surface", z: [points] }] } }, metadata: {} }] },
+    ],
+  };
+  const raw = JSON.stringify(original) + "\n";
+  assert.ok(Buffer.byteLength(raw) < NOTEBOOK_MAX_BYTES);
+  assert.ok(Buffer.byteLength(JSON.stringify(original, null, 2)) > NOTEBOOK_MAX_BYTES);
+  const s = setup(async () => {
+    assert.equal(readFileSync(file, "utf8") === raw, true, "enqueue and kernel startup leave the imported file untouched");
+    return 47;
+  });
+  const file = join(s.path, "imported.ipynb");
+  try {
+    writeFileSync(file, raw);
+    const k = await s.open("imported.ipynb");
+    const before = s.notebooks.snapshot(k.id);
+    assert.equal(s.notebooks.save(k.id, before.revision, before.cells).revision, before.revision);
+    const run = await s.notebooks.execute(k.id, { revision: before.revision, cellId: before.cells[0].id });
+    assert.equal((await s.notebooks.wait(run.id, 3000)).state, "completed");
+    const after = s.notebooks.snapshot(k.id);
+    assert.equal(after.cells[0].executionCount, 47);
+    assert.equal(after.cells[1].outputs[0].type, "reference");
+    const disk = JSON.parse(readFileSync(file, "utf8"));
+    assert.equal(disk.nbformat_minor, 5);
+    assert.deepEqual(disk.cells[0].metadata.tags, ["run"]);
+    assert.equal(disk.cells[1].outputs[0].data[mime].data[0].z[0].length, points.length);
   } finally { await s.close(); }
 });
 
@@ -219,6 +257,72 @@ test("save and execute return 409 after the file is edited outside Odin", async 
     const after = s.notebooks.snapshot(k.id); assert.equal(after.cells[0].source, "x");
     s.notebooks.save(k.id, after.revision, []);
     assert.equal(s.notebooks.snapshot(k.id).cells.length, 0);
+  } finally { await s.close(); }
+});
+
+test("execution merges unrelated external edits and preserves newer external outputs for its own cell", async () => {
+  const s = setup();
+  try {
+    const k = await s.open("concurrent.ipynb");
+    const file = join(s.path, "concurrent.ipynb");
+    const initial = s.notebooks.save(k.id, s.notebooks.snapshot(k.id).revision, [
+      { id: "calculate", kind: "code", source: "calculate()" },
+      { id: "notes", kind: "markdown", source: "notes" },
+    ]);
+    let first = true;
+    s.runtime.execute = async (_id, _source, emit) => {
+      const external = JSON.parse(readFileSync(file, "utf8"));
+      if (first) external.cells[1].source = "edited in Jupyter";
+      else {
+        external.cells[0].execution_count = 43;
+        external.cells[0].outputs = [{ output_type: "stream", name: "stdout", text: "external result" }];
+      }
+      writeFileSync(file, JSON.stringify(external));
+      emit({ type: "stream", content: { name: "stdout", text: "Odin result" } });
+      return 2;
+    };
+    const run = await s.notebooks.execute(k.id, { revision: initial.revision, cellId: "calculate" });
+    assert.equal((await s.notebooks.wait(run.id, 1000)).state, "completed");
+    const after = s.notebooks.snapshot(k.id);
+    assert.deepEqual(after.cells[0].outputs, [{ type: "stream", name: "stdout", text: "Odin result" }]);
+    assert.equal(after.cells[1].source, "edited in Jupyter");
+
+    first = false;
+    const conflict = await s.notebooks.execute(k.id, { revision: after.revision, cellId: "calculate" });
+    const receipt = await s.notebooks.wait(conflict.id, 1000);
+    assert.equal(receipt.state, "failed");
+    assert.match(receipt.error ?? "", /cell outputs changed on disk/);
+    const preserved = s.notebooks.snapshot(k.id).cells[0];
+    assert.equal(preserved.executionCount, 43);
+    assert.deepEqual(preserved.outputs, [{ type: "stream", name: "stdout", text: "external result" }]);
+  } finally { await s.close(); }
+});
+
+test("configure rebinds the existing notebook and restart starts a fresh kernel without replaying cells", async () => {
+  const s = setup();
+  try {
+    const k = await s.open("kernel.ipynb");
+    const run = await s.notebooks.execute(k.id, { revision: s.notebooks.snapshot(k.id).revision, source: "first()" });
+    assert.equal((await s.notebooks.wait(run.id, 1000)).state, "completed");
+    await assert.rejects(s.notebooks.configure(k.id, { location: { kind: "native" }, interpreter: "relative-python" }), status(400));
+    assert.equal(s.notebooks.snapshot(k.id).kernel.interpreter, k.interpreter);
+
+    const interpreter = join(s.path, "quant", "python");
+    const changed = await s.notebooks.configure(k.id, { location: { kind: "native" }, interpreter });
+    assert.equal(changed.id, k.id);
+    assert.equal(changed.interpreter, interpreter);
+    assert.equal(changed.state, "stopped");
+    assert.equal(s.stopped(), 1);
+
+    await s.notebooks.restart(k.id);
+    assert.equal(s.notebooks.snapshot(k.id).kernel.state, "idle");
+    await s.notebooks.restart(k.id);
+    assert.equal(s.notebooks.snapshot(k.id).kernel.state, "idle");
+    assert.equal(s.stopped(), 2);
+    assert.equal(s.calls.filter(call => call.startsWith("create:")).length, 3);
+    assert.deepEqual(s.calls.filter(call => !call.startsWith("create:")), ["first()"]);
+    assert.equal(s.notebooks.execution(run.id).state, "completed");
+    assert.equal(s.notebooks.snapshot(k.id).cells[0].source, "first()");
   } finally { await s.close(); }
 });
 

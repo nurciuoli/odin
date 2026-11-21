@@ -12,15 +12,18 @@ export interface NotebookKernel {
   /** Display name: the file basename. */
   name: string; cwd: string; interpreter: string;
   location: KernelLocation; state: KernelState; createdAt: string; updatedAt: string; error: string | null;
+  kernelHint?: NotebookKernelHint;
 }
 export type NotebookOutput =
   | { type: "stream"; name: "stdout" | "stderr"; text: string }
   | { type: "error"; name: string; message: string; traceback: string[] }
-  | { type: "display"; data: Record<string, unknown>; metadata?: Record<string, unknown> };
+  | { type: "display"; data: Record<string, unknown>; metadata?: Record<string, unknown> }
+  | { type: "reference"; mimeTypes: string[]; bytes: number; version?: string };
 export interface NotebookCell {
   id: string; kind: "code" | "markdown"; source: string; outputs: NotebookOutput[];
   executionCount: number | null;
 }
+export type NotebookCellEdit = Pick<NotebookCell, "id" | "kind" | "source">;
 export interface NotebookSnapshot {
   kernel: NotebookKernel; revision: string; cells: NotebookCell[];
 }
@@ -34,13 +37,35 @@ export interface OpenNotebookRequest {
   interpreter?: string;
   location?: KernelLocation;
 }
+export interface ConfigureNotebookKernelRequest {
+  interpreter: string;
+  location: KernelLocation;
+}
+export interface NotebookKernelHint { name?: string; displayName?: string }
+export interface NotebookKernelCandidate {
+  kind: "venv" | "poetry" | "conda" | "kernelspec" | "python";
+  name: string;
+  interpreter: string;
+  location: KernelLocation;
+}
+export interface NotebookEnvironmentRequest {
+  location?: KernelLocation;
+  interpreter?: string;
+  hint?: NotebookKernelHint;
+  kernelId?: string;
+}
 export interface NotebookEnvironment {
-  kind: "venv" | "uv" | "poetry" | "conda" | "missing";
+  kind: NotebookKernelCandidate["kind"] | "uv" | "missing";
   interpreter: string | null;
   managedHostPython: string;
   needsSetup: boolean;
   /** Where this environment runs. Detection and setup choose it when the request names none. */
   location: KernelLocation;
+  candidates?: NotebookKernelCandidate[];
+  locations?: KernelLocation[];
+  cwd?: string;
+  hostStatus?: "ready" | "missing" | "broken";
+  kernelStatus?: "ready" | "missing" | "broken" | "missing-ipykernel";
 }
 export type ExecutionState = "queued" | "running" | "completed" | "failed" | "interrupted";
 export interface NotebookExecution {

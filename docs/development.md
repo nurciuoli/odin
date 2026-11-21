@@ -59,6 +59,12 @@ Odin snapshots `state.db` to `<home>/backups/` before any schema upgrade.
 (format check, type-check, ESLint, the design-system guard, vitest and a strict build). Format web code with
 `yarn workspace @odin/web format`.
 
+To smoke-test real Jupyter kernels, run `node --test packages/core/src/notebooks/runtime.integration.test.ts`.
+Set `ODIN_TEST_JUPYTER_HOST_PYTHON` to a native Python with Jupyter Server and
+`ODIN_TEST_JUPYTER_KERNEL_PYTHON` to a Python with ipykernel if it lives elsewhere. For WSL, use
+`ODIN_TEST_WSL_DISTRO`, `ODIN_TEST_WSL_JUPYTER_HOST_PYTHON`, and optionally
+`ODIN_TEST_WSL_JUPYTER_KERNEL_PYTHON`. The smoke test uses temporary notebooks and synthetic data.
+
 Tests sit next to the code (`*.test.ts`): `node:test` in core, shared, adapters and desktop; vitest in web. Tests
 never touch the network, a real `~/.odin` or `~/.claude`, real GitHub or a real model: use `testDeps()` /
 `startApp()` from `packages/core/src/test-helpers.ts` and `fakeHarness()` from `packages/core/src/harness/fake.ts`.
