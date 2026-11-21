@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { defineComponent, ref } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import type { SessionDetail } from '@odin/shared/api'
@@ -7,9 +7,8 @@ import { createMockApi } from '@/api/mock'
 import { FIXTURE_SESSION_IDS } from '@/api/fixtures'
 import { useSessionView } from './useSessionView'
 
-async function pendingView() {
+async function pendingView(id = FIXTURE_SESSION_IDS.idle) {
   const api = createMockApi()
-  const id = FIXTURE_SESSION_IDS.idle
   const snapshot = await api.getSession(id)
   let resolve!: (detail: SessionDetail) => void
   api.getSession = () =>
@@ -112,3 +111,72 @@ it('replays held updates into the retained view when a reconnect fetch fails', a
   expect(state.view.value?.detail.title).toBe('Updated during failure')
   wrapper.unmount()
 })
+
+it('reads new terminal activity only when the open view has loaded the transcript', async () => {
+  const { api, snapshot, resolve, state, wrapper } = await pendingView(FIXTURE_SESSION_IDS.external)
+  snapshot.activityAt = null
+  resolve(snapshot)
+  await flushPromises()
+  const activityAt = '2026-11-21T16:00:00.000Z'
+  const record = { ...snapshot, activityAt }
+  let deliver!: (detail: SessionDetail) => void
+  const getSession = vi.fn(
+    () =>
+      new Promise<SessionDetail>(done => {
+        deliver = done
+      }),
+  )
+  api.getSession = getSession
+
+  // The event arrives during a request that began before the native turn.
+  const loading = state.load()
+  api.emit({ type: 'session.updated', session: record })
+  deliver(snapshot)
+  await loading
+  expect(getSession).toHaveBeenCalledTimes(2)
+  expect(state.view.value?.detail.activityAt).toBeNull()
+
+  deliver({
+    ...record,
+    transcript: [
+      ...snapshot.transcript,
+      {
+        kind: 'assistant',
+        id: 'new-terminal-reply',
+        text: 'Reply from the terminal',
+        model: null,
+        at: activityAt,
+        parentToolUseId: null,
+      },
+    ],
+  })
+  await flushPromises()
+  expect(state.view.value?.detail.activityAt).toBe(activityAt)
+  expect(state.view.value?.detail.transcript.at(-1)?.id).toBe('new-terminal-reply')
+  wrapper.unmount()
+})
+
+it.each(['stale', 'failed'])(
+  'does not retry repeated offline activity after a %s transcript fetch',
+  async outcome => {
+    const { api, snapshot, resolve, state, wrapper } = await pendingView(
+      FIXTURE_SESSION_IDS.external,
+    )
+    snapshot.activityAt = null
+    resolve(snapshot)
+    await flushPromises()
+    const getSession = vi.fn(() =>
+      outcome === 'stale' ? Promise.resolve(snapshot) : Promise.reject(new Error('offline')),
+    )
+    api.getSession = getSession
+    const record = { ...snapshot, activityAt: '2026-11-21T16:00:00.000Z' }
+    api.emit({ type: 'session.updated', session: record })
+    api.emit({ type: 'session.updated', session: record })
+    await flushPromises()
+
+    expect(getSession).toHaveBeenCalledTimes(1)
+    expect(state.phase.value).toBe('ready')
+    expect(state.view.value?.detail.activityAt).toBeNull()
+    wrapper.unmount()
+  },
+)

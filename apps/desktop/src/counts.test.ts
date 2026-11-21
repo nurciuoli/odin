@@ -29,6 +29,14 @@ test("an idle session with running background work counts as running, until the 
   assert.equal(c.counts().running, 0);
 });
 
+test("a quiet history import only becomes a transcript candidate after recent activity", () => {
+  const c = countsStore();
+  c.seed([s("imported", "idle", { activityAt: null })]);
+  assert.deepEqual(c.idleToCheck(Date.now()), []);
+  c.update(s("imported", "idle", { activityAt: new Date().toISOString() }));
+  assert.deepEqual(c.idleToCheck(Date.now()).map((x) => x.id), ["imported"]);
+});
+
 test("events move sessions between buckets; a reseed replaces everything", () => {
   const c = countsStore();
   c.seed([s("a", "running")]);

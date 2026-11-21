@@ -62,9 +62,9 @@ export function sessionInfo(historyRoot: string, sessionId: string): HarnessSess
   const firstUser = steps.find((s) => s.type === "USER_INPUT");
   const firstText = cleanUserContent(firstUser?.content);
   const title = (firstText.split("\n")[0] || "Antigravity session").slice(0, 200);
-  const createdAt = firstUser?.created_at ?? steps[0]?.created_at ?? null;
-  const lastStep = steps.at(-1);
-  const updatedAt = lastStep?.created_at ?? createdAt ?? new Date().toISOString();
+  const hasTimestamp = (step: RawStep) => Number.isFinite(Date.parse(step.created_at ?? ""));
+  const createdAt = (firstUser && hasTimestamp(firstUser) ? firstUser : steps.find(hasTimestamp))?.created_at ?? null;
+  const updatedAt = steps.findLast(hasTimestamp)?.created_at ?? new Date(0).toISOString();
 
   return {
     sessionId,
@@ -77,7 +77,7 @@ export function sessionInfo(historyRoot: string, sessionId: string): HarnessSess
   };
 }
 
-export function listSessions(historyRoot: string, _projectPath?: string): HarnessSessionInfo[] {
+export function listSessions(historyRoot: string): HarnessSessionInfo[] {
   let ids: string[] = [];
   try {
     ids = readdirSync(historyRoot);

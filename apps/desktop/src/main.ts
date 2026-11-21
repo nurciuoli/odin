@@ -27,7 +27,7 @@ import { prober } from "./health.ts";
 import { freePort, homeInstance, planPort, recordedPort } from "./ports.ts";
 import { rotatingLog } from "./log.ts";
 import { isCoreUrl, isExternalOpenable, isTrustedSender } from "./navigation.ts";
-import { countsStore, quitPrompt, trayTooltip, TRAY_WAITING_LIMIT, type SessionLite, type TaskLite } from "./counts.ts";
+import { countsStore, quitPrompt, sessionActivityAt, trayTooltip, TRAY_WAITING_LIMIT, type SessionLite, type TaskLite } from "./counts.ts";
 import { eventClient, getJson } from "./events.ts";
 import { iconPng, type IconVariant } from "./icons.ts";
 import { notifier, sessionIdFromUrl, type NotificationSpec } from "./notify.ts";
@@ -242,8 +242,9 @@ async function fetchTasks(id: string) {
 const tasksLoadedAt = new Map<string, string>();
 function trackIdleWork() {
   for (const s of counts.idleToCheck(Date.now())) {
-    if (tasksLoadedAt.get(s.id) === s.updatedAt) continue;
-    tasksLoadedAt.set(s.id, s.updatedAt ?? "");
+    const at = sessionActivityAt(s);
+    if (!at || tasksLoadedAt.get(s.id) === at) continue;
+    tasksLoadedAt.set(s.id, at);
     void fetchTasks(s.id);
   }
 }

@@ -2,9 +2,10 @@
 // `session.updated` records merged in. Frames that arrive while a fetch is in flight are held and applied on top of
 // its result; a reconnect refetches.
 import { onBeforeUnmount, onMounted, ref, shallowRef, watch, type Ref } from 'vue'
-import type { MessageQueue, Session } from '@odin/shared/api'
+import type { MessageQueue, Session, SessionDetail } from '@odin/shared/api'
 import type { ServerEvent } from '@odin/shared/events'
 import { ApiRequestError, useApi } from '@/api'
+import { activityAt } from '@/app/seen'
 import {
   applyActionRecord,
   applySessionEvent,
@@ -14,6 +15,21 @@ import {
 } from './sessionView'
 
 export type Phase = 'loading' | 'ready' | 'error' | 'removed'
+
+/** Offline terminal activity has no transcript frames for the open view to fold in. */
+function offlineActivity(current: SessionDetail, incoming: Session): number | undefined {
+  if (
+    current.live ||
+    incoming.origin !== 'external' ||
+    incoming.state === 'running' ||
+    incoming.state === 'waiting' ||
+    !incoming.activityAt
+  )
+    return
+  const previous = Date.parse(activityAt(current) ?? '')
+  const next = Date.parse(incoming.activityAt)
+  if (next > (Number.isNaN(previous) ? -Infinity : previous)) return next
+}
 
 export function useSessionView(id: Ref<string>) {
   const api = useApi()
@@ -33,10 +49,17 @@ export function useSessionView(id: Ref<string>) {
       view.value = { ...current, detail: { ...current.detail, messageQueue: queue } }
   }
 
-  async function load() {
+  async function load(requestedActivity = -Infinity) {
     const token = ++latest
     held = []
     heldQueue = null
+    let latestExternalActivity = requestedActivity
+    function replay(event: ServerEvent) {
+      onEvent(event, activity => {
+        latestExternalActivity = Math.max(latestExternalActivity, activity)
+      })
+    }
+
     try {
       const detail = await api.getSession(id.value)
       if (token !== latest) return
@@ -54,7 +77,7 @@ export function useSessionView(id: Ref<string>) {
       view.value = next
       const frames = held
       held = null
-      for (const event of frames) onEvent(event, true)
+      for (const event of frames) replay(event)
       phase.value = 'ready'
       error.value = null
     } catch (e) {
@@ -62,7 +85,7 @@ export function useSessionView(id: Ref<string>) {
       if (phase.value === 'ready') {
         const frames = held ?? []
         held = null
-        for (const event of frames) onEvent(event, true)
+        for (const event of frames) replay(event)
         if (heldQueue) setQueue(heldQueue)
       }
       if (phase.value !== 'ready') {
@@ -73,11 +96,16 @@ export function useSessionView(id: Ref<string>) {
         phase.value = 'error'
       }
     } finally {
-      if (token === latest) held = null
+      if (token === latest) {
+        held = null
+        // A notification received during this fetch can warrant another snapshot. An older or repeated
+        // notification can't keep retrying if the fetch fails or the native history is behind.
+        if (latestExternalActivity > requestedActivity) void load(latestExternalActivity)
+      }
     }
   }
 
-  function onEvent(event: ServerEvent, replay = false) {
+  function onEvent(event: ServerEvent, replayActivity?: (activity: number) => void) {
     if (event.type === 'session.removed' && event.sessionId === id.value) {
       latest++
       held = null
@@ -99,20 +127,25 @@ export function useSessionView(id: Ref<string>) {
         // Grok has no live user entry. OpenCode compaction replaces stored history. Reload after the
         // turn so the next detail read is the native transcript, without inventing entry ids.
         if (
-          !replay &&
+          !replayActivity &&
           event.event.type === 'turn.end' &&
           (view.value?.detail.harness === 'grok' || view.value?.detail.harness === 'opencode')
         )
           void load()
         return
-      case 'session.updated':
-        if (
-          view.value &&
-          event.session.id === id.value &&
-          event.session.updatedAt >= view.value.detail.updatedAt
-        )
-          view.value = applySessionRecord(view.value, event.session)
+      case 'session.updated': {
+        const current = view.value
+        if (!current || event.session.id !== id.value) return
+        const activity = offlineActivity(current.detail, event.session)
+        if (activity !== undefined) {
+          if (replayActivity) replayActivity(activity)
+          else void load(activity)
+          return
+        }
+        if (event.session.updatedAt >= current.detail.updatedAt)
+          view.value = applySessionRecord(current, event.session)
         return
+      }
       case 'session.queue':
         if (event.sessionId !== id.value) return
         setQueue(event.queue)
@@ -134,7 +167,13 @@ export function useSessionView(id: Ref<string>) {
 
   /** A record an action returned (rename, pin, end…). */
   function setRecord(session: Session) {
-    if (view.value?.detail.id === session.id) view.value = applyActionRecord(view.value, session)
+    const current = view.value
+    if (current?.detail.id !== session.id) return
+    if (offlineActivity(current.detail, session) !== undefined) {
+      onEvent({ type: 'session.updated', session })
+      return
+    }
+    view.value = applyActionRecord(current, session)
   }
 
   let off: (() => void) | null = null
@@ -154,5 +193,5 @@ export function useSessionView(id: Ref<string>) {
     void load()
   })
 
-  return { view, phase, error, load, setRecord, setQueue }
+  return { view, phase, error, load: () => load(), setRecord, setQueue }
 }

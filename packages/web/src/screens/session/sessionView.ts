@@ -184,11 +184,15 @@ export function applySessionEvent(view: SessionView, event: HarnessEvent): Sessi
 export function applySessionRecord(view: SessionView, session: Session): SessionView {
   if (session.id !== view.detail.id) return view
   const d = view.detail
+  const newerActivity =
+    d.activityAt &&
+    (!session.activityAt || Date.parse(d.activityAt) > Date.parse(session.activityAt))
   return {
     ...view,
     detail: {
       ...d,
       ...session,
+      ...(newerActivity && { activityAt: d.activityAt }),
       // a record that says the harness stopped clears prompts it can no longer answer
       pending: session.state === 'waiting' || session.state === 'running' ? d.pending : [],
       live: session.state === 'running' || session.state === 'waiting' ? true : d.live,
@@ -199,7 +203,7 @@ export function applySessionRecord(view: SessionView, session: Session): Session
 /**
  * A record an action returned (send, answer, rename…). Its response can arrive after SSE frames that are newer (a
  * send answers `running` while the stream already said `waiting`), so an older record is dropped, and one from the
- * same instant keeps the live state the stream gave.
+ * same instant keeps the live state and any newer conversation activity the stream gave.
  */
 export function applyActionRecord(view: SessionView, session: Session): SessionView {
   const d = view.detail

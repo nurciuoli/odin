@@ -27,6 +27,35 @@ describe('seen sessions', () => {
     const later = session({ updatedAt: new Date(NOW).toISOString() })
     expect(isUnread(later, NOW)).toBe(true)
   })
+  it('keeps imported history quiet until it has conversation activity', () => {
+    const history = session({ activityAt: null })
+    expect(isUnread(history, NOW)).toBe(false)
+    markSeen(history)
+    markAllSeen([history])
+    expect(JSON.parse(window.localStorage.getItem('odin:seen') ?? '{}')).not.toHaveProperty('s1')
+    expect(isUnread({ ...history, activityAt: history.updatedAt }, NOW)).toBe(true)
+  })
+  it('marks the activity time read and ignores newer metadata timestamps', () => {
+    const activity = session({ activityAt: new Date(NOW - 60_000).toISOString() })
+    const renamed = { ...activity, updatedAt: new Date(NOW).toISOString() }
+    markAllSeen([renamed])
+    expect(JSON.parse(window.localStorage.getItem('odin:seen')!)).toHaveProperty(
+      's1',
+      activity.activityAt,
+    )
+    expect(isUnread(renamed, NOW)).toBe(false)
+    expect(isUnread({ ...renamed, activityAt: renamed.updatedAt }, NOW)).toBe(true)
+  })
+  it('preserves read markers saved by an older client', () => {
+    const beforeUpgrade = session()
+    markSeen(beforeUpgrade)
+    const migrated = {
+      ...beforeUpgrade,
+      updatedAt: new Date(NOW).toISOString(),
+      activityAt: beforeUpgrade.updatedAt,
+    }
+    expect(isUnread(migrated, NOW)).toBe(false)
+  })
   it('never lists running, waiting, side or archived sessions, or old ones with no record', () => {
     expect(isUnread(session({ state: 'running' }), NOW)).toBe(false)
     expect(isUnread(session({ state: 'waiting' }), NOW)).toBe(false)

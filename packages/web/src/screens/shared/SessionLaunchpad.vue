@@ -12,7 +12,7 @@ import { applyHarnessEvent } from '@odin/shared/transcript'
 import { useApi } from '@/api'
 import { useProjects } from '@/app/projects'
 import { useSessions } from '@/app/sessions'
-import { isUnread, markAllSeen } from '@/app/seen'
+import { activityAt, isUnread, markAllSeen, mostRecentActivityFirst } from '@/app/seen'
 import { IuButton } from '@/components/Button'
 import { IuEmpty, IuErrorState, IuSkeleton } from '@/components/States'
 import { IuFlock } from '@/components/Spinner'
@@ -182,9 +182,7 @@ const stopped = computed(() =>
 )
 // the newest few; any more go to Earlier so the active list stays short
 const allUnread = computed(() =>
-  stopped.value
-    .filter(s => isUnread(s, now.value))
-    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)),
+  stopped.value.filter(s => isUnread(s, now.value)).sort(mostRecentActivityFirst),
 )
 const unread = computed(() =>
   showAllUnread.value ? allUnread.value : allUnread.value.slice(0, MAX_UNREAD),
@@ -299,7 +297,7 @@ const title = (s: Session) =>
               :title="s.title"
               >{{ s.title }}</RouterLink
             >
-            <span class="launchpad__perch-time">{{ relativeTime(s.updatedAt) }}</span>
+            <span class="launchpad__perch-time">{{ relativeTime(activityAt(s) ?? '', now) }}</span>
             <span class="launchpad__perch-project">{{ projectSummary(s) }}</span>
             <div class="launchpad__perch-label">
               <span class="launchpad__perch-activity">Not opened yet</span>
@@ -381,7 +379,7 @@ const title = (s: Session) =>
               :title="s.title"
               >{{ s.title }}</RouterLink
             >
-            <span class="launchpad__perch-time">{{ relativeTime(s.updatedAt) }}</span>
+            <span class="launchpad__perch-time">{{ relativeTime(activityAt(s) ?? '', now) }}</span>
             <span class="launchpad__perch-project">{{ projectSummary(s) }}</span>
             <div class="launchpad__perch-label">
               <span class="launchpad__perch-activity">Not opened yet</span>

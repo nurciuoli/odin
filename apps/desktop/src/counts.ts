@@ -11,6 +11,7 @@ export interface SessionLite {
   archived?: boolean;
   aside?: boolean;
   createdAt?: string;
+  activityAt?: string | null;
   updatedAt?: string;
 }
 
@@ -29,6 +30,10 @@ export interface Counts {
 
 /** How long an idle session is worth checking for background work (the web store uses the same window). */
 export const WORK_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export function sessionActivityAt(session: SessionLite): string | null | undefined {
+  return session.activityAt === undefined ? session.updatedAt : session.activityAt;
+}
 
 const taskKey = (t: TaskLite) => `${t.taskId}\u0000${t.runId ?? ""}`;
 
@@ -76,7 +81,7 @@ export function countsStore() {
     /** Idle sessions recent enough that their transcript may hold running background work. */
     idleToCheck(now: number): SessionLite[] {
       return [...sessions.values()].filter(
-        (s) => counted(s) && s.state === "idle" && now - Date.parse(s.updatedAt ?? "") < WORK_WINDOW_MS,
+        (s) => counted(s) && s.state === "idle" && now - Date.parse(sessionActivityAt(s) ?? "") < WORK_WINDOW_MS,
       );
     },
     counts(): Counts {

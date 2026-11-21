@@ -7,6 +7,8 @@ import { readRegularFile, resolveInside } from "../library/files.ts";
 import { randomUUID } from "node:crypto";
 import { resolve, sep } from "node:path";
 import type { SQLInputValue } from "node:sqlite";
+import { setImmediate as yieldToRequests } from "node:timers/promises";
+import { debuglog } from "node:util";
 import type {
   Attachment, Checkpoint, ForkSessionRequest, HandoffPreview, HandoffRequest, PermissionAnswer, PermissionMode, Session, SessionCounts, SessionDetail, SessionHandoff, SessionFilter, SessionMetrics,
   SessionState, StartSessionRequest, Todo, UpdateSessionRequest, UserMessage, Workspace,
@@ -19,7 +21,7 @@ import type { AttachmentContent } from "../harness/types.ts";
 import { attachmentPreview } from "./attachment-preview.ts";
 import { HttpError } from "../http/util.ts";
 import { PERMISSION_MODES, titleFromPrompt, whereOf } from "../launch/service.ts";
-import type { Harness, SessionHandle, StartOptions } from "../harness/types.ts";
+import type { Harness, HarnessSessionInfo, SessionHandle, StartOptions } from "../harness/types.ts";
 import type { Deps, ExternalSessionInput, Services, SessionPatch, SessionsService } from "../services.ts";
 import { messageOutbox } from "./message-queue.ts";
 import { validateMessage } from "./message.ts";
@@ -32,6 +34,9 @@ import { git, statusPaths } from "../projects/git.ts";
 export const IDLE_CLOSE_MS = 10 * 60_000;
 const SESSION_STATES: SessionState[] = ["idle", "running", "waiting", "ended", "failed"];
 const ORIGINS = ["odin", "external"] as const;
+const DISCOVERY_CONCURRENCY = 3;
+const DISCOVERY_BATCH_SIZE = 50;
+const debugDiscovery = debuglog("odin-discovery");
 /** Titles that mean "no name yet": Odin's and the harness drivers' fallbacks. */
 const PLACEHOLDER_TITLES = new Set(["Untitled session", "Untitled"]);
 
@@ -81,6 +86,9 @@ interface SessionRow {
   pull: string | null;
   created_at: string;
   updated_at: string;
+  discovery_updated_at: string | null;
+  discovery_title: string | null;
+  activity_at: string | null;
   ended_at: string | null;
   error: string | null;
   metrics: string;
@@ -155,6 +163,7 @@ function toSession(r: SessionRow): Session {
     pull: parseJson(r.pull, null),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    activityAt: r.activity_at,
     endedAt: r.ended_at,
     error: r.error,
     metrics: { ...emptyMetrics(), ...parseJson<Partial<SessionMetrics>>(r.metrics, {}) },
@@ -374,6 +383,11 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       const v = (patch as Record<string, unknown>)[key];
       if (v !== undefined) set(col, v as SQLInputValue);
     }
+    if (patch.activityAt !== undefined) {
+      const activity = Date.parse(patch.activityAt);
+      const previous = cur.activity_at ? Date.parse(cur.activity_at) : NaN;
+      if (Number.isFinite(activity) && (!Number.isFinite(previous) || activity > previous)) set("activity_at", patch.activityAt);
+    }
     if (patch.pull !== undefined) set("pull", patch.pull === null ? null : JSON.stringify(patch.pull));
     if (patch.tags !== undefined) set("tags", JSON.stringify(patch.tags));
     if (patch.pinned !== undefined) set("pinned", patch.pinned ? 1 : 0);
@@ -395,6 +409,11 @@ export function createSessionsService(deps: Deps, services: Services, options: S
     const s = mustGet(id);
     if (changed) emitUpdated(s);
     return s;
+  }
+
+  function recordActivity(id: string, patch: SessionPatch = {}): void {
+    const at = now();
+    patchAndEmit(id, { ...patch, updatedAt: at, activityAt: at });
   }
 
   interface NewRecord {
@@ -421,17 +440,18 @@ export function createSessionsService(deps: Deps, services: Services, options: S
     handoff?: SessionHandoff;
     createdAt: string;
     updatedAt: string;
+    activityAt?: string | null;
     launchConfig?: string | null;
   }
 
   function insert(r: NewRecord & { effort?: import("@odin/shared/api").Effort | null }): Session {
     db.prepare(
       `INSERT INTO sessions (id, harness, project, title, first_prompt, tags, origin, state, cwd, workspace, branch, model, permission_mode,
-        agent, agent_version, template_id, parent_id, aside, created_at, updated_at, metrics, projects, launch_config, handoff)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        agent, agent_version, template_id, parent_id, aside, created_at, updated_at, activity_at, metrics, projects, launch_config, handoff)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       r.id, r.harness, r.project, r.title, r.firstPrompt, JSON.stringify(r.tags), r.origin, r.state, r.cwd, JSON.stringify(r.workspace), r.branch,
-      r.model, r.permissionMode, r.agent, r.agentVersion, r.templateId, r.parentId, r.aside ? 1 : 0, r.createdAt, r.updatedAt, JSON.stringify(emptyMetrics()),
+      r.model, r.permissionMode, r.agent, r.agentVersion, r.templateId, r.parentId, r.aside ? 1 : 0, r.createdAt, r.updatedAt, r.activityAt ?? null, JSON.stringify(emptyMetrics()),
       JSON.stringify(r.projects ?? [r.project]), r.launchConfig ?? null, r.handoff ? JSON.stringify(r.handoff) : null,
     );
     if (r.effort) db.prepare("UPDATE sessions SET effort = ? WHERE id = ?").run(r.effort, r.id);
@@ -608,7 +628,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         l.acted = true;
         l.streaming.add(e.entryId);
         l.tail = applyHarnessEvent(l.tail, e);
-        patchAndEmit(l.id, { updatedAt: now() });
+        recordActivity(l.id);
         break;
       case "entry":
         if (e.entry.kind !== "user") l.acted = true;
@@ -616,15 +636,16 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         l.streaming.delete(e.entry.id);
         if (e.entry.kind === "user" && e.entry.attachments?.length) claimAttachments(l.id, e.entry.id, e.entry.attachments);
         l.tail = applyHarnessEvent(l.tail, e);
-        patchAndEmit(l.id, { updatedAt: now() });
+        recordActivity(l.id);
         break;
       case "task":
         l.acted = true;
         l.tail = applyHarnessEvent(l.tail, e);
-        patchAndEmit(l.id, { updatedAt: now() });
+        recordActivity(l.id);
         break;
       case "tool.result":
         l.tail = applyHarnessEvent(l.tail, e);
+        recordActivity(l.id);
         break;
       case "model":
         patchAndEmit(l.id, { model: e.model });
@@ -655,7 +676,8 @@ export function createSessionsService(deps: Deps, services: Services, options: S
           outbox.settle(l.id, e.ok);
           if (!e.ok) outbox.pause(l.id);
         }
-        patchAndEmit(l.id, { updatedAt: now(), error: e.ok || e.error === "interrupted" ? null : e.error });
+        if (e.error === "interrupted" && !l.acted) patchAndEmit(l.id, { updatedAt: now(), error: null });
+        else recordActivity(l.id, { error: e.ok || e.error === "interrupted" ? null : e.error });
         void services.metrics.refreshOutput(l.id).catch((err: unknown) => console.error(`metrics.refreshOutput(${l.id}) failed:`, errorMessage(err)));
         break;
       case "exit":
@@ -696,7 +718,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
     const cur = row(l.id);
     if (!cur) return;
     if (failure !== null) {
-      patchAndEmit(l.id, { state: "failed", waitingFor: null, error: failure });
+      recordActivity(l.id, { state: "failed", waitingFor: null, error: failure });
     } else if (l.ending) {
       if (cur.state !== "failed") patchAndEmit(l.id, { state: "ended", waitingFor: null, endedAt: now() });
     } else if (cur.state === "running" || cur.state === "waiting") {
@@ -779,7 +801,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       handle = harness.start(opts);
     } catch (err) {
       const message = errorMessage(err);
-      patchAndEmit(id, { state: "failed", waitingFor: null, error: message });
+      recordActivity(id, { state: "failed", waitingFor: null, error: message });
       throw new HttpError(502, `the harness failed to start: ${message}`);
     }
     return attach(id, harness, handle, !!opts.prompt);
@@ -798,7 +820,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         try { mcpServers = await savedMcp(id); }
         catch (err) {
           outbox.pause(id);
-          patchAndEmit(id, { state: "failed", waitingFor: null, error: errorMessage(err) });
+          recordActivity(id, { state: "failed", waitingFor: null, error: errorMessage(err) });
           return;
         }
       }
@@ -875,75 +897,154 @@ export function createSessionsService(deps: Deps, services: Services, options: S
       parentId: null,
       createdAt: input.createdAt ?? input.at,
       updatedAt: input.at,
+      activityAt: input.activityAt,
     });
     return s;
   }
 
-  async function discover(project: string): Promise<number> {
-    const p = services.projects.get(project);
-    if (!p) throw new HttpError(404, `unknown project ${project}`);
+  const saveDiscoveryBaseline = db.prepare(
+    "INSERT OR IGNORE INTO session_discovery_baselines (project, harness, started_at) VALUES (?, ?, ?)",
+  );
+  const discoveryBaseline = db.prepare(
+    "SELECT started_at FROM session_discovery_baselines WHERE project = ? AND harness = ?",
+  );
+  const saveNativeObservation = db.prepare("UPDATE sessions SET discovery_updated_at = ?, discovery_title = ? WHERE id = ?");
+
+  function discoveryDate(timestamp: string | null): string | null {
+    const time = timestamp ? Date.parse(timestamp) : NaN;
+    return Number.isFinite(time) ? new Date(time).toISOString() : null;
+  }
+
+  function discoverSession(project: string, path: string, harness: string, baseline: string, info: HarnessSessionInfo): boolean {
+    const createdAt = discoveryDate(info.createdAt);
+    const nativeAt = discoveryDate(info.updatedAt);
+    const nativeTitle = info.title?.trim().slice(0, 200) || null;
+    const known = row(info.sessionId);
+    if (!known) {
+      const at = nativeAt ?? createdAt ?? new Date(0).toISOString();
+      importExternal({
+        id: info.sessionId,
+        harness,
+        project,
+        cwd: info.cwd ?? path,
+        title: info.title,
+        branch: info.gitBranch,
+        at,
+        createdAt: createdAt ?? at,
+        activityAt: nativeAt && nativeAt > baseline ? nativeAt : null,
+      });
+      saveNativeObservation.run(nativeAt, nativeTitle, info.sessionId);
+      return true;
+    }
+    if (known.harness !== harness) return false;
+
+    // Adopt a generated title while the existing title is a placeholder or a first-prompt fallback.
+    const firstShown = info.firstPrompt?.trim().slice(0, 200) ?? "";
+    const fallback = PLACEHOLDER_TITLES.has(known.title) || known.title === firstShown || known.title === titleFromPrompt(known.first_prompt ?? "");
+    const title = nativeTitle && !PLACEHOLDER_TITLES.has(nativeTitle) && nativeTitle !== known.title && fallback ? nativeTitle : undefined;
+    const previous = known.discovery_updated_at;
+    const titleChanged = nativeTitle !== known.discovery_title;
+    // The first observation establishes a comparison point. Some harnesses touch their timestamp on rename.
+    const activityAt = known.origin === "external" && nativeAt && previous && nativeAt > previous && nativeAt > baseline &&
+      !titleChanged && (!known.activity_at || Date.parse(nativeAt) > Date.parse(known.activity_at)) ? nativeAt : undefined;
+    if (title || activityAt) {
+      const updatedAt = activityAt && Date.parse(activityAt) > Date.parse(known.updated_at) ? activityAt : known.updated_at;
+      patchAndEmit(known.id, { title, activityAt, updatedAt });
+    }
+    if (known.origin === "external" && (nativeAt !== previous || titleChanged) && (!previous || (nativeAt && nativeAt >= previous))) {
+      saveNativeObservation.run(nativeAt, nativeTitle, known.id);
+    }
+    return false;
+  }
+
+  async function scanHarness(project: string, path: string, harnessId: string, harness: Harness, baseline: string): Promise<number> {
+    if (services.projects.get(project)?.path !== path) return 0;
+    const start = performance.now();
+    const infos = await harness.list(path);
     let added = 0;
-    for (const [harnessId, harness] of Object.entries(deps.harnesses)) {
-      let infos;
+    for (let i = 0; i < infos.length; i++) {
+      if (i > 0 && i % DISCOVERY_BATCH_SIZE === 0) await yieldToRequests();
+      if (i % DISCOVERY_BATCH_SIZE === 0 && (closed || services.projects.get(project)?.path !== path)) break;
+      const info = infos[i]!;
       try {
-        infos = await harness.list(p.path);
+        if (discoverSession(project, path, harnessId, baseline, info)) added++;
       } catch (err) {
-        console.error(`${harnessId}: listing sessions in ${project} failed:`, errorMessage(err));
-        continue;
-      }
-      for (const info of infos) {
-        const known = get(info.sessionId);
-        if (known) {
-          // Adopt the harness's generated name while the session still has a placeholder or the first-prompt
-          // fallback, for every harness and origin. A title the user chose (or set at launch) is left alone.
-          const next = info.title?.trim().slice(0, 200);
-          const promptTitle = titleFromPrompt(row(known.id)?.first_prompt ?? "");
-          const firstShown = info.firstPrompt?.trim().slice(0, 200) ?? "";
-          const placeholder = (t: string) => PLACEHOLDER_TITLES.has(t) || (!!firstShown && t === firstShown) || (!!promptTitle && t === promptTitle);
-          if (next && !PLACEHOLDER_TITLES.has(next) && next !== known.title && placeholder(known.title)) {
-            try {
-              patchAndEmit(known.id, { title: next });
-            } catch (err) {
-              console.error(`retitling session ${known.id} failed:`, errorMessage(err));
-            }
-          }
-          continue;
-        }
-        try {
-          importExternal({
-            id: info.sessionId,
-            harness: harnessId,
-            project,
-            cwd: info.cwd ?? p.path,
-            title: info.title,
-            branch: info.gitBranch,
-            at: info.updatedAt,
-            createdAt: info.createdAt ?? info.updatedAt,
-          });
-          added++;
-        } catch (err) {
-          console.error(`importing session ${info.sessionId} failed:`, errorMessage(err));
-        }
+        console.error(`discovering session ${info.sessionId} failed:`, errorMessage(err));
       }
     }
+    debugDiscovery("%s in %s: %d listed, %d imported, %d ms", harnessId, project, infos.length, added, Math.round(performance.now() - start));
     return added;
   }
 
+  interface DiscoveryJob {
+    scanKey: string;
+    project: string;
+    harness: string;
+    priority: boolean;
+    run(): Promise<number>;
+    resolve(count: number): void;
+  }
+  const discoveryQueue: DiscoveryJob[] = [];
+  const projectScans = new Map<string, Promise<number>>();
+  const activeScans = new Set<DiscoveryJob>();
+
+  function drainDiscovery(): void {
+    while (!closed && activeScans.size < DISCOVERY_CONCURRENCY && discoveryQueue.length) {
+      const priority = discoveryQueue.findIndex(job => job.priority);
+      const job = discoveryQueue.splice(Math.max(0, priority), 1)[0]!;
+      activeScans.add(job);
+      void job.run().then(job.resolve, err => {
+        if (!closed) console.error(`${job.harness}: discovering sessions in ${job.project} failed:`, errorMessage(err));
+        job.resolve(0);
+      }).finally(() => {
+        activeScans.delete(job);
+        drainDiscovery();
+      });
+    }
+  }
+
+  async function discover(project: string, priority = true): Promise<number> {
+    if (closed) return 0;
+    const p = services.projects.get(project);
+    if (!p) throw new HttpError(404, `unknown project ${project}`);
+    const scanKey = JSON.stringify([project, p.path]);
+    const running = projectScans.get(scanKey);
+    if (running) {
+      if (priority) for (const job of discoveryQueue) {
+        if (job.scanKey === scanKey) job.priority = true;
+      }
+      return running;
+    }
+    const requestedAt = now();
+    const listings = Object.entries(deps.harnesses).map(([harnessId, harness]) => {
+      const existing = discoveryBaseline.get(project, harnessId) as { started_at: string } | undefined;
+      if (!existing) saveDiscoveryBaseline.run(project, harnessId, requestedAt);
+      return { harnessId, harness, baseline: existing?.started_at ?? requestedAt };
+    });
+    const jobs = listings.map(({ harnessId, harness, baseline }) => {
+      const { promise, resolve } = Promise.withResolvers<number>();
+      discoveryQueue.push({ scanKey, project, harness: harnessId, priority, run: () => scanHarness(project, p.path, harnessId, harness, baseline), resolve });
+      return promise;
+    });
+    const scan = Promise.all(jobs).then(counts => counts.reduce((total, count) => total + count, 0))
+      .finally(() => projectScans.delete(scanKey));
+    projectScans.set(scanKey, scan);
+    drainDiscovery();
+    return scan;
+  }
+
+  let polling = false;
+  function scanProjects(): void {
+    if (closed || polling) return;
+    polling = true;
+    void Promise.allSettled(services.projects.list().map(p => discover(p.name, false)))
+      .finally(() => { polling = false; });
+  }
+
+  const initialScan = deps.config.projectsRescanMs > 0 ? setImmediate(scanProjects).unref() : null;
   const rescanTimer = deps.config.projectsRescanMs > 0
-    ? setInterval(() => {
-        void (async () => {
-          for (const p of services.projects.list()) {
-            if (closed) return;
-            try {
-              await discover(p.name);
-            } catch (err) {
-              console.error(`discovering sessions in ${p.name} failed:`, errorMessage(err));
-            }
-          }
-        })();
-      }, deps.config.projectsRescanMs)
+    ? setInterval(scanProjects, deps.config.projectsRescanMs).unref()
     : null;
-  rescanTimer?.unref?.();
 
   // ── handoff helpers ──────────────────────────────────────────────────────
 
@@ -1086,9 +1187,12 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         artifacts = [];
       }
       const active = l && !l.closing ? l : null;
+      const record = get(id) ?? s;
       return {
         slashCommands: active?.slashCommands ?? storedSlashCommands(id, s.project),
-        ...(get(id) ?? s),
+        ...record,
+        // An offline history read can race with discovery. Report the activity timestamp the read started with.
+        activityAt: !active && s.origin === "external" ? s.activityAt : record.activityAt,
         transcript,
         pending: active ? [...active.pending.values()] : [],
         todos: l?.todos ?? todosFromTranscript(transcript),
@@ -1616,7 +1720,10 @@ export function createSessionsService(deps: Deps, services: Services, options: S
 
     async close() {
       closed = true;
+      if (initialScan) clearImmediate(initialScan);
       if (rescanTimer) clearInterval(rescanTimer);
+      for (const job of discoveryQueue.splice(0)) job.resolve(0);
+      for (const job of activeScans) job.resolve(0);
       const all = [...live.values()];
       await Promise.all(all.map((l) => Promise.race([closeHandle(l, false), new Promise<void>((r) => setTimeout(r, 5000).unref?.())])));
     },

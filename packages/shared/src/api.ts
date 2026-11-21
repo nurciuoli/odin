@@ -595,7 +595,9 @@ export interface Session {
   aside: boolean;
   pull: PullRef | null;
   createdAt: string;
-  /** Last activity. */
+  /** Last qualifying conversation activity. Null when there has been no activity to surface since import. */
+  activityAt?: string | null;
+  /** Last record update, including metadata changes. */
   updatedAt: string;
   endedAt: string | null;
   error: string | null;

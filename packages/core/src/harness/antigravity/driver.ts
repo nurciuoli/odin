@@ -1,6 +1,5 @@
 // Antigravity harness. Speaks Agent Client Protocol (ACP) JSON-RPC over `agy acp --stdio`.
 // Native session ids differ from Odin ids and live in harness_session_links.
-import { projectDirectories } from "../directories.ts";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
@@ -47,7 +46,6 @@ export interface AntigravityOptions {
   version?: (command: string) => Promise<void>;
   execFile?: typeof execFile;
   now?: () => Date;
-  directories?: (projectPath: string) => Promise<string[]>;
 }
 
 const HARNESS_ID = "antigravity";
@@ -508,13 +506,9 @@ export function createAntigravityHarness(options: AntigravityOptions): Harness {
     start(opts: StartOptions): SessionHandle {
       return open(opts);
     },
-    async list(projectPath: string): Promise<HarnessSessionInfo[]> {
-      const dirs = await (options.directories ?? projectDirectories)(projectPath);
-      const all: HarnessSessionInfo[] = [];
-      for (const d of dirs) {
-        all.push(...listSessions(historyRoot, d));
-      }
-      return all;
+    async list(): Promise<HarnessSessionInfo[]> {
+      // The brain directory is shared by all worktrees and its transcripts carry no cwd.
+      return listSessions(historyRoot);
     },
     async info(sessionId: string, _projectPath?: string): Promise<HarnessSessionInfo | null> {
       const native = nativeOf(sessionId);

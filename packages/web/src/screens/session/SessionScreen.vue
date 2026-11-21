@@ -41,7 +41,7 @@ import { useApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import { registerCommand } from '@/app/commands'
 import { keyLabel, registerShortcut } from '@/app/shortcuts'
-import { markSeen } from '@/app/seen'
+import { activityAt, markSeen } from '@/app/seen'
 import { IuBadge } from '@/components/Badge'
 import { IuButton } from '@/components/Button'
 import { IuCallout } from '@/components/Callout'
@@ -91,9 +91,9 @@ const session = computed(() => view.value?.detail ?? null)
 // Opening a session reads it: Home stops listing it as finished-but-unopened (`app/seen.ts`). Updates that land while
 // it is open count as read too.
 watch(
-  () => [session.value?.id, session.value?.updatedAt] as const,
-  ([id, updatedAt]) => {
-    if (id && updatedAt) markSeen({ id, updatedAt })
+  [() => session.value?.id, () => session.value && activityAt(session.value)],
+  () => {
+    if (session.value) markSeen(session.value)
   },
   { immediate: true },
 )

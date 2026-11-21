@@ -1,6 +1,5 @@
 // Which finished sessions the user has opened. Client-side only: `odin:seen` in localStorage maps a session id to
-// the `updatedAt` it had when it was last opened. A session that stopped (idle, ended or failed) after that, and
-// recently, is "unread": Home keeps it with the active sessions until it is opened.
+// its conversation activity time when it was last opened.
 import { ref } from 'vue'
 import type { Session } from '@odin/shared/api'
 
@@ -20,12 +19,26 @@ function read(): Record<string, string> {
 
 const seen = ref<Record<string, string>>(read())
 
-/** Records that `session` was opened at its current `updatedAt`. */
-export function markSeen(session: Pick<Session, 'id' | 'updatedAt'>) {
-  if (seen.value[session.id] === session.updatedAt) return
+type ReadableSession = Pick<Session, 'id' | 'activityAt' | 'updatedAt'>
+
+/** An explicit null denotes quiet history. Older servers only provide updatedAt. */
+export function activityAt(
+  session: Pick<ReadableSession, 'activityAt' | 'updatedAt'>,
+): string | null {
+  return session.activityAt === undefined ? session.updatedAt : session.activityAt
+}
+
+export function mostRecentActivityFirst(a: ReadableSession, b: ReadableSession): number {
+  return Date.parse(activityAt(b) ?? '') - Date.parse(activityAt(a) ?? '')
+}
+
+/** Records that `session` was opened at its current activity time. */
+export function markSeen(session: ReadableSession) {
+  const at = activityAt(session)
+  if (!at || Date.parse(seen.value[session.id] ?? '') >= Date.parse(at)) return
   const next = { ...seen.value }
   delete next[session.id] // re-insert last so the oldest entries drop first
-  next[session.id] = session.updatedAt
+  next[session.id] = at
   const ids = Object.keys(next)
   for (const id of ids.slice(0, Math.max(0, ids.length - LIMIT))) {
     if (Date.now() - Date.parse(next[id]!) >= UNREAD_WINDOW) delete next[id]
@@ -38,13 +51,15 @@ export function markSeen(session: Pick<Session, 'id' | 'updatedAt'>) {
   }
 }
 
-/** Marks the supplied finished sessions read at their current update times. */
-export function markAllSeen(sessions: readonly Pick<Session, 'id' | 'updatedAt'>[]) {
+/** Marks the supplied finished sessions read at their current activity times. */
+export function markAllSeen(sessions: readonly ReadableSession[]) {
   if (!sessions.length) return
   const next = { ...seen.value }
   for (const session of sessions) {
+    const at = activityAt(session)
+    if (!at || Date.parse(next[session.id] ?? '') >= Date.parse(at)) continue
     delete next[session.id]
-    next[session.id] = session.updatedAt
+    next[session.id] = at
   }
   // Keep every bulk-marked id, even when the unread list exceeds LIMIT. Pruning here would make
   // older sessions without an existing record become unread again on the next render.
@@ -60,7 +75,7 @@ export function markAllSeen(sessions: readonly Pick<Session, 'id' | 'updatedAt'>
 export function isUnread(session: Session, now = Date.now()): boolean {
   if (session.state === 'running' || session.state === 'waiting') return false
   if (session.aside || session.archived) return false
-  const at = Date.parse(session.updatedAt)
+  const at = Date.parse(activityAt(session) ?? '')
   if (Number.isNaN(at)) return false
   const last = seen.value[session.id]
   if (last) return at > Date.parse(last)

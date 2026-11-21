@@ -7,7 +7,7 @@ import { taskKey } from '@odin/shared/harness'
 import type { ServerEvent } from '@odin/shared/events'
 import type { Api } from '@/api/types'
 import { countWork, workTotal, type WorkCount } from './backgroundWork'
-import { isUnread } from './seen'
+import { activityAt, isUnread, mostRecentActivityFirst } from './seen'
 
 export interface SessionsStore {
   /**
@@ -62,10 +62,13 @@ const rank = (s: Session) =>
  */
 export function sidebarOrder(list: readonly Session[]): Session[] {
   return [...list].sort((a, b) => {
-    const r = rank(a) - rank(b)
-    if (r) return r
-    if (rank(a) < 2) return b.createdAt.localeCompare(a.createdAt)
-    return Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt)
+    const group = rank(a)
+    const difference = group - rank(b)
+    if (difference) return difference
+    if (group < 2) return b.createdAt.localeCompare(a.createdAt)
+    const pinned = Number(b.pinned) - Number(a.pinned)
+    if (pinned) return pinned
+    return group === 2 ? mostRecentActivityFirst(a, b) : b.updatedAt.localeCompare(a.updatedAt)
   })
 }
 
@@ -88,9 +91,9 @@ export function createSessionsStore(api: Api): SessionsStore {
   const loadedAt = new Map<string, string>()
   const pendingWork = new Map<string, Record<string, Pick<TaskActivity, 'kind' | 'state'>>>()
   const WORK_WINDOW = 24 * 60 * 60 * 1000
-  async function loadWork(s: Session) {
-    if (loadedAt.get(s.id) === s.updatedAt) return
-    loadedAt.set(s.id, s.updatedAt)
+  async function loadWork(s: Session, at: string) {
+    if (loadedAt.get(s.id) === at) return
+    loadedAt.set(s.id, at)
     const changes: Record<string, Pick<TaskActivity, 'kind' | 'state'>> = {}
     pendingWork.set(s.id, changes)
     try {
@@ -106,9 +109,11 @@ export function createSessionsStore(api: Api): SessionsStore {
     }
   }
   function trackWork(list: Session[]) {
-    for (const s of list)
-      if (s.state === 'idle' && !s.aside && Date.now() - Date.parse(s.updatedAt) < WORK_WINDOW)
-        void loadWork(s)
+    for (const s of list) {
+      const at = activityAt(s)
+      if (s.state === 'idle' && !s.aside && at && Date.now() - Date.parse(at) < WORK_WINDOW)
+        void loadWork(s, at)
+    }
   }
   const workById = computed(() => {
     const out: Record<string, WorkCount> = {}

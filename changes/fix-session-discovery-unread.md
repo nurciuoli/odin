@@ -1,0 +1,1 @@
+- Odin starts finding terminal sessions in the background when it opens. Existing history from newly discovered projects stays out of unread, and title and other metadata changes no longer make sessions unread again.
