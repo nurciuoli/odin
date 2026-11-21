@@ -970,6 +970,7 @@ function onDeleted() {
               :session="session"
               :tasks="activityItems"
               :task-activity="activity"
+              :task-history="tasks"
               :now="now"
               @updated="setRecord"
               @open-file="openFile"

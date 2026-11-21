@@ -189,6 +189,22 @@ describe('SessionScreen', () => {
     expect(wrapper!.find('#side-tasks').exists()).toBe(true)
     expect(wrapper!.find('.session-screen__running').exists()).toBe(false)
   })
+  it('shows to-dos in the top block, and cleared processes only on the full task tree', async () => {
+    await mountSession(FIXTURE_SESSION_IDS.running)
+    await wrapper!.find('[aria-label="Show details"]').trigger('click')
+    const todos = wrapper!.find('[aria-label="To-dos, 2 of 4 done"]')
+    expect(todos.text()).toContain('2/4')
+    expect(wrapper!.find('#side-todos').exists()).toBe(false)
+    const lanes = () => wrapper!.find('.task-lanes').text()
+    // A finished agent still inside the live window stays on the default view.
+    expect(lanes()).toContain('Find focus handling')
+    // A finished command has already left that view.
+    expect(lanes()).not.toContain('npm test')
+    await wrapper!.get('[aria-label="Task history"]').get('[data-value="all"]').trigger('click')
+    expect(lanes()).toContain('npm test')
+    expect(lanes()).toContain('Check production build')
+    expect(lanes()).toContain('Find focus handling')
+  })
   it('drops the running count when the last task finishes', async () => {
     const api = createMockApi()
     const id = FIXTURE_SESSION_IDS.running
@@ -208,7 +224,7 @@ describe('SessionScreen', () => {
     await mountSession(FIXTURE_SESSION_IDS.running)
     await wrapper!.find('.session-screen__running').trigger('click')
     await flushPromises()
-    const select = wrapper!.find('#side-tasks + ul .session-side__open')
+    const select = wrapper!.find('.task-lanes .session-side__open')
     ;(select.element as HTMLElement).focus()
     await select.trigger('click')
     await flushPromises()
@@ -266,7 +282,7 @@ describe('SessionScreen', () => {
     await flushPromises()
     await wrapper!.find('[aria-label="Show details"]').trigger('click')
     await flushPromises()
-    const select = wrapper!.find('#side-tasks + ul .session-side__open')
+    const select = wrapper!.find('.task-lanes .session-side__open')
     ;(select.element as HTMLElement).focus()
     await select.trigger('click')
     await flushPromises()

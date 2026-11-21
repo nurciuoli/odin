@@ -1,0 +1,2 @@
+- Session Details lists to-dos as a row beside the workspace, with the full list on hover.
+- Background tasks draw on a five-minute scale when the run is younger than that, so a new process grows across the graph. Recent still drops finished work after a while. Full tree shows every process this session recorded, including the ones that have left the recent view.

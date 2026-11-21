@@ -98,6 +98,13 @@ export interface Placed {
   fromY: number
 }
 
+/**
+ * Shortest time scale the graph will use. A run younger than this draws on a five-minute window, so a branch that
+ * just started sits at the left and its head moves right as it works. Once the work is older, the scale grows to
+ * fit it.
+ */
+export const TREE_START_WINDOW_MS = 5 * 60 * 1000
+
 /** x is time, scaled so the whole session fits `width`; a branch is never shorter than `min` px. */
 export function placeTree(
   nodes: TreeNode[],
@@ -106,7 +113,7 @@ export function placeTree(
 ): { placed: Placed[]; trunkEnd: number; height: number } {
   const t0 = Math.min(now, ...nodes.map(n => n.start))
   const t1 = Math.max(now, ...nodes.map(n => n.end ?? now))
-  const span = Math.max(1000, t1 - t0)
+  const span = Math.max(TREE_START_WINDOW_MS, t1 - t0)
   const inner = o.width - o.pad * 2
   const x = (ms: number) => o.pad + ((ms - t0) / span) * inner
   const rowOf = new Map(nodes.map((n, i) => [n.id, i]))
