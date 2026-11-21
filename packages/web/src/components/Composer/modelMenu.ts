@@ -10,7 +10,7 @@ function release(model: ModelOption): { family: string; version: number } | null
       family: `gpt-${gpt[3] ?? 'base'}`,
       version: Number(gpt[1]) * 1000 + Number(gpt[2] ?? 0),
     }
-  const claude = /(opus|sonnet|haiku)[- ](\d+)(?:[.-](\d+))?/.exec(name)
+  const claude = /(opus|sonnet|haiku|fable)[- ](\d+)(?:[.-](\d+))?/.exec(name)
   if (claude)
     return { family: claude[1]!, version: Number(claude[2]) * 1000 + Number(claude[3] ?? 0) }
   return null

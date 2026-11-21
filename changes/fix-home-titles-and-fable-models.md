@@ -1,0 +1,2 @@
+- Home's In progress rows show up to two lines of a session's title before they are cut off, and no longer repeat the animation and status line, since the session shows that. Earlier rows keep one line, cut off sooner.
+- Older Fable releases (5.1, 5) move under More models in the model picker, next to the other previous-generation models.

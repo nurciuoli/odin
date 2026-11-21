@@ -19,7 +19,7 @@ import { IuEmpty, IuErrorState, IuSkeleton } from '@/components/States'
 import { IuFlock } from '@/components/Spinner'
 import { IuRavenLanding } from '@/components/RavenLanding'
 import { useFlagged } from '@/composables/useFlagged'
-import { buildPerch, perchParts, type LaneSource, type Perch } from '@/screens/shared/lanes'
+import { buildPerch, type LaneSource, type Perch } from '@/screens/shared/lanes'
 import { SESSION_DISPLAY, plural, relativeTime } from './format'
 import { sessionPlace } from './place'
 import StatusWord from './StatusWord.vue'
@@ -316,9 +316,7 @@ const title = (s: Session) =>
             <div class="launchpad__perch-state" />
           </li>
           <li v-for="p in perches" :key="p.id" class="launchpad__perch" :data-state="p.state">
-            <span class="launchpad__perch-glyph" role="img" :aria-label="p.description"
-              ><IuFlock size="xl" tone="neutral" :state="p.flock" :agents="p.agents"
-            /></span>
+            <span class="launchpad__perch-glyph" aria-hidden="true" />
             <RouterLink :to="p.to" class="launchpad__perch-title" :title="p.title">{{
               p.title
             }}</RouterLink>
@@ -326,14 +324,6 @@ const title = (s: Session) =>
             <span class="launchpad__perch-project">{{
               sessionFor(p.id) ? projectSummary(sessionFor(p.id)!) : ''
             }}</span>
-            <div class="launchpad__perch-label">
-              <Transition name="launchpad-update" mode="out-in">
-                <span :key="p.activity" class="launchpad__perch-activity" :title="p.activity">{{
-                  p.activity
-                }}</span>
-              </Transition>
-              <StatusWord class="launchpad__perch-word" v-bind="perchParts(p)" />
-            </div>
             <div class="launchpad__perch-state">
               <span
                 v-if="promptOf(p.id)?.kind === 'tool' || p.state === 'paused'"
@@ -526,14 +516,20 @@ const title = (s: Session) =>
   gap: 2px;
   min-width: 0;
 }
-.launchpad__perch-title,
 .launchpad__perch-activity {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
   line-height: var(--iu-leading-snug);
 }
+/* In progress: the title gets two lines before it is clipped, so more of it is readable. */
 .launchpad__perch-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  line-height: var(--iu-leading-snug);
   min-width: 0;
   grid-column: 2;
   grid-row: 1;
@@ -659,8 +655,10 @@ const title = (s: Session) =>
   outline: var(--iu-focus-ring);
   outline-offset: var(--iu-focus-offset);
 }
+/* Earlier: one line, capped at a narrower width, so fewer characters show than in progress. */
 .launchpad__session-title {
-  flex: 1;
+  flex: 0 1 auto;
+  max-width: 60%;
   text-align: left;
   min-width: 0;
   overflow: hidden;
