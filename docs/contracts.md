@@ -575,8 +575,14 @@ AppSettings.defaultWorktree`.
 - **Delete**: closes, `harness.delete`, removes the record (cascade). A native deletion failure returns 502 and
   preserves the record for retry; drivers accept already-absent native sessions. Worktrees are kept (the branch may hold work).
 - **External sessions**: `discover(project)` imports `harness.list(path)` entries Odin has no record of
-  (origin external, state idle, title from the harness); it runs on `POST /api/projects/:name/discover`, on the
-  `projectsRescanMs` timer, and when a project is registered. Ingest creates them too (`ensureExternal`).
+  (origin external, state idle, title from the harness). A background pass runs at startup and on the
+  `projectsRescanMs` timer. Registering a project and `POST /api/projects/:name/discover` also request discovery.
+  A persisted project/harness baseline keeps native history at or before the first discovery request out of unread,
+  including history discovered after a retry. Ingest creates external sessions too (`ensureExternal`).
+- **Unread**: `Session.activityAt` records conversation activity, separate from `updatedAt`, which also reflects
+  metadata edits. `activityAt: null` means there is no activity to surface, including on initial history import.
+  The web client stores the last opened activity timestamp locally and falls back to `updatedAt` for older servers
+  that omit `activityAt`. Existing sessions retain their previous `updatedAt` as the starting value on upgrade.
 - `counts(project?)`: running, waiting, total (not archived).
 
 ### Continuity and limits

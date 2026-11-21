@@ -158,6 +158,26 @@ describe('SessionLaunchpad', () => {
     expect(wrapper.findAll('.launchpad__perch--finished').length).toBe(finished.length - 1)
   })
 
+  it('shows recently imported history in Earlier until it has new activity', async () => {
+    const api = createMockApi()
+    const imported = api.db.sessions.find(s => s.id === FIXTURE_SESSION_IDS.external)!
+    imported.updatedAt = new Date().toISOString()
+    imported.activityAt = null
+    const { wrapper, projects, sessions } = await mountScreen(SessionLaunchpad, '/', api)
+    await flushPromises()
+    const finished = () => wrapper.findAll('.launchpad__perch--finished').map(row => row.text())
+    expect(finished().some(row => row.includes(imported.title))).toBe(false)
+    expect(wrapper.find('.launchpad__list').text()).toContain(imported.title)
+
+    imported.activityAt = imported.updatedAt
+    api.emit({ type: 'session.updated', session: imported })
+    await vi.waitFor(() => expect(finished().some(row => row.includes(imported.title))).toBe(true))
+    expect(wrapper.find('.launchpad__list').text()).not.toContain(imported.title)
+    wrapper.unmount()
+    projects.stop()
+    sessions.stop()
+  })
+
   it('shows the five newest unread sessions with a control to expand the full list', async () => {
     const api = createMockApi()
     const list = api.listSessions.bind(api)
@@ -170,7 +190,8 @@ describe('SessionLaunchpad', () => {
           ...finished,
           id: `unread-${index}`,
           title: `Unread ${index}`,
-          updatedAt: new Date(Date.now() - index * 1000).toISOString(),
+          updatedAt: new Date(Date.now() + index * 1000).toISOString(),
+          activityAt: new Date(Date.now() - index * 1000).toISOString(),
         })),
       ]
     }

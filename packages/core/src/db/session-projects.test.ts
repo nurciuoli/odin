@@ -15,9 +15,11 @@ test("workspace session migration preserves old conversations and is repeatable"
     db.exec("INSERT INTO sessions (id, harness, project, title, origin, state, cwd, metrics, created_at, updated_at) VALUES ('old', 'claude', 'demo', 'Keep me', 'external', 'ended', '/demo', '{}', 't', 't')");
     migrate(db);
     assert.ok(schemaVersion(db) >= 5);
-    const row = db.prepare("SELECT title, projects FROM sessions WHERE id = 'old'").get()!;
+    const row = db.prepare("SELECT title, projects, activity_at, discovery_updated_at FROM sessions WHERE id = 'old'").get()!;
     assert.equal(row.title, "Keep me");
     assert.deepEqual(JSON.parse(row.projects as string), ["demo"]);
+    assert.equal(row.activity_at, "t");
+    assert.equal(row.discovery_updated_at, null);
     migrate(db);
     assert.equal(db.prepare("SELECT count(*) AS n FROM sessions").get()!.n, 1);
   } finally { db.close(); }

@@ -42,6 +42,8 @@ An installed app is the *stable* channel: `~/.odin`, port 8790. Anything run fro
 
 Odin snapshots `state.db` to `<home>/backups/` before any schema upgrade.
 
+Set `NODE_DEBUG=odin-discovery` to log session discovery time and listed and imported counts by project and harness.
+
 ### Environment variables
 
 | Variable | Meaning |

@@ -323,6 +323,15 @@ describe('applyActionRecord', () => {
     expect(applyActionRecord(waiting, stale)).toBe(waiting)
   })
 
+  it('keeps newer conversation activity when an action response has the same update time', () => {
+    const activityAt = '2026-01-01T00:00:01.000Z'
+    const current = applySessionRecord(waiting, { ...waiting.detail, activityAt })
+    const response = { ...record, updatedAt: current.detail.updatedAt, activityAt: null }
+    expect(applyActionRecord(current, response).detail.activityAt).toBe(activityAt)
+    const newer = { ...response, activityAt: '2026-01-01T00:00:02.000Z' }
+    expect(applyActionRecord(current, newer).detail.activityAt).toBe(newer.activityAt)
+  })
+
   it('keeps the live state for a record from the same instant, takes the rest', () => {
     const same = {
       ...record,

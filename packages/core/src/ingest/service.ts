@@ -18,6 +18,14 @@ interface Row {
 /** The hook adapter calls the harness "claude-code"; the session's harness id is "claude". */
 const harnessId = (h: string): string => (h === "claude-code" ? "claude" : h);
 
+function hasActivity(event: IngestEvent): boolean {
+  if (event.kind === "session.started") return false;
+  if (event.kind === "session.ended") return event.data.outcome === "failed";
+  // The CLI can report cumulative totals from old turns when closing a session.
+  if (event.kind === "usage") return !event.data.cumulative;
+  return true;
+}
+
 const cut = (s: string, max: number) => (s.length > max ? s.slice(0, max) : s);
 
 /** A tool's target without contents: a path/pattern, or a command's first two words. */
@@ -40,6 +48,13 @@ export function createIngestService(deps: Deps, services: Services): IngestServi
   );
   const factsOf = db.prepare("SELECT kind, ts, data FROM session_events WHERE session_id = ? ORDER BY seq");
   const countTurns = db.prepare("SELECT COUNT(*) AS n FROM session_events WHERE session_id = ? AND kind = 'turn'");
+  const discoveryBaseline = db.prepare("SELECT started_at FROM session_discovery_baselines WHERE project = ? AND harness = ?");
+
+  function activityAt(event: IngestEvent, project: string, harness: string): string | null {
+    if (!hasActivity(event)) return null;
+    const baseline = discoveryBaseline.get(project, harness) as { started_at: string } | undefined;
+    return !baseline || event.ts > baseline.started_at ? event.ts : null;
+  }
 
   const rowsOf = (sessionId: string): FactRow[] =>
     (factsOf.all(sessionId) as unknown as Row[]).map((r) => ({ kind: r.kind, ts: r.ts, data: JSON.parse(r.data) }));
@@ -83,9 +98,10 @@ export function createIngestService(deps: Deps, services: Services): IngestServi
     const ref = services.projects.get(project);
     if (!ref) return { error: "unknown project" };
     const started = e.kind === "session.started" ? e.data : null;
+    const harness = harnessId(e.harness);
     const session = services.sessions.ensureExternal({
       id: e.session,
-      harness: harnessId(e.harness),
+      harness,
       project,
       cwd: e.cwd ?? ref.path,
       ...(started?.title ? { title: started.title } : {}),
@@ -93,6 +109,7 @@ export function createIngestService(deps: Deps, services: Services): IngestServi
       model: started?.model ?? null,
       agent: e.agent ?? null,
       at: e.ts,
+      activityAt: activityAt(e, project, harness),
     });
     return { session };
   }
@@ -100,7 +117,10 @@ export function createIngestService(deps: Deps, services: Services): IngestServi
   /** Record changes one event implies; merged per session and written at flush. */
   function lifecycle(e: IngestEvent, session: Session, patch: SessionPatch): void {
     if (e.branch && e.branch !== session.branch && !patch.branch) patch.branch = e.branch;
-    if (!patch.updatedAt || patch.updatedAt < e.ts) patch.updatedAt = e.ts;
+    const updatedAt = patch.updatedAt ?? session.updatedAt;
+    patch.updatedAt = Date.parse(e.ts) > Date.parse(updatedAt) ? e.ts : updatedAt;
+    const at = activityAt(e, session.project, session.harness);
+    if (at && (!patch.activityAt || patch.activityAt < at)) patch.activityAt = at;
     if (e.kind === "session.started") {
       if (!session.model && e.data.model && !patch.model) patch.model = e.data.model;
       // A resumed session that had ended is in use again.

@@ -35,7 +35,7 @@ export interface Config {
   githubApiUrl: string;
   /** GitHub poll. 0 disables the timer. */
   githubSyncMs: number;
-  /** Re-read PROJECT.md, agents and git state, and discover external sessions. 0 disables the timer. */
+  /** Re-read project metadata and discover external sessions. 0 disables automatic scans, including startup discovery. */
   projectsRescanMs: number;
   /** ODIN_FAKE_HARNESS=1: run sessions on the scripted fake driver (no model calls). For demos and e2e checks. */
   fakeHarness: boolean;

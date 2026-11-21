@@ -276,7 +276,7 @@ export function createGitTracker(deps: Deps, services: Services, opts: TrackerOp
         const prev = lastState.get(s.id);
         lastState.set(s.id, s.state);
         // A turn just ended: the agent may have switched branches.
-        if (s.state === "idle" && prev !== "idle") void refreshBranch(s.cwd).catch(() => {});
+        if (s.state === "idle" && (prev === "running" || prev === "waiting")) void refreshBranch(s.cwd).catch(() => {});
       });
       const stopProjects = deps.bus.subscribe((event) => {
         if (event.type === "project.updated" || event.type === "project.removed") syncProjects();

@@ -67,3 +67,17 @@ test("history lists sessions and reads transcript entries", () => {
     removeTempDir(root);
   }
 });
+
+test("history without timestamps has a stable unknown update time", () => {
+  const root = tempDir("odin-agy-undated-");
+  try {
+    const logDir = join(root, "undated", ".system_generated", "logs");
+    mkdirSync(logDir, { recursive: true });
+    writeFileSync(join(logDir, "transcript.jsonl"), JSON.stringify({ type: "USER_INPUT", content: "Old work" }));
+    const [session] = listSessions(root);
+    assert.equal(session?.createdAt, null);
+    assert.equal(session?.updatedAt, "1970-01-01T00:00:00.000Z");
+  } finally {
+    removeTempDir(root);
+  }
+});

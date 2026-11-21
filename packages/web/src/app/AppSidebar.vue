@@ -24,7 +24,7 @@ import { useProjects } from './projects'
 import { useSessions } from './sessions'
 import ProjectHoverCard from './hovercards/ProjectHoverCard.vue'
 import SessionHoverCard from './hovercards/SessionHoverCard.vue'
-import { isUnread } from './seen'
+import { activityAt, isUnread } from './seen'
 
 const route = useRoute()
 const router = useRouter()
@@ -39,6 +39,7 @@ const now = ref(Date.now())
 const clock = setInterval(() => (now.value = Date.now()), 30_000)
 onBeforeUnmount(() => clearInterval(clock))
 const isLive = (s: Session) => s.state === 'running' || s.state === 'waiting'
+const rowTime = (s: Session) => (isLive(s) ? s.updatedAt : (activityAt(s) ?? s.updatedAt))
 const inProgress = computed(() => conversations.value.filter(s => isLive(s) || isUnread(s)))
 const perches = useSessionPerches(computed(() => inProgress.value.filter(isLive)))
 const sections = computed(() => [
@@ -315,9 +316,9 @@ onBeforeUnmount(() => {
                     <span class="app-session-row__title">{{ s.title }}</span>
                     <time
                       class="app-session-row__time"
-                      :datetime="s.updatedAt"
-                      :title="s.updatedAt"
-                      >{{ relativeTime(s.updatedAt, now) }}</time
+                      :datetime="rowTime(s)"
+                      :title="rowTime(s)"
+                      >{{ relativeTime(rowTime(s), now) }}</time
                     >
                     <span class="app-session-row__project">{{ projectOf(s) }}</span>
                     <IuFlock

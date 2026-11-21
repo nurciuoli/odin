@@ -8,6 +8,8 @@ import type { Session } from "@odin/shared/api";
 import type { ServerEvent } from "@odin/shared/events";
 import { fakeHarness } from "../harness/fake.ts";
 import { startApp, tempDir, removeTempDir, waitFor, watchEvents, type TestApp } from "../test-helpers.ts";
+import { setup as setupSessions, PROJECT } from "../sessions/test-setup.ts";
+import { createGitTracker } from "./track.ts";
 
 const git = (cwd: string, ...args: string[]) =>
   execFileSync("git", ["-c", "user.email=t@example.com", "-c", "user.name=t", ...args], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
@@ -26,6 +28,30 @@ function tempRepo(name = "demo") {
 const post = (app: TestApp, path: string, body?: unknown) => app.api(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
 const branchOf = (app: TestApp, id: string) => async () => (await app.json<Session>(`/api/sessions/${id}`)).branch;
 const changedTargets = (events: ServerEvent[]) => new Set(events.flatMap((e) => (e.type === "git.changed" ? [`${e.target.kind}:${e.target.id}`] : [])));
+
+test("importing idle history does not refresh branches as if a turn had completed", async () => {
+  const s = setupSessions();
+  mkdirSync(join(s.projectPath, ".git"), { recursive: true });
+  const tracker = createGitTracker(s.deps, s.services, { watchFn: () => ({ close() {} }) });
+  const list = s.sessions.list;
+  let reads = 0;
+  s.sessions.list = (filter) => {
+    reads++;
+    return list(filter);
+  };
+  try {
+    tracker.start();
+    s.harness.seed({ sessionId: "history", cwd: s.projectPath, gitBranch: "original" });
+    assert.equal(await s.sessions.discover(PROJECT), 1);
+    assert.equal(reads, 1, "only the tracker startup reads the full session list");
+    assert.equal(s.sessions.get("history")?.branch, "original");
+  } finally {
+    tracker.close();
+    await s.sessions.close();
+    s.services.library.close();
+    s.deps.db.close();
+  }
+});
 
 async function setup() {
   const repo = tempRepo();

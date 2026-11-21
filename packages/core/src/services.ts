@@ -115,6 +115,8 @@ export interface SessionPatch {
   error?: string | null;
   endedAt?: string | null;
   updatedAt?: string;
+  /** Advances only for new conversation activity. */
+  activityAt?: string;
   /** Merged into the stored metrics (shallow, per top-level key). */
   metrics?: Partial<SessionMetrics>;
 }
@@ -130,6 +132,8 @@ export interface ExternalSessionInput {
   model?: string | null;
   agent?: string | null;
   at: string;
+  /** Null when discovery is importing existing history. */
+  activityAt?: string | null;
 }
 
 export interface SessionsService extends Closeable {

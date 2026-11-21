@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import type { Session } from '@odin/shared/api'
 import { createMockApi } from '@/api/mock'
@@ -21,6 +21,27 @@ const sessionOf = async (api: ReturnType<typeof createMockApi>, state: Session['
   (await api.listSessions({ state: [state] }))[0]!
 
 describe('sessions store', () => {
+  it('skips transcript hydration for quiet imports and resumes it on new activity', async () => {
+    const api = createMockApi()
+    const history = api.db.sessions.find(s => s.id === FIXTURE_SESSION_IDS.external)!
+    history.updatedAt = new Date().toISOString()
+    history.activityAt = null
+    const get = vi.spyOn(api, 'getSession')
+    const store = createSessionsStore(api)
+    store.start()
+    await flushPromises()
+    expect(store.sidebar.value.some(s => s.id === history.id)).toBe(true)
+    expect(get).not.toHaveBeenCalledWith(history.id)
+
+    api.emit({
+      type: 'session.updated',
+      session: { ...history, activityAt: history.updatedAt },
+    })
+    await flushPromises()
+    expect(get).toHaveBeenCalledWith(history.id)
+    store.stop()
+  })
+
   it('keeps task events newer than an idle transcript snapshot', async () => {
     const api = createMockApi()
     const id = FIXTURE_SESSION_IDS.idle
