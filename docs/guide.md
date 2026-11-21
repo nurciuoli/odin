@@ -31,7 +31,8 @@ A permission prompt shows exactly what the agent wants to do, with Allow once, A
 ![A permission prompt for a shell command, with the command and its description](assets/screenshots/permission-prompt.png)
 
 A session shows the conversation with its tool calls and diffs, and a Details panel for context, outputs, changes,
-to-dos and background tasks, laid out as a branch graph of subagents and commands.
+to-dos and background tasks, laid out as a branch graph of subagents and commands. **Session details** leads with
+the branch. Project links and workspace path actions are under **This session**.
 
 ![A running session with the chat, tool calls and the Details panel](assets/screenshots/session.png)
 
@@ -59,8 +60,9 @@ them. Write a commit message, or start from the one Odin drafts from the session
 
 ![The Changes panel with staged and unstaged files and a diff](assets/screenshots/changes.png)
 
-Files opened from a session have **Code**, **Blame** and **History** views. Blame names the Odin session and turn
-behind each line the agents wrote.
+In the **Files** tab, the file browser stays above the open document so you can switch files in place. Docked
+artifacts also open below the browser. Files opened from a session have **Code**, **Blame** and **History** views.
+Blame names the Odin session and turn behind each line the agents wrote.
 
 ![Blame view of a Markdown file, naming who or which session last changed each line](assets/screenshots/blame.png)
 

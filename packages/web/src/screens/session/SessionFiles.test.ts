@@ -154,6 +154,9 @@ describe('SessionFiles', () => {
     const open = vi.spyOn(api, 'openNotebook')
     await button('README.md').trigger('click')
     await flushPromises()
+    expect(wrapper.get('[aria-label="File browser"] [aria-current="true"]').text()).toBe(
+      'README.md',
+    )
     await button('analysis.ipynb').trigger('click')
     await flushPromises()
     expect(open).toHaveBeenCalledWith(session.project, {
@@ -227,6 +230,9 @@ describe('SessionFiles', () => {
     expect(toggle().attributes('aria-expanded')).toBe('false')
     await wrapper.find('[aria-label="Full screen"]').trigger('click')
     expect(wrapper.find('[aria-label="Exit full screen"]').exists()).toBe(true)
+    await wrapper.get('[aria-label="Close README.md"]').trigger('click')
+    expect(wrapper.get('[aria-label="File browser"]').text()).toContain('README.md')
+    expect(wrapper.find('.session-files--expanded').exists()).toBe(false)
     wrapper.unmount()
   })
 

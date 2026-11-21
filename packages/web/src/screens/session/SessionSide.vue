@@ -296,56 +296,61 @@ function addTag(e: KeyboardEvent) {
   <div class="session-side">
     <div class="session-side__top">
       <div class="session-side__meta" aria-label="Session workspace">
-        <div
-          v-for="name in session.projects ?? [session.project]"
-          :key="name"
-          class="session-side__row"
-        >
-          <IuHoverCard
-            v-if="name === session.project && worktree"
-            placement="bottom-start"
-            label="Worktree"
-          >
-            <span class="session-side__glyph" tabindex="0" role="img" aria-label="Worktree">
-              <IuIcon name="folderTree" :size="14" class="hc__tone--worktree" />
-            </span>
-            <template #card
-              ><WorktreeHoverCard :project="name" :path="worktree.path" :branch="worktree.branch"
-            /></template>
-          </IuHoverCard>
-          <IuIcon v-else name="folder" :size="14" />
-          <IuHoverCard placement="bottom-start" :label="`${name} overview`">
-            <RouterLink class="session-side__link" :to="`/p/${name}`">{{ name }}</RouterLink>
-            <template #card><ProjectHoverCard :name="name" /></template>
-          </IuHoverCard>
-          <span v-if="name !== session.project && extraBranch[name]" class="session-side__mono">{{
-            extraBranch[name]
-          }}</span>
-          <span class="session-side__grow" />
-          <span v-if="folderPath(name)" class="session-side__acts">
-            <IuButton
-              variant="ghost"
-              size="sm"
-              icon-only
-              :aria-label="`Copy path of ${name}`"
-              :title="`Copy path: ${folderPath(name)}`"
-              @click="copy('path', folderPath(name)!)"
-            >
-              <template #icon><IuIcon name="copy" :size="14" /></template>
-            </IuButton>
-            <IuButton
-              v-if="desktop"
-              variant="ghost"
-              size="sm"
-              icon-only
-              :aria-label="`Show ${name} in files`"
-              title="Show in file manager"
-              @click="openIn('files', 'folder', folderPath(name)!)"
-            >
-              <template #icon><IuIcon name="external" :size="14" /></template>
-            </IuButton>
-          </span>
-        </div>
+        <BranchChip :session="session" @changes="emit('changes')">
+          <template #trigger="{ toggle, open, label, chipLabel, status, changedCount }">
+            <div class="session-side__row" aria-label="Branch">
+              <IuHoverCard placement="right-start" :label="`Branch ${label}`" :width="280">
+                <button
+                  type="button"
+                  class="session-side__branch"
+                  data-branch-trigger
+                  :aria-label="chipLabel"
+                  aria-haspopup="dialog"
+                  :aria-expanded="open"
+                  @click="toggle"
+                >
+                  <IuIcon name="gitBranch" :size="14" />
+                  <span class="session-side__branch-caption">Branch</span>
+                  <span class="session-side__branch-name">{{ label }}</span>
+                </button>
+                <template #card>
+                  <BranchStatusCard
+                    v-if="status"
+                    :status="status"
+                    :changed="changedCount"
+                    :target="gitTarget"
+                  />
+                </template>
+              </IuHoverCard>
+              <span class="session-side__acts">
+                <IuButton
+                  variant="ghost"
+                  size="sm"
+                  icon-only
+                  aria-label="Copy branch name"
+                  :title="`Copy branch: ${label}`"
+                  @click="copy('branch', label)"
+                >
+                  <template #icon><IuIcon name="copy" :size="14" /></template>
+                </IuButton>
+                <IuButton
+                  v-if="branchUrl(label)"
+                  as="a"
+                  variant="ghost"
+                  size="sm"
+                  icon-only
+                  aria-label="Open branch on GitHub"
+                  title="Open on GitHub"
+                  :href="branchUrl(label)!"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <template #icon><IuIcon name="external" :size="14" /></template>
+                </IuButton>
+              </span>
+            </div>
+          </template>
+        </BranchChip>
         <div v-if="mcp" class="session-side__row" role="group" :aria-label="`MCP, ${mcp.summary}`">
           <IuIcon name="database" :size="14" />
           <IuHoverCard placement="right-start" label="MCP servers" :width="280">
@@ -409,60 +414,6 @@ function addTag(e: KeyboardEvent) {
             </template>
           </IuHoverCard>
         </div>
-        <BranchChip :session="session" @changes="emit('changes')">
-          <template #trigger="{ toggle, open, label, place, chipLabel, status, changedCount }">
-            <div class="session-side__row" aria-label="Branch">
-              <IuHoverCard placement="right-start" :label="`Branch ${label}`" :width="280">
-                <button
-                  type="button"
-                  class="session-side__branch"
-                  data-branch-trigger
-                  :aria-label="chipLabel"
-                  aria-haspopup="dialog"
-                  :aria-expanded="open"
-                  @click="toggle"
-                >
-                  <IuIcon name="gitBranch" :size="14" />
-                  <span>{{ place }}</span>
-                </button>
-                <template #card>
-                  <BranchStatusCard
-                    v-if="status"
-                    :status="status"
-                    :changed="changedCount"
-                    :target="gitTarget"
-                  />
-                </template>
-              </IuHoverCard>
-              <span class="session-side__acts">
-                <IuButton
-                  variant="ghost"
-                  size="sm"
-                  icon-only
-                  aria-label="Copy branch name"
-                  :title="`Copy branch: ${label}`"
-                  @click="copy('branch', label)"
-                >
-                  <template #icon><IuIcon name="copy" :size="14" /></template>
-                </IuButton>
-                <IuButton
-                  v-if="branchUrl(label)"
-                  as="a"
-                  variant="ghost"
-                  size="sm"
-                  icon-only
-                  aria-label="Open branch on GitHub"
-                  title="Open on GitHub"
-                  :href="branchUrl(label)!"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <template #icon><IuIcon name="external" :size="14" /></template>
-                </IuButton>
-              </span>
-            </div>
-          </template>
-        </BranchChip>
         <div v-if="session.pull && prTone" class="session-side__row" aria-label="Pull request">
           <IuIcon :name="PULL_STATE[prTone].icon" :size="14" :class="`hc__tone--${prTone}`" />
           <IuHoverCard placement="bottom-start" :label="`PR #${session.pull.number}`">
@@ -834,6 +785,58 @@ function addTag(e: KeyboardEvent) {
           touched.length ? `${touched.length} ${touched.length === 1 ? 'file' : 'files'}` : 'None'
         }}</span>
       </summary>
+      <div class="session-side__meta session-side__projects" aria-label="Projects">
+        <div
+          v-for="name in session.projects ?? [session.project]"
+          :key="name"
+          class="session-side__row"
+        >
+          <IuHoverCard
+            v-if="name === session.project && worktree"
+            placement="bottom-start"
+            label="Worktree"
+          >
+            <span class="session-side__glyph" tabindex="0" role="img" aria-label="Worktree">
+              <IuIcon name="folderTree" :size="14" class="hc__tone--worktree" />
+            </span>
+            <template #card
+              ><WorktreeHoverCard :project="name" :path="worktree.path" :branch="worktree.branch"
+            /></template>
+          </IuHoverCard>
+          <IuIcon v-else name="folder" :size="14" />
+          <IuHoverCard placement="bottom-start" :label="`${name} overview`">
+            <RouterLink class="session-side__link" :to="`/p/${name}`">{{ name }}</RouterLink>
+            <template #card><ProjectHoverCard :name="name" /></template>
+          </IuHoverCard>
+          <span v-if="name !== session.project && extraBranch[name]" class="session-side__mono">{{
+            extraBranch[name]
+          }}</span>
+          <span class="session-side__grow" />
+          <span v-if="folderPath(name)" class="session-side__acts">
+            <IuButton
+              variant="ghost"
+              size="sm"
+              icon-only
+              :aria-label="`Copy path of ${name}`"
+              :title="`Copy path: ${folderPath(name)}`"
+              @click="copy('path', folderPath(name)!)"
+            >
+              <template #icon><IuIcon name="copy" :size="14" /></template>
+            </IuButton>
+            <IuButton
+              v-if="desktop"
+              variant="ghost"
+              size="sm"
+              icon-only
+              :aria-label="`Show ${name} in files`"
+              title="Show in file manager"
+              @click="openIn('files', 'folder', folderPath(name)!)"
+            >
+              <template #icon><IuIcon name="external" :size="14" /></template>
+            </IuButton>
+          </span>
+        </div>
+      </div>
       <ul v-if="touched.length" class="session-side__list">
         <li v-for="file in touched" :key="file.path" class="session-side__file">
           <button
@@ -891,12 +894,16 @@ details[open] > .session-side__summary .session-side__caret {
   color: var(--iu-text-muted);
 }
 .session-side {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
+  padding: 12px;
 }
 /* Every block is a quiet band: same padding, a hairline between, no boxes. */
 .session-side > * {
-  padding: 14px 0;
+  padding: 10px 0;
   border-top: 1px solid var(--iu-border-quiet);
 }
 .session-side > :first-child {
@@ -909,14 +916,17 @@ details[open] > .session-side__summary .session-side__caret {
 .session-side__top {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 .session-side__meta {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   color: var(--iu-text-2);
   font-size: var(--iu-font-size-13);
+}
+.session-side__projects {
+  margin-top: 8px;
 }
 .session-side__row {
   display: flex;
@@ -974,7 +984,10 @@ details[open] > .session-side__summary .session-side__caret {
   flex: none;
   color: var(--iu-text-muted);
 }
-.session-side__branch > span {
+.session-side__branch-caption {
+  flex: none;
+}
+.session-side__branch-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -983,7 +996,7 @@ details[open] > .session-side__summary .session-side__caret {
   font-size: var(--iu-font-size-12);
   color: var(--iu-text);
 }
-.session-side__branch:hover > span {
+.session-side__branch:hover .session-side__branch-name {
   text-decoration: underline;
   text-decoration-color: var(--iu-border);
   text-underline-offset: 3px;

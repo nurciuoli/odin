@@ -3,7 +3,6 @@ import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch 
 import type { SessionDetail } from '@odin/shared/api'
 import { PREVIEW_MIN, maxPreviewWidth } from '@/app/layout'
 import { IuButton } from '@/components/Button'
-import { IuIcon } from '@/components/Icon'
 import { IuTabs } from '@/components/Tabs'
 import SessionEnvironment from './SessionEnvironment.vue'
 import ChangesPanel from '@/screens/git/ChangesPanel.vue'
@@ -23,6 +22,10 @@ const filesTabs = [
   { id: 'changes', label: 'Changes' },
   { id: 'environment', label: 'Environment' },
 ]
+const stackedArtifact = computed(() => tab.value === 'artifacts' && props.resizable)
+watch(stackedArtifact, stacked => {
+  if (stacked) filesTab.value = 'files'
+})
 const gitTarget = computed(() => ({ kind: 'session' as const, id: props.session.id }))
 /** Opens the Changes tab (the header's changed-files count). */
 function openChanges() {
@@ -44,6 +47,7 @@ watch(filePanel, panel => {
 })
 function openCell(cell: CellRef) {
   tab.value = 'files'
+  filesTab.value = 'files'
   if (filePanel.value) void filePanel.value.openCell(cell)
   else pendingCell.value = cell
 }
@@ -180,23 +184,26 @@ defineExpose({ openFile, openCell, openChanges })
         <IuButton
           variant="ghost"
           size="sm"
-          icon-only
-          aria-label="Hide preview"
-          title="Hide preview"
+          :aria-label="tab === 'files' ? 'Hide workspace' : 'Hide preview'"
           @click="emit('close')"
         >
-          <template #icon><IuIcon name="panelRight" :size="14" /></template>
+          {{ tab === 'files' ? 'Hide workspace' : 'Hide preview' }}
         </IuButton>
       </div>
-      <div class="session-workbench__content">
+      <div
+        class="session-workbench__content"
+        :class="{ 'session-workbench__content--stacked': stackedArtifact }"
+      >
         <div v-if="drag" class="session-workbench__drag-shield" aria-hidden="true" />
-        <div v-show="tab === 'files'" class="session-workbench__file-panel">
+        <div v-show="tab === 'files' || stackedArtifact" class="session-workbench__file-panel">
           <IuTabs
             v-model="filesTab"
             class="session-workbench__file-tabs"
             :tabs="filesTabs"
+            :bar-height="48"
             :panels="false"
             id-base="session-files-tabs"
+            @update:model-value="tab = 'files'"
           />
           <div
             v-show="filesTab === 'files'"
@@ -209,7 +216,9 @@ defineExpose({ openFile, openCell, openChanges })
               :key="session.id"
               ref="filePanel"
               :session="session"
+              :browsing-only="stackedArtifact"
               @hide="emit('close')"
+              @activate-document="tab = 'files'"
               @open-environment="filesTab = 'environment'"
             />
           </div>
@@ -276,7 +285,7 @@ defineExpose({ openFile, openCell, openChanges })
   position: relative;
   z-index: 4;
   flex: none;
-  height: 38px;
+  height: 48px;
   box-sizing: border-box;
   display: flex;
   align-items: center;
@@ -295,7 +304,14 @@ defineExpose({ openFile, openCell, openChanges })
 }
 .session-workbench__file-tabs {
   flex: none;
-  padding: 0 14px;
+}
+.session-workbench__content--stacked {
+  flex-direction: column;
+}
+.session-workbench__content--stacked > .session-workbench__file-panel {
+  flex: 0 1 42%;
+  min-height: min(200px, 50%);
+  border-bottom: 1px solid var(--iu-border);
 }
 .session-workbench__file-tab {
   display: flex;

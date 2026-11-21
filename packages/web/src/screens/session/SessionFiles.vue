@@ -58,8 +58,8 @@ import {
 import { SURFACE } from './surface'
 import type { CellRef } from './fileActivity'
 
-const props = defineProps<{ session: SessionDetail }>()
-const emit = defineEmits<{ hide: []; 'open-environment': [] }>()
+const props = defineProps<{ session: SessionDetail; browsingOnly?: boolean }>()
+const emit = defineEmits<{ hide: []; 'open-environment': []; 'activate-document': [] }>()
 const api = useApi()
 const sessionId = computed(() => props.session.id)
 const composerDrafts = useDrafts()
@@ -103,6 +103,15 @@ const error = ref('')
 const busy = ref(false)
 const expanded = ref(false)
 const sidebarCollapsed = ref(false)
+watch(
+  () => props.browsingOnly,
+  browsingOnly => {
+    if (browsingOnly) {
+      sidebarCollapsed.value = false
+      expanded.value = false
+    }
+  },
+)
 const browseView = ref('list')
 /** Folders have no size from the listing, so they weigh as much as the average file to stay visible. */
 const heatItems = computed<HeatItem[]>(() => {
@@ -155,6 +164,7 @@ async function browse(path = '') {
 
 // ── opening ──
 async function openText(path: string) {
+  emit('activate-document')
   const request = ++openRequest
   const target: DocRef = { kind: 'file', path }
   if (findDoc(docs.value, target)) {
@@ -176,6 +186,7 @@ async function openText(path: string) {
 }
 /** Open the notebook at `path`; `create` writes an empty one first. The file is shown read-only until its kernel is. */
 async function openNotebookDoc(path: string, create = false) {
+  emit('activate-document')
   const existing = notebooks.value[path]
   docs.value = openDoc(docs.value, { kind: 'notebook', path })
   if (existing && existing.phase !== 'failed') return
@@ -398,6 +409,10 @@ function useDisk() {
 function close(doc: OpenDoc) {
   if (isDirty(doc) && !window.confirm(`Discard unsaved changes to ${doc.ref.path}?`)) return
   docs.value = closeDoc(docs.value, doc.key)
+  if (!docs.value.docs.length) {
+    sidebarCollapsed.value = false
+    expanded.value = false
+  }
   if (doc.ref.kind === 'file') delete drafts.value[doc.ref.path]
   else delete notebooks.value[doc.ref.path]
 }
@@ -512,74 +527,69 @@ defineExpose({ open, openCell })
     class="session-files"
     :class="{
       'session-files--expanded': expanded,
-      'session-files--browse-only': !docs.docs.length,
+      'session-files--browse-only': browsingOnly || !docs.docs.length,
     }"
     aria-label="Workspace files"
   >
-    <aside
+    <section
       class="session-files__sidebar"
       :class="{ 'session-files__sidebar--collapsed': sidebarCollapsed }"
+      aria-label="File browser"
     >
-      <div class="session-files__sidebar-header">
-        <span class="session-files__sidebar-title">Files</span>
-        <span class="session-files__sidebar-actions">
-          <button
-            v-if="expanded"
-            type="button"
-            class="session-files__sidebar-toggle"
-            aria-label="Exit full screen"
-            title="Exit full screen"
-            @click="expanded = false"
-          >
-            <IuIcon name="minimize" :size="14" />
-          </button>
-          <button
-            type="button"
-            class="session-files__sidebar-toggle"
-            aria-label="Hide preview"
-            title="Hide preview"
-            @click="emit('hide')"
-          >
-            <IuIcon name="close" :size="14" />
-          </button>
-          <button
-            type="button"
-            class="session-files__sidebar-toggle"
-            :aria-expanded="!sidebarCollapsed"
-            :aria-label="sidebarCollapsed ? 'Expand file browser' : 'Collapse file browser'"
-            @click="sidebarCollapsed = !sidebarCollapsed"
-          >
-            <IuIcon :name="sidebarCollapsed ? 'chevronRight' : 'chevronDown'" :size="14" />
-          </button>
+      <div class="session-files__nav">
+        <IuButton
+          v-if="listing.path && !sidebarCollapsed"
+          size="sm"
+          variant="ghost"
+          @click="browse()"
+          >Root</IuButton
+        >
+        <IuButton
+          v-if="listing.path && !sidebarCollapsed"
+          size="sm"
+          variant="ghost"
+          @click="browse(parentPath(listing.path))"
+          >Up</IuButton
+        >
+        <span class="session-files__location" :title="listing.path || session.cwd">
+          <IuIcon name="folder" :size="14" />
+          {{ listing.path || session.project }}
         </span>
+        <IuMenu
+          v-if="!sidebarCollapsed"
+          :items="newFileItems"
+          placement="bottom-end"
+          fixed
+          @select="onNewFile"
+        >
+          <template #trigger="{ toggle, open }">
+            <IuButton
+              size="sm"
+              variant="ghost"
+              aria-haspopup="menu"
+              :aria-expanded="open"
+              @click="toggle"
+            >
+              <template #icon><IuIcon name="plus" :size="14" /></template>
+              New
+            </IuButton>
+          </template>
+        </IuMenu>
+        <IuButton
+          v-if="docs.docs.length && !browsingOnly"
+          size="sm"
+          variant="ghost"
+          :aria-expanded="!sidebarCollapsed"
+          :aria-label="sidebarCollapsed ? 'Expand file browser' : 'Collapse file browser'"
+          @click="sidebarCollapsed = !sidebarCollapsed"
+        >
+          <template #icon>
+            <IuIcon :name="sidebarCollapsed ? 'chevronRight' : 'chevronDown'" :size="14" />
+          </template>
+          {{ sidebarCollapsed ? 'Show files' : 'Collapse' }}
+        </IuButton>
       </div>
       <div v-show="!sidebarCollapsed" class="session-files__sidebar-content">
-        <div class="session-files__nav">
-          <IuButton size="sm" variant="ghost" @click="browse()">Root</IuButton>
-          <IuButton
-            v-if="listing.path"
-            size="sm"
-            variant="ghost"
-            @click="browse(parentPath(listing.path))"
-            >Up</IuButton
-          >
-          <span class="session-files__spacer" />
-          <IuMenu :items="newFileItems" placement="bottom-end" fixed @select="onNewFile">
-            <template #trigger="{ toggle, open }">
-              <IuButton
-                size="sm"
-                variant="ghost"
-                aria-haspopup="menu"
-                :aria-expanded="open"
-                @click="toggle"
-              >
-                <template #icon><IuIcon name="plus" :size="14" /></template>
-                New
-              </IuButton>
-            </template>
-          </IuMenu>
-        </div>
-        <div class="session-files__location">{{ listing.path || 'Working directory' }}</div>
         <IuSegmented
           v-model="browseView"
           class="session-files__view"
@@ -606,7 +616,7 @@ defineExpose({ open, openCell })
               v-if="listing.entries.length"
               label="Directory entries, sized by file size"
               :items="heatItems"
-              :selected-id="activePath"
+              :selected-id="browsingOnly ? undefined : activePath"
               :height="220"
               @select="pressEntry"
             />
@@ -618,9 +628,7 @@ defineExpose({ open, openCell })
               :key="entry.path"
               type="button"
               class="session-files__entry"
-              :class="{
-                'session-files__entry--active': entry.kind === 'file' && activePath === entry.path,
-              }"
+              :aria-current="!browsingOnly && activePath === entry.path ? 'true' : undefined"
               @click="entry.kind === 'directory' ? browse(entry.path) : open(entry.path)"
             >
               <IuIcon
@@ -640,9 +648,9 @@ defineExpose({ open, openCell })
         </template>
         <p v-if="error" class="session-files__error" role="alert">{{ error }}</p>
       </div>
-    </aside>
+    </section>
 
-    <div v-if="docs.docs.length" class="session-files__main">
+    <div v-if="docs.docs.length" v-show="!browsingOnly" class="session-files__main">
       <div class="session-files__tabs">
         <div
           class="session-files__tablist"
@@ -882,12 +890,12 @@ html.is-desktop-shell .session-files--expanded {
 }
 /* File browser on top, open documents below */
 .session-files__sidebar {
-  flex: 0 0 50%;
+  flex: 0 1 42%;
   width: 100%;
-  min-height: 0;
+  min-height: min(152px, 50%);
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid var(--iu-border-quiet);
+  border-bottom: 1px solid var(--iu-border);
   background: var(--iu-ground);
 }
 @media (prefers-reduced-motion: no-preference) {
@@ -896,49 +904,8 @@ html.is-desktop-shell .session-files--expanded {
   }
 }
 .session-files__sidebar--collapsed {
-  flex: 0 0 36px;
-}
-.session-files__sidebar-header {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 36px;
-  padding: 0 6px 0 10px;
-  border-bottom: 1px solid var(--iu-border-quiet);
-}
-.session-files__sidebar-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-.session-files__sidebar-title {
-  font-size: var(--iu-font-size-12);
-  font-weight: var(--iu-font-weight-medium);
-  color: var(--iu-text-muted);
-  text-transform: uppercase;
-  letter-spacing: var(--iu-tracking-caps-tight);
-}
-.session-files__sidebar-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--iu-radius-sm);
-  background: transparent;
-  color: var(--iu-text-muted);
-  cursor: pointer;
-}
-.session-files__sidebar-toggle:hover {
-  background: var(--iu-well);
-  color: var(--iu-text);
-}
-.session-files__sidebar-toggle:focus-visible {
-  outline: var(--iu-focus-ring);
-  outline-offset: var(--iu-focus-offset);
+  flex: 0 0 auto;
+  min-height: 0;
 }
 .session-files__sidebar-content {
   flex: 1;
@@ -948,19 +915,24 @@ html.is-desktop-shell .session-files--expanded {
 }
 .session-files__nav {
   display: flex;
-  gap: 2px;
-  padding: 6px;
-}
-.session-files__spacer {
-  flex: 1;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-bottom: 1px solid var(--iu-border-quiet);
 }
 .session-files__location {
-  padding: 0 10px 6px;
-  font-size: var(--iu-font-size-11);
-  color: var(--iu-text-muted);
+  flex: 1;
+  min-width: 0;
+  font-size: var(--iu-font-size-12);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.session-files__location > .iu-icon {
+  margin-right: 4px;
+  color: var(--iu-text-muted);
+  vertical-align: middle;
 }
 .session-files__state {
   padding: 8px 10px;
@@ -998,8 +970,9 @@ html.is-desktop-shell .session-files--expanded {
 .session-files__entry:hover {
   background: var(--iu-well);
 }
-.session-files__entry--active {
-  background: var(--iu-accent-quiet);
+.session-files__entry[aria-current='true'] {
+  background: var(--iu-accent-wash);
+  box-shadow: inset 0 0 0 1px var(--iu-accent-border);
   color: var(--iu-accent);
 }
 .session-files__entry:focus-visible {
@@ -1041,7 +1014,7 @@ html.is-desktop-shell .session-files--expanded {
   gap: 2px;
   padding: 4px 8px;
   border-bottom: 1px solid var(--iu-border-quiet);
-  background: var(--iu-ground);
+  background: var(--iu-surface);
 }
 .session-files__tablist {
   flex: 1;
@@ -1059,10 +1032,13 @@ html.is-desktop-shell .session-files--expanded {
   color: var(--iu-text-muted);
   font-size: var(--iu-font-size-12);
 }
-.session-files__tab:hover,
-.session-files__tab--active {
+.session-files__tab:hover {
   background: var(--iu-well);
   color: var(--iu-text);
+}
+.session-files__tab.session-files__tab--active {
+  background: var(--iu-accent-wash);
+  color: var(--iu-accent);
 }
 .session-files__tab-select {
   display: flex;

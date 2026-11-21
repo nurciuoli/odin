@@ -1,0 +1,1 @@
+- Session files stay above open documents and docked artifacts, so you can switch files while keeping the browser in view. Session details are more compact and show the branch first, with headers aligned across the workspace.

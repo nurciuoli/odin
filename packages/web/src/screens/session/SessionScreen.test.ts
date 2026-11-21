@@ -621,8 +621,11 @@ describe('SessionScreen', () => {
     expect(panel().classes()).not.toContain('is-closed')
     const workspace = panel().find('[aria-label="Session workspace"]')
     expect(wrapper!.find('.session-side__top').element.firstElementChild).toBe(workspace.element)
-    expect(workspace.find('a[href="/p/odin"]').exists()).toBe(true)
-    expect(workspace.find('[aria-label="Branch"]').exists()).toBe(true)
+    expect(
+      workspace.element.firstElementChild?.contains(workspace.get('[aria-label="Branch"]').element),
+    ).toBe(true)
+    expect(workspace.find('a[href="/p/odin"]').exists()).toBe(false)
+    expect(panel().get('[aria-label="Projects"]').find('a[href="/p/odin"]').exists()).toBe(true)
     expect(workspace.text()).not.toContain('claude')
     expect(wrapper!.find('.session-header__meta').exists()).toBe(false)
     const hide = wrapper!.find('[aria-label="Hide details"]')
@@ -845,7 +848,7 @@ describe('SessionScreen', () => {
     expect(wrapper!.find('[aria-label^="Show artifacts"]').exists()).toBe(false)
   })
 
-  it('shows one artifact in the right column and a card in the thread', async () => {
+  it('shows a docked artifact below the file browser and opens a selected file in its place', async () => {
     const { api } = await mountSession(FIXTURE_SESSION_IDS.idle)
     const column = wrapper!.find('aside[aria-label="Artifacts"]')
     expect(column.exists()).toBe(true)
@@ -859,6 +862,16 @@ describe('SessionScreen', () => {
     expect(thread.find('iframe').exists()).toBe(false)
     expect(thread.find('.artifact-card').text()).toContain('Pick a History layout')
     expect(thread.find('.artifact-card').text()).toContain('Showing')
+    const browser = wrapper!.get('[aria-label="File browser"]')
+    expect(browser.isVisible()).toBe(true)
+    await browser
+      .findAll('button')
+      .find(entry => entry.text() === 'README.md')!
+      .trigger('click')
+    await flushPromises()
+    expect(browser.get('[aria-current="true"]').text()).toBe('README.md')
+    expect(wrapper!.get('.session-workbench').attributes('data-tab')).toBe('files')
+    expect(column.find('iframe').element).toBe(iframe.element)
   })
 
   it('lists artifacts in Details and previews a card without moving focus', async () => {

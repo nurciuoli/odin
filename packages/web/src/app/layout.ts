@@ -8,7 +8,7 @@ export const CHAT_MIN = 480
 /** The narrowest the docked preview pane gets (its own limit, shared here so the rules agree with it). */
 export const PREVIEW_MIN = 480
 /** The Details panel's width when docked beside the conversation. */
-export const DETAILS_WIDTH = 420
+export const DETAILS_WIDTH = 340
 /** The app sidebar's expanded width. */
 export const SIDEBAR_WIDTH = 288
 
