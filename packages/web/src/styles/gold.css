@@ -1,0 +1,46 @@
+/* Signature metal: one pass, then a readable, still gold surface. */
+.iu-gold-text {
+  color: var(--iu-gold);
+  background: var(--iu-gold-metal) 100% 0 / 280% 100%;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: iu-gold-pass var(--iu-dur-gold) var(--iu-ease) 1 both;
+}
+
+.iu-gold-edge {
+  position: relative;
+}
+.iu-gold-edge::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  top: 0;
+  left: 12px;
+  right: 12px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--iu-gold),
+    var(--iu-gold-light),
+    var(--iu-gold),
+    transparent
+  );
+  background-size: 280% 100%;
+  animation: iu-gold-pass var(--iu-dur-gold) var(--iu-ease) 1 both;
+}
+@keyframes iu-gold-pass {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .iu-gold-text,
+  .iu-gold-edge::after {
+    animation: none;
+    background-position: 0% 0;
+  }
+}

@@ -6,17 +6,20 @@ import { IuCard } from '@/components/Card'
 import { IuIcon } from '@/components/Icon'
 import type { ArtifactRef } from './sessionView'
 
-defineProps<{
-  artifact: ArtifactRef
-  /** This artifact is the one on show in the column. */
-  current?: boolean
-}>()
+withDefaults(
+  defineProps<{
+    artifact: ArtifactRef
+    /** This artifact is the one on show in the column. */
+    current?: boolean
+  }>(),
+  { current: false },
+)
 
 const emit = defineEmits<{ open: [id: number, version: number] }>()
 </script>
 
 <template>
-  <IuCard class="artifact-card" elevation="raised" density="compact" :selected="current">
+  <IuCard class="artifact-card" elevation="raised" density="compact" :selected="current" signature>
     <div class="artifact-card__row">
       <span class="artifact-card__icon" aria-hidden="true"><IuIcon name="file" :size="16" /></span>
       <span class="artifact-card__text">
@@ -54,8 +57,8 @@ const emit = defineEmits<{ open: [id: number, version: number] }>()
   width: 28px;
   height: 28px;
   border-radius: var(--iu-radius-sm);
-  background: var(--iu-accent-wash);
-  color: var(--iu-accent);
+  background: var(--iu-gold-wash);
+  color: var(--iu-gold);
 }
 .artifact-card__text {
   flex: 1;

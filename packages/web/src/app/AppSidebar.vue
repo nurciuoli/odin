@@ -168,7 +168,7 @@ onBeforeUnmount(() => {
       <div class="app-wordmark" :class="{ 'is-collapsed': collapsed }">
         <RouterLink v-if="!collapsed" to="/" class="app-wordmark__link" aria-label="Odin, home">
           <img class="app-wordmark__mark" src="/odin.svg" alt="" width="28" height="28" />
-          <span v-if="!collapsed" class="app-wordmark__text">odin</span>
+          <span v-if="!collapsed" class="app-wordmark__text iu-gold-text">odin</span>
         </RouterLink>
         <IuBadge
           v-if="mock && !collapsed"

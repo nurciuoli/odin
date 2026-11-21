@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, useSlots } from 'vue'
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'link'
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'link' | 'signature'
 type Size = 'sm' | 'md' | 'lg'
 
 const props = withDefaults(
@@ -45,6 +45,15 @@ const classes = computed(() => [
     :aria-busy="loading || undefined"
     :aria-disabled="isDisabled || undefined"
   >
+    <svg
+      v-if="variant === 'signature' && !isDisabled"
+      class="iu-btn__gold-ring"
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <rect x="2" y="2" width="96" height="96" rx="12" pathLength="100" />
+    </svg>
     <span v-if="loading" class="iu-btn__spinner" aria-hidden="true" />
     <slot v-else-if="slots.icon" name="icon" />
     <span v-if="!iconOnly" class="iu-btn__label"><slot /></span>
@@ -119,6 +128,41 @@ const classes = computed(() => [
   background: var(--iu-accent-fill);
   border-color: var(--iu-accent-fill);
   color: var(--iu-accent-ink);
+}
+.iu-btn--signature:not(:disabled):not([aria-disabled='true']) {
+  background: var(--iu-raised);
+  border-color: var(--iu-gold);
+  color: var(--iu-text);
+}
+.iu-btn__gold-ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  fill: none;
+  stroke: var(--iu-gold-light);
+  stroke-width: 1;
+}
+.iu-btn__gold-ring rect {
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 14 86;
+  animation: iu-btn-gold-draw var(--iu-dur-gold) var(--iu-ease) 1 both;
+}
+@keyframes iu-btn-gold-draw {
+  from {
+    stroke-dashoffset: 100;
+    opacity: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .iu-btn__gold-ring {
+    display: none;
+  }
 }
 .iu-btn--primary:hover:not(:disabled) {
   background: var(--iu-accent-hover);

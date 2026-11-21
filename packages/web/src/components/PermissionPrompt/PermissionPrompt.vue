@@ -160,7 +160,7 @@ const denyLabel = computed(() => (props.request.kind === 'plan' ? 'Keep planning
 <template>
   <section
     ref="root"
-    class="iu-permission-prompt"
+    class="iu-permission-prompt iu-gold-edge"
     :class="{ 'is-careful': request.defaultToDeny, 'is-question': request.kind === 'question' }"
     role="group"
     :aria-labelledby="request.kind === 'question' ? undefined : titleId"
@@ -313,8 +313,8 @@ const denyLabel = computed(() => (props.request.kind === 'plan' ? 'Keep planning
   min-width: 0;
   padding: 12px 14px;
   background: var(--iu-surface);
-  border: 1px solid var(--iu-info-border);
-  border-left: 3px solid var(--iu-info);
+  border: 1px solid var(--iu-border);
+  border-left: 3px solid var(--iu-gold-shadow);
   border-radius: var(--iu-radius-lg);
 }
 

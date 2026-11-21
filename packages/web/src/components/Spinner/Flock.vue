@@ -124,6 +124,26 @@ onBeforeUnmount(() => clearTimeout(timer))
   color: var(--iu-text-2);
 }
 
+/* The lead bird alone carries the signature while flying, and retains it at rest. */
+.iu-flock:not(.iu-flock--neutral):not(.iu-flock--failed):not(.iu-flock--idle) i:first-of-type {
+  background: var(--iu-gold-metal) 0% 0 / 280% 100%;
+}
+.iu-flock:not(.iu-flock--neutral):not(.iu-flock--failed):not(.iu-flock--idle)
+  i:first-of-type::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--iu-gold-metal);
+  background-size: 280% 100%;
+  animation: iu-gold-pass var(--iu-dur-gold) var(--iu-ease) 1 both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .iu-flock i:first-of-type::after {
+    animation: none !important;
+  }
+}
+
 /* ── dots ─────────────────────────────────────────────────────────────────── */
 /* `translate` holds the rest place and transitions; `transform` is the flight (and the hop) */
 .iu-flock i {

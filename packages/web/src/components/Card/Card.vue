@@ -9,9 +9,18 @@ const props = withDefaults(
     density?: 'compact' | 'comfortable'
     intent?: 'positive' | 'warning' | 'danger' | null
     selected?: boolean
+    /** A signature artifact: catches gold once when it arrives. */
+    signature?: boolean
     as?: string
   }>(),
-  { elevation: 'raised', density: 'comfortable', intent: null, selected: false, as: 'div' },
+  {
+    elevation: 'raised',
+    density: 'comfortable',
+    intent: null,
+    selected: false,
+    signature: false,
+    as: 'div',
+  },
 )
 
 const slots = useSlots()
@@ -35,6 +44,7 @@ const dotStatus = computed(() => (props.intent ? INTENT_STATUS[props.intent] : n
       `iu-card--${density}`,
       intent && `iu-card--${intent}`,
       { 'iu-card--selected': selected },
+      signature && 'iu-card--signature iu-gold-edge',
     ]"
     :aria-current="selected || undefined"
   >
@@ -90,6 +100,28 @@ const dotStatus = computed(() => (props.intent ? INTENT_STATUS[props.intent] : n
 }
 .iu-card--selected {
   border-color: var(--iu-accent);
+}
+.iu-card--signature.iu-card--selected {
+  border-color: var(--iu-gold-shadow);
+}
+.iu-card--raised:not(.iu-card--signature):hover::after,
+.iu-card--raised:not(.iu-card--signature):focus-within::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  top: 0;
+  left: 12px;
+  right: 12px;
+  height: 1px;
+  background: var(--iu-gold-metal);
+  background-size: 280% 100%;
+  animation: iu-gold-pass var(--iu-dur-gold) var(--iu-ease) 1 both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .iu-card--raised:not(.iu-card--signature):hover::after,
+  .iu-card--raised:not(.iu-card--signature):focus-within::after {
+    animation: none;
+  }
 }
 .iu-card--comfortable .iu-card__body {
   padding: 18px;

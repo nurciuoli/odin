@@ -1,0 +1,2 @@
+- Odin's signature is now restrained metallic gold, with pewter for everyday attention, a single shine on Send, artifacts and requests, and a fine gold edge on hovered cards. Reduced-motion preferences keep the shine still.
+- Agent avatars now use Odin's raven silhouette.

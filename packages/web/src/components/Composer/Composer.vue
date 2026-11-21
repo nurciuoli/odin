@@ -693,7 +693,7 @@ onBeforeUnmount(() => {
 
         <IuButton
           v-if="!showStop"
-          variant="primary"
+          variant="signature"
           size="sm"
           icon-only
           aria-label="Send"
