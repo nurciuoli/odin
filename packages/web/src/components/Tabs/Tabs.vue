@@ -14,6 +14,8 @@ const props = withDefaults(
     variant?: 'underline' | 'segmented' | 'vertical'
     lazy?: boolean
     overflow?: 'menu' | 'wrap'
+    /** Minimum height of the tab bar when aligned with a neighbouring pane header. */
+    barHeight?: number
     /**
      * false: render only the tab list. The consumer draws the panel itself (elsewhere in its layout) and gives it
      * `id="<idBase>-panel-<tab id>"`, `role="tabpanel"` and `aria-labelledby="<idBase>-tab-<tab id>"`.
@@ -57,7 +59,11 @@ function select(id: string) {
 </script>
 
 <template>
-  <div class="iu-tabs" :class="`iu-tabs--${variant}`">
+  <div
+    class="iu-tabs"
+    :class="`iu-tabs--${variant}`"
+    :style="barHeight ? { '--iu-tabs-bar-height': `${barHeight}px` } : undefined"
+  >
     <div class="iu-tabs__list" role="tablist" @keydown="onKeydown">
       <button
         v-for="t in tabs"
@@ -103,6 +109,7 @@ function select(id: string) {
 
 .iu-tabs__list {
   display: flex;
+  min-height: var(--iu-tabs-bar-height, auto);
   gap: 2px;
   border-bottom: 1px solid var(--iu-hairline);
   padding: 0 8px;

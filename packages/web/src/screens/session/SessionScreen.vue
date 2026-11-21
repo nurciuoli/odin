@@ -56,7 +56,7 @@ import SessionHeader from './SessionHeader.vue'
 import SessionPrompts from './SessionPrompts.vue'
 import HandoffPrompt from './HandoffPrompt.vue'
 import { handoffCard } from './handoff'
-import { CHAT_MIN, PREVIEW_MIN, detailsFit, setLayoutDemand } from '@/app/layout'
+import { CHAT_MIN, DETAILS_WIDTH, PREVIEW_MIN, detailsFit, setLayoutDemand } from '@/app/layout'
 import SessionSide from './SessionSide.vue'
 import SessionThread from './SessionThread.vue'
 import SessionTimeline from './SessionTimeline.vue'
@@ -397,8 +397,14 @@ watch(
 )
 const workbenchTab = ref<PreviewView | null>(null)
 const tab = computed<PreviewView>({
-  get: () => workbenchTab.value ?? (artifacts.value.length ? 'artifacts' : 'files'),
-  set: t => (workbenchTab.value = t),
+  get: () => {
+    const selected = workbenchTab.value ?? (artifacts.value.length ? 'artifacts' : 'files')
+    return selected === 'artifacts' && narrow.value && filesOpen.value ? 'files' : selected
+  },
+  set: t => {
+    workbenchTab.value = t
+    if (t === 'files') filesOpen.value = true
+  },
 })
 // a new artifact brings its tab forward (selection only; focus stays where it is)
 watch(
@@ -811,13 +817,12 @@ function onDeleted() {
             <IuButton
               variant="ghost"
               size="sm"
-              icon-only
               :aria-label="sideOpen ? 'Hide details' : 'Show details'"
               :title="sideOpen ? 'Hide details' : 'Show details'"
               :aria-pressed="sideOpen"
               @click="sideOpen = !sideOpen"
             >
-              <template #icon><IuIcon name="panelRight" :size="14" /></template>
+              Details
             </IuButton>
             <IuButton
               v-if="narrow && artifacts.length"
@@ -960,10 +965,10 @@ function onDeleted() {
           </div>
           <IuSidePanel
             v-model:open="sideOpen"
-            :width="420"
+            :width="DETAILS_WIDTH"
             :presentation="narrow || !detailsFits ? 'overlay' : 'inline'"
-            variant="compact"
-            title="Details"
+            variant="column"
+            title="Session details"
             aria-label="Session details"
           >
             <SessionSide
