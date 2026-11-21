@@ -26,15 +26,24 @@
   --iu-text-muted: #96948c;
   --iu-text-disabled: #5c5b54;
 
-  /* accent — ember. Two depths (1B locked): bright for ink/links/strokes/focus
-     rings on dark surfaces, deep fill for anything white sits on top of
-     (white on bright ember is 2.96:1 — fails; white on the deep fill is 4.88:1). */
-  --iu-accent: #e07b4a;
-  --iu-accent-fill: #b85324;
-  --iu-accent-hover: #c25c2c;
+  /* Signature gold: a quiet base with a narrow, pale reflection. */
+  --iu-gold-light: #f4e4c0;
+  --iu-gold: #c9a56a;
+  --iu-gold-shadow: #7a5e30;
+  --iu-gold-wash: #261f14;
+  --iu-gold-metal: linear-gradient(
+    108deg,
+    var(--iu-gold) 32%,
+    var(--iu-gold-light) 50%,
+    var(--iu-gold) 68%
+  );
+  /* Pewter carries everyday attention; gold is reserved for signature moments. */
+  --iu-accent: #b7a48a;
+  --iu-accent-fill: #605344;
+  --iu-accent-hover: #72634f;
   --iu-accent-ink: #ffffff;
-  --iu-accent-border: #5c2e14;
-  --iu-accent-wash: #26150c;
+  --iu-accent-border: #51483b;
+  --iu-accent-wash: #24211c;
 
   /* semantic: info / positive / warning / danger — each a base + wash + border triple */
   --iu-info: #8fa9d4;
@@ -71,8 +80,8 @@
   --iu-hue-4-ink: #bcaedb;
   --iu-hue-5-bg: #2c3a26;
   --iu-hue-5-ink: #a9c48d;
-  /* agents: a deeper ember wash than --iu-accent-wash so the tile reads as an object, not a highlight */
-  --iu-agent-bg: #3a2113;
+  /* agents: a subdued gold wash behind the raven */
+  --iu-agent-bg: var(--iu-gold-wash);
 
   /* elevation — shadows and scrims, darkest to lightest use */
   --iu-shadow-raised: 0 12px 28px rgb(0 0 0 / 0.4); /* floating cards, toasts, listboxes */
@@ -91,10 +100,10 @@
   --iu-diff-remove-gutter: #211412;
   --iu-diff-remove-ink: #e7b4aa;
 
-  /* focus: one crisp ring everywhere (2px ember, 2px gap; inset rows use the negative offset) and one selection colour */
+  /* focus: one crisp pewter ring everywhere and one selection colour */
   --iu-focus-ring: 2px solid var(--iu-accent);
   --iu-focus-offset: 2px;
-  --iu-selection: rgb(224 123 74 / 0.34);
+  --iu-selection: rgb(183 164 138 / 0.34);
 
   /* depth by light: a raised surface catches light on its top edge instead of casting a shadow */
   --iu-lip-edge: rgb(255 255 255 / 0.085); /* the top border of a raised surface */
@@ -119,6 +128,7 @@
   --iu-dur-roll: 280ms; /* a verb rolling to past tense */
   --iu-dur-fold: 320ms; /* height folds: live note, run body, rail zip */
   --iu-dur-land: 600ms; /* a flock coming down to rest, taking off or scattering */
+  --iu-dur-gold: 900ms;
   --iu-dur-hop: 9s; /* one bird on the wire hops along and back in this time */
 
   /* type */

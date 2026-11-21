@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { IuIcon } from '@/components/Icon'
 
 const props = withDefaults(
   defineProps<{
@@ -41,8 +40,8 @@ const radius = computed(
     :style="{ '--sz': size + 'px', '--r': radius }"
     :title="name"
   >
-    <img v-if="src" :src="src" :alt="name" @error="$emit('imgerror')" />
-    <IuIcon v-else-if="kind === 'agent'" name="terminal" :size="size <= 24 ? 14 : 20" />
+    <img v-if="src && kind !== 'agent'" :src="src" :alt="name" @error="$emit('imgerror')" />
+    <i v-else-if="kind === 'agent'" class="iu-avatar__raven" aria-hidden="true" />
     <span v-else aria-hidden="true">{{ initials }}</span>
     <span
       v-if="presence && size >= 24"
@@ -109,10 +108,23 @@ const radius = computed(
   color: var(--iu-hue-5-ink);
 }
 
-/* Agent kind overrides hue with ember wash */
+/* Agent kind overrides identity hues with the signature metal. */
 .iu-avatar--agent {
   background: var(--iu-agent-bg);
-  color: var(--iu-accent);
+  color: var(--iu-gold);
+}
+.iu-avatar__raven {
+  width: 68%;
+  height: 58%;
+  background: var(--iu-gold-metal) 100% 0 / 280% 100%;
+  mask: var(--rv-sit) center / contain no-repeat;
+  animation: iu-gold-pass var(--iu-dur-gold) var(--iu-ease) 1 both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .iu-avatar__raven {
+    animation: none;
+    background-position: 0% 0;
+  }
 }
 
 /* Org kind stays neutral and bordered */
