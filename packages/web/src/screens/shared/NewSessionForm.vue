@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // The existing chat input, with launch-only configuration in its toolbar.
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, useId, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import type {
   AppSettings,
@@ -334,10 +334,35 @@ const sharedPlace = computed<ProjectWorktree | null>(() => {
   return form.worktree ? null : (list.find(w => w.main) ?? null)
 })
 const runningHere = computed(() => sharedPlace.value?.sessions.filter(x => x.running) ?? [])
+const sharedWarning = computed(() => {
+  const count = runningHere.value.length
+  return count ? `${count} ${count === 1 ? 'session' : 'sessions'} already running here` : ''
+})
+const sharedWarningId = useId()
+const sharedWarningOpen = ref(false)
+const sharedWarningButton = ref<HTMLElement | null>(null)
+watch(sharedWarning, warning => {
+  if (!warning) sharedWarningOpen.value = false
+})
+function leaveSharedWarning(event: PointerEvent) {
+  if (!(event.currentTarget as HTMLElement).contains(document.activeElement))
+    sharedWarningOpen.value = false
+}
+function blurSharedWarning(event: FocusEvent) {
+  if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null))
+    sharedWarningOpen.value = false
+}
+function dismissSharedWarning(event: KeyboardEvent) {
+  if (!sharedWarningOpen.value) return
+  event.stopPropagation()
+  sharedWarningOpen.value = false
+  sharedWarningButton.value?.focus()
+}
 function useNewWorktree() {
   form.existing = null
   form.worktree = true
   modeAnnouncement.value = 'Running in a new worktree'
+  focus()
 }
 const projectLabel = computed(
   () => store.projects.value.find(p => p.name === form.project)?.title || form.project || '',
@@ -572,23 +597,38 @@ defineExpose({ focus })
         :shortcut="whereKeys"
         :disabled="starting || loadingDefaults"
       />
-    </div>
-    <p class="new-session__shared" role="status" aria-live="polite">
-      <template v-if="runningHere.length">
-        {{ runningHere.length }} {{ runningHere.length === 1 ? 'session' : 'sessions' }} already
-        running here
-        <span aria-hidden="true">·</span>
-        <router-link
-          class="new-session__shared-link"
-          :to="{ name: 'session', params: { id: runningHere[0]!.id } }"
-          >{{ runningHere[0]!.title }}</router-link
+      <div
+        v-if="runningHere.length"
+        class="new-session__shared"
+        @pointerenter="sharedWarningOpen = true"
+        @pointerleave="leaveSharedWarning"
+        @focusout="blurSharedWarning"
+        @keydown.esc="dismissSharedWarning"
+      >
+        <button
+          ref="sharedWarningButton"
+          type="button"
+          class="new-session__shared-warning"
+          :aria-label="sharedWarning"
+          :aria-expanded="sharedWarningOpen"
+          :aria-controls="sharedWarningId"
+          @click="sharedWarningOpen = true"
         >
-        <span aria-hidden="true">·</span>
-        <button type="button" class="new-session__shared-use" @click="useNewWorktree">
-          Use a new worktree
+          <IuIcon name="alert" :size="16" />
         </button>
-      </template>
-    </p>
+        <div v-show="sharedWarningOpen" :id="sharedWarningId" class="new-session__shared-panel">
+          <p>{{ sharedWarning }}</p>
+          <router-link
+            class="new-session__shared-link"
+            :to="{ name: 'session', params: { id: runningHere[0]!.id } }"
+            >{{ runningHere[0]!.title }}</router-link
+          >
+          <button type="button" class="new-session__shared-use" @click="useNewWorktree">
+            Use a new worktree
+          </button>
+        </div>
+      </div>
+    </div>
     <IuComposer
       v-model="form.prompt"
       v-model:attachments="files"
@@ -642,6 +682,7 @@ defineExpose({ focus })
     />
     <p v-if="errors.prompt" class="new-session__error" role="alert">{{ errors.prompt }}</p>
     <span class="sr-only" role="status" aria-live="polite">{{ modeAnnouncement }}</span>
+    <span class="sr-only" role="status" aria-live="polite">{{ sharedWarning }}</span>
     <IuCallout v-if="attachmentError" intent="warning" variant="inline" live>{{
       attachmentError
     }}</IuCallout>
@@ -665,12 +706,46 @@ defineExpose({ focus })
   gap: 8px;
 }
 .new-session__shared {
-  margin: 0;
+  position: relative;
+}
+.new-session__shared-warning {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--iu-radius-sm);
+  background: none;
+  color: var(--iu-warning);
+  cursor: pointer;
+}
+.new-session__shared-warning:hover,
+.new-session__shared-warning[aria-expanded='true'] {
+  background: var(--iu-warning-wash);
+}
+.new-session__shared-panel {
+  position: absolute;
+  inset-block-start: 100%;
+  inset-inline-start: 0;
+  z-index: 30;
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  box-sizing: border-box;
+  width: 260px;
+  max-width: 70vw;
+  padding: 10px 12px;
+  border: 1px solid var(--iu-border-strong);
+  border-radius: var(--iu-radius-md);
+  background: var(--iu-surface-raised);
+  box-shadow: var(--iu-shadow-popover);
   font-size: var(--iu-font-size-12);
   color: var(--iu-text-muted);
+  overflow-wrap: anywhere;
 }
-.new-session__shared:empty {
-  display: none;
+.new-session__shared-panel p {
+  margin: 0;
 }
 .new-session__shared-link,
 .new-session__shared-use {
@@ -682,6 +757,7 @@ defineExpose({ focus })
   text-decoration: underline;
   cursor: pointer;
 }
+.new-session__shared-warning:focus-visible,
 .new-session__shared-link:focus-visible,
 .new-session__shared-use:focus-visible {
   outline: var(--iu-focus-ring);

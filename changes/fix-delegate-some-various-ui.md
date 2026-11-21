@@ -1,0 +1,2 @@
+- New chat shows a warning icon beside the checkout when another session is running there. Hover or activate the icon to open that session or switch to a new worktree.
+- On Home, ravens pass behind the clouds when they overlap.

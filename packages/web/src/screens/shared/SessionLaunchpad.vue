@@ -433,7 +433,7 @@ const title = (s: Session) =>
 
 <style>
 .launchpad {
-  /* the sky is a fixed canvas behind the page: keep it inside Home's own layer */
+  /* Keep the flock and clouds behind the content in Home's own stacking context. */
   isolation: isolate;
   width: 100%;
   max-width: 800px;
