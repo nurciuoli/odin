@@ -39,6 +39,21 @@ describe('model menu', () => {
     expect(menu.map(m => 'id' in m && m.id)).toEqual(['sonnet', 'haiku', '__more-models'])
   })
 
+  it('moves older Fable releases into More models', () => {
+    const menu = modelMenu([
+      { id: 'claude-fable-5-2', label: 'Fable 5.2' },
+      { id: 'claude-fable-5-1', label: 'Fable 5.1' },
+      { id: 'claude-fable-5', label: 'Fable 5' },
+      { id: 'haiku', label: 'Haiku 5.5' },
+    ])
+    expect(menu.map(m => 'id' in m && m.id)).toEqual(['claude-fable-5-2', 'haiku', '__more-models'])
+    const more = menu.at(-1)!
+    expect('items' in more && more.items).toEqual([
+      expect.objectContaining({ id: 'claude-fable-5-1' }),
+      expect.objectContaining({ id: 'claude-fable-5' }),
+    ])
+  })
+
   it('does not add an empty submenu or remove custom choices', () => {
     expect(modelMenu([{ id: 'local', label: 'Local' }])).toHaveLength(1)
     expect(modelMenu([])).toEqual([])
