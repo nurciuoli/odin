@@ -919,6 +919,9 @@ export function createSessionsService(deps: Deps, services: Services, options: S
     const createdAt = discoveryDate(info.createdAt);
     const nativeAt = discoveryDate(info.updatedAt);
     const nativeTitle = info.title?.trim().slice(0, 200) || null;
+    const firstPrompt = info.firstPrompt ?? "";
+    const firstShown = firstPrompt.trim().slice(0, 200);
+    const previewTitle = nativeTitle === firstShown;
     const known = row(info.sessionId);
     if (!known) {
       const at = nativeAt ?? createdAt ?? new Date(0).toISOString();
@@ -927,7 +930,7 @@ export function createSessionsService(deps: Deps, services: Services, options: S
         harness,
         project,
         cwd: info.cwd ?? path,
-        title: info.title,
+        title: previewTitle ? titleFromPrompt(firstPrompt) : info.title,
         branch: info.gitBranch,
         at,
         createdAt: createdAt ?? at,
@@ -938,10 +941,11 @@ export function createSessionsService(deps: Deps, services: Services, options: S
     }
     if (known.harness !== harness) return false;
 
-    // Adopt a generated title while the existing title is a placeholder or a first-prompt fallback.
-    const firstShown = info.firstPrompt?.trim().slice(0, 200) ?? "";
-    const fallback = PLACEHOLDER_TITLES.has(known.title) || known.title === firstShown || known.title === titleFromPrompt(known.first_prompt ?? "");
-    const title = nativeTitle && !PLACEHOLDER_TITLES.has(nativeTitle) && nativeTitle !== known.title && fallback ? nativeTitle : undefined;
+    // Keep the short fallback when the harness reports its prompt preview. A generated name can replace it later.
+    const promptTitle = titleFromPrompt(known.first_prompt ?? firstPrompt);
+    const fallback = PLACEHOLDER_TITLES.has(known.title) || known.title === firstShown || known.title === promptTitle;
+    const candidate = previewTitle ? promptTitle : nativeTitle;
+    const title = candidate && !PLACEHOLDER_TITLES.has(candidate) && candidate !== known.title && fallback ? candidate : undefined;
     const previous = known.discovery_updated_at;
     const titleChanged = nativeTitle !== known.discovery_title;
     // The first observation establishes a comparison point. Some harnesses touch their timestamp on rename.

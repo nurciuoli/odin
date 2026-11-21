@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { setImmediate } from "node:timers/promises";
 import { fakeHarness } from "../harness/fake.ts";
+import { titleFromPrompt } from "../launch/service.ts";
 import { createSessionsService } from "./service.ts";
 import { PROJECT, setup } from "./test-setup.ts";
 
@@ -73,6 +74,36 @@ test("a generated title keeps the timestamps and later native activity can surfa
     s.harness.seed({ sessionId: "external", cwd: s.projectPath, title: "A generated title", updatedAt: LATEST });
     await s.sessions.discover(PROJECT);
     assert.equal(s.sessions.get("external")?.activityAt, LATEST);
+  } finally {
+    await s.sessions.close();
+    s.services.library.close();
+    s.deps.db.close();
+  }
+});
+
+test("discovery keeps prompt previews short until the harness reports a name", async () => {
+  const s = setup();
+  try {
+    const text = "Investigate the login redirect and document the expected behavior. ".repeat(5).trimEnd();
+    const short = titleFromPrompt(text);
+    const session = await s.sessions.start({ project: PROJECT, prompt: { text } });
+    await s.harness.rename(session.id, text);
+    s.harness.seed({ sessionId: "external", cwd: s.projectPath, title: text, firstPrompt: text });
+
+    await s.sessions.discover(PROJECT);
+    assert.equal(s.sessions.get(session.id)?.title, short);
+    assert.equal(s.sessions.get("external")?.title, short);
+
+    // Repair a row that already adopted the long preview on an earlier scan.
+    s.sessions.patch(session.id, { title: text.slice(0, 200) });
+    await s.sessions.discover(PROJECT);
+    assert.equal(s.sessions.get(session.id)?.title, short);
+
+    await s.harness.rename(session.id, "Investigate login redirects");
+    await s.harness.rename("external", "Document login behavior");
+    await s.sessions.discover(PROJECT);
+    assert.equal(s.sessions.get(session.id)?.title, "Investigate login redirects");
+    assert.equal(s.sessions.get("external")?.title, "Document login behavior");
   } finally {
     await s.sessions.close();
     s.services.library.close();
