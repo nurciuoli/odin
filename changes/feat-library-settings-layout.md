@@ -1,0 +1,1 @@
+- Library uses the same compact two-column layout as Settings: a kind list on the left and a centered column of hairline rows, instead of a full-width table under a large page header.
