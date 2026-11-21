@@ -1,0 +1,1 @@
+- Checking another repository in the home composer makes it the working project (the chip names what you just picked). The picker remembers that choice as soon as you change it, so leaving Home and coming back keeps it.

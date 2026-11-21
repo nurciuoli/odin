@@ -70,6 +70,7 @@ describe('NewSessionForm', () => {
 
   beforeEach(() => {
     localStorage.removeItem('odin:last-runtime')
+    localStorage.removeItem('odin:last-project')
     localStorage.removeItem('odin:draft:new')
     resetDrafts()
   })
@@ -130,11 +131,24 @@ describe('NewSessionForm', () => {
     await flushPromises()
     expect(started).toHaveBeenCalledWith(expect.objectContaining({ harness: 'codex' }))
   })
+  it('restores a project picked in the composer after remounting, without starting', async () => {
+    const first = await mountForm()
+    await first.pick('Project', 'rick')
+    first.wrapper.unmount()
+    const second = await mountForm()
+    try {
+      expect(second.wrapper.findComponent(ComposerProjects).props('modelValue')).toBe('rick')
+      expect(second.wrapper.findComponent(ComposerProjects).props('projects')).toEqual(['rick'])
+    } finally {
+      second.wrapper.unmount()
+    }
+  })
   it('configures multiple repositories and lets the user choose the working repository', async () => {
     const { wrapper, api, type, start } = await mountForm()
     await wrapper.find('button[aria-label^="Projects:"]').trigger('click')
     const rick = wrapper.findAll('[role="menuitemcheckbox"]').find(b => b.text().includes('Rick'))!
     await rick.trigger('click')
+    expect(wrapper.find('button[aria-label^="Projects:"]').text()).toMatch(/Rick/)
     expect(wrapper.find('button[aria-label^="Projects:"]').text()).toContain('+1')
     await wrapper
       .findAll('[role="menuitem"]')
@@ -142,17 +156,17 @@ describe('NewSessionForm', () => {
       .trigger('click')
     await wrapper
       .findAll('[role="menuitemradio"]')
-      .find(b => b.text().includes('Rick'))!
+      .find(b => b.text().includes('Odin'))!
       .trigger('click')
     await type('Update both repositories')
     const spy = vi.spyOn(api, 'startSession')
     await start().trigger('click')
     await flushPromises()
     expect(spy).toHaveBeenCalledWith(
-      expect.objectContaining({ project: 'rick', projects: ['rick', 'odin'] }),
+      expect.objectContaining({ project: 'odin', projects: ['odin', 'rick'] }),
     )
     const found = await api.listSessions({ project: 'odin', q: 'Update both repositories' })
-    expect(found[0]!.projects).toEqual(['rick', 'odin'])
+    expect(found[0]!.projects).toEqual(['odin', 'rick'])
   })
   it('offers project and harness configuration with no workflow or primary-agent choice', async () => {
     const { wrapper, api, pick, type, start } = await mountForm()

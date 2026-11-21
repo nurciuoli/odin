@@ -37,4 +37,12 @@ describe('ComposerProjects', () => {
     expect(w.props('modelValue')).toBe('quant')
     w.unmount()
   })
+
+  it('makes a newly checked repository the working one', async () => {
+    const w = mountProjects(['odin'])
+    await choose(w, 'open-quant')
+    expect(w.props('projects')).toEqual(['odin', 'quant'])
+    expect(w.props('modelValue')).toBe('quant')
+    w.unmount()
+  })
 })

@@ -230,6 +230,12 @@ watch(
   names => emit('projectsChange', names),
   { immediate: true },
 )
+watch(
+  () => [form.project, form.projects.join('\0')] as const,
+  () => {
+    if (form.project) rememberProject(form.project, form.projects)
+  },
+)
 
 const projectOptions = computed(() =>
   store.projects.value.filter(p => !p.missing).map(p => ({ id: p.name, label: p.title })),
