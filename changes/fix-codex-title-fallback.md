@@ -1,0 +1,1 @@
+- Sessions keep a short prompt title while waiting for Codex to name them. Discovery also shortens existing titles copied from long prompt previews.
