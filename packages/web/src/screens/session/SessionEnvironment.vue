@@ -30,16 +30,23 @@ const summary = computed(() => {
   const found = environment.value
   if (!found) return ''
   if (ready.value) return 'Python is ready for notebooks.'
+  if (found.kernelStatus === 'broken') return 'The selected Python interpreter could not start.'
+  if (found.kernelStatus === 'missing-ipykernel') return 'The Python environment needs ipykernel.'
+  if (found.hostStatus === 'broken') return 'The managed Jupyter host needs repair.'
+  if (found.hostStatus === 'missing' && found.interpreter)
+    return 'Set up the managed Jupyter host to run notebooks.'
   if (found.interpreter) return 'Python was found. One more step makes it ready for notebooks.'
   return 'No Python environment yet. Set one up and notebooks can run.'
 })
 const details = computed<PropertyItem[]>(() => {
   const found = environment.value
   if (!found?.interpreter) return []
-  return [
+  const items: PropertyItem[] = [
     { label: 'Interpreter', value: found.interpreter, mono: true },
     { label: 'Runs on', value: where(found) },
   ]
+  if (found.cwd) items.push({ label: 'Directory', value: found.cwd, mono: true })
+  return items
 })
 const kernelStatus = (k: NotebookKernel): Status =>
   k.state === 'busy' || k.state === 'starting'

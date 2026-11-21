@@ -5,8 +5,8 @@ import { useApi } from '@/api'
 import { IuTerminalOutput } from '@/components/TerminalOutput'
 import NotebookWidget from './NotebookWidget.vue'
 const props = withDefaults(
-  defineProps<{ output: NotebookOutput; kernelId: string; cellId: string; index: number }>(),
-  {},
+  defineProps<{ output: NotebookOutput; kernelId?: string; cellId: string; index: number }>(),
+  { kernelId: undefined },
 )
 const api = useApi()
 const widget = computed(() => {
@@ -34,17 +34,30 @@ const image = computed(() => {
   }
   return null
 })
+const mimes = computed(() =>
+  props.output.type === 'reference'
+    ? props.output.mimeTypes
+    : props.output.type === 'display'
+      ? Object.keys(props.output.data)
+      : [],
+)
+const plot = computed(() => mimes.value.includes('application/vnd.plotly.v1+json'))
 const rich = computed(
   () =>
-    props.output.type === 'display' &&
-    ('text/html' in props.output.data ||
-      'application/javascript' in props.output.data ||
-      'image/svg+xml' in props.output.data),
+    props.output.type === 'reference' ||
+    mimes.value.some(mime =>
+      [
+        'text/html',
+        'application/javascript',
+        'image/svg+xml',
+        'application/vnd.plotly.v1+json',
+      ].includes(mime),
+    ),
 )
 const plain = computed(() =>
   props.output.type === 'display'
     ? String(props.output.data['text/plain'] ?? 'Output is available in the notebook file.')
-    : '',
+    : 'Output is available in the notebook file.',
 )
 </script>
 <template>
@@ -61,11 +74,13 @@ const plain = computed(() =>
   <NotebookWidget v-else-if="widget" :kernel-id="kernelId" :model-id="widget" />
   <img v-else-if="image" class="notebook-output__image" :src="image" alt="Cell plot" />
   <iframe
-    v-else-if="rich"
+    v-else-if="rich && kernelId"
     class="notebook-output__frame"
+    :class="{ 'notebook-output__frame--plot': plot }"
+    :loading="plot || output.type === 'reference' ? 'lazy' : undefined"
     sandbox="allow-scripts allow-forms"
     :src="api.notebookOutputUrl(kernelId, cellId, index)"
-    title="Cell rich output"
+    :title="plot ? 'Interactive Plotly chart' : 'Cell rich output'"
   />
   <IuTerminalOutput v-else :text="plain" />
 </template>
@@ -80,5 +95,8 @@ const plain = computed(() =>
   min-height: 280px;
   border: 1px solid var(--iu-border-quiet);
   background: var(--iu-ground);
+}
+.notebook-output__frame--plot {
+  height: 32rem;
 }
 </style>

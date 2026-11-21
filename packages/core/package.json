@@ -15,6 +15,7 @@
     "@opencode/client": "2.3.0",
     "@opencode/core": "2.3.0",
     "@opencode/sdk": "2.3.0",
+    "plotly.js-strict-dist-min": "4.3.0",
     "zod": "^4.0.0"
   }
 }

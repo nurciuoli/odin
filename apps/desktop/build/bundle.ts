@@ -13,6 +13,7 @@ const stage = join(desktop, "stage");
 const app = join(stage, "app");
 const res = join(stage, "resources");
 const SDK = "@anthropic-ai/claude-agent-sdk";
+const coreExternalPackages = [SDK, "@opencode/sdk", "@opencode/client", "plotly.js-strict-dist-min"];
 
 rmSync(stage, { recursive: true, force: true });
 mkdirSync(app, { recursive: true });
@@ -32,16 +33,16 @@ await build({
   ...common,
   entryPoints: { index: join(repo, "packages/core/src/index.ts"), "host-mcp": join(repo, "packages/core/src/harness/grok/host-mcp.ts") },
   outdir: core,
-  external: [SDK, "@opencode/sdk", "@opencode/client"],
+  external: coreExternalPackages,
 });
 cpSync(join(repo, "packages/core/src/db/schema.sql"), join(core, "schema.sql"));
 cpSync(join(repo, "packages/core/src/db/migrations"), join(core, "migrations"), { recursive: true });
 writeFileSync(join(core, "package.json"), JSON.stringify({ type: "module", private: true }));
 // The Claude SDK (with its platform binary and its MCP/API peers) and OpenCode (runtime-loaded plugins, schema
-// modules and native optional dependencies) stay external: copy their resolved dependency graphs.
+// modules and native optional dependencies) stay external, as does the browser-only Plotly renderer.
 const modules = join(repo, "node_modules");
 if (!existsSync(join(modules, `${SDK}-${process.platform}-${process.arch}`))) throw new Error(`missing the ${SDK} binary for ${process.platform}-${process.arch}: run yarn install`);
-for (const from of runtimePackages(modules, [SDK, "@opencode/sdk", "@opencode/client"])) {
+for (const from of runtimePackages(modules, coreExternalPackages)) {
   cpSync(from, join(core, "node_modules", relative(modules, from)), { recursive: true, dereference: true });
 }
 

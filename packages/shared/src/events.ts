@@ -10,7 +10,7 @@ export type ServerEvent =
   | { type: "notebook.comm"; kernelId: string; message: import("./notebooks.ts").NotebookComm }
   | { type: "notebook.updated"; kernelId: string; project: string; revision: string }
   | { type: "notebook.execution"; execution: import("./notebooks.ts").NotebookExecution }
-  | { type: "notebook.output"; kernelId: string; executionId: string; cellId: string; output: import("./notebooks.ts").NotebookOutput }
+  | { type: "notebook.output"; kernelId: string; executionId: string; cellId: string; output: import("./notebooks.ts").NotebookOutput; outputIndex?: number }
   | { type: "heartbeat"; at: string }
   /** Settings, git state or agents changed: refetch the project. */
   | { type: "project.updated"; project: string }

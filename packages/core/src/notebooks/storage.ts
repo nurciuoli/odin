@@ -22,6 +22,7 @@ export interface IpynbDocument {
 export interface NotebookSnapshot { document: IpynbDocument; revision: string }
 export const NOTEBOOK_MAX_BYTES = 32 * 1024 * 1024;
 const revision = (raw: string) => createHash("sha256").update(raw).digest("hex");
+const PRETTY_NOTEBOOK_BYTES = 4 * 1024 * 1024;
 
 export const EMPTY_NOTEBOOK = (): IpynbDocument => ({ nbformat: 4, nbformat_minor: 5, metadata: { kernelspec: { name: "python3", display_name: "Python 3", language: "python" }, language_info: { name: "python" } }, cells: [] });
 
@@ -62,11 +63,15 @@ export function createNotebookStorage() {
     try { lstatSync(path(root, rel)); return true; }
     catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT" || (error instanceof HttpError && error.status === 404)) return false; throw error; }
   }
-  function read(root: string, rel: string): NotebookSnapshot {
+  function readRaw(target: string): string {
     let raw: string;
-    try { const target = path(root, rel); if (statSync(target).size > NOTEBOOK_MAX_BYTES) throw new HttpError(413, "notebook is too large"); raw = readFileSync(target, "utf8"); }
+    try { if (statSync(target).size > NOTEBOOK_MAX_BYTES) throw new HttpError(413, "notebook is too large"); raw = readFileSync(target, "utf8"); }
     catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new HttpError(404, "notebook file is missing"); throw error; }
     if (Buffer.byteLength(raw) > NOTEBOOK_MAX_BYTES) throw new HttpError(413, "notebook is too large");
+    return raw;
+  }
+  function read(root: string, rel: string): NotebookSnapshot {
+    const raw = readRaw(path(root, rel));
     let document: IpynbDocument;
     try { document = JSON.parse(raw); }
     catch { throw new HttpError(409, "notebook contains invalid JSON; repair it before editing"); }
@@ -95,22 +100,32 @@ export function createNotebookStorage() {
   }
   function write(root: string, rel: string, document: IpynbDocument, expectedRevision: string | null): NotebookSnapshot {
     const target = path(root, rel, expectedRevision === null);
-    if (expectedRevision !== null) {
-      if (read(root, rel).revision !== expectedRevision) throw new HttpError(409, "notebook changed; reload before saving");
-    } else {
+    if (expectedRevision === null) {
       try { lstatSync(target); throw new HttpError(409, "notebook already exists"); }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     }
-    const raw = JSON.stringify(document, null, 2) + "\n";
-    if (Buffer.byteLength(raw) > NOTEBOOK_MAX_BYTES) throw new HttpError(413, "notebook is too large");
+    const checkRevision = () => {
+      if (expectedRevision !== null && revision(readRaw(path(root, rel))) !== expectedRevision) throw new HttpError(409, "notebook changed; reload before saving");
+    };
+    checkRevision();
+    // Jupyter introduced durable cell IDs in nbformat 4.5.
+    const portable = Number.isSafeInteger(document.nbformat_minor) && document.nbformat_minor >= 5
+      ? document : { ...document, nbformat_minor: 5 };
+    let raw = JSON.stringify(portable) + "\n";
+    const bytes = Buffer.byteLength(raw);
+    if (bytes > NOTEBOOK_MAX_BYTES) throw new HttpError(413, "notebook is too large");
+    if (bytes <= PRETTY_NOTEBOOK_BYTES) {
+      const pretty = JSON.stringify(portable, null, 2) + "\n";
+      if (Buffer.byteLength(pretty) <= NOTEBOOK_MAX_BYTES) raw = pretty;
+    }
     const temporary = target + "." + randomUUID() + ".tmp";
     try {
       writeFileSync(temporary, raw, { flag: "wx", mode: 0o600 });
-      if (expectedRevision !== null && read(root, rel).revision !== expectedRevision) throw new HttpError(409, "notebook changed; reload before saving");
+      checkRevision();
       renameSync(temporary, target);
     }
     finally { try { unlinkSync(temporary); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; } }
-    return { document, revision: revision(raw) };
+    return { document: portable, revision: revision(raw) };
   }
   /** Writes an empty notebook; 409 if the file exists. */
   function create(root: string, rel: string): NotebookSnapshot { return write(root, rel, EMPTY_NOTEBOOK(), null); }

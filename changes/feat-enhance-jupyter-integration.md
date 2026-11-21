@@ -1,0 +1,3 @@
+- Large notebooks open and run without rewriting their saved outputs just to start a cell. Interactive Plotly charts load in a sandbox and reopen with the notebook.
+- Choose a detected Python environment for an existing notebook, including Conda environments. Kernel setup explains whether the selected Python or the Jupyter host needs attention.
+- Run all waits for each cell to finish before starting the next. A lost kernel connection settles pending executions without replaying code.

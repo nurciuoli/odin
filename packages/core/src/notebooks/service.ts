@@ -1,19 +1,19 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { realpathSync } from "node:fs";
-import { basename, dirname, isAbsolute, relative, resolve, sep, join } from "node:path";
+import { basename, dirname, isAbsolute, posix, relative, resolve, sep, join } from "node:path";
 import type { OpenNotebookRequest, ExecuteCellRequest, NotebookCell, NotebookExecution, NotebookKernel, NotebookOutput, NotebookVariable, NotebookDataFrame, DataFrameQuery, NotebookComm } from "@odin/shared/notebooks";
 import type { Deps, NotebooksService, Services } from "../services.ts";
 import type { HostTool, HostToolResult } from "../harness/types.ts";
 import { HttpError } from "../http/util.ts";
 import { createNotebookStorage, normalizeNotebookPath, type IpynbCell, type IpynbDocument } from "./storage.ts";
 import { createNotebookRuntime, type JupyterOutput } from "./runtime.ts";
-import { detectNotebookEnvironment } from "./environment.ts";
+import { detectNotebookEnvironment, notebookKernelHint, notebookProjectEnvironment, probeNotebookEnvironment, type NotebookProjectEnvironment } from "./environment.ts";
 
 type Row = { id: string; project: string; root: string; path: string; name: string; cwd: string; interpreter: string; location: string; state: NotebookKernel["state"]; error: string | null; created_at: string; updated_at: string };
 export interface ServiceRuntime {
   start(): Promise<void>;
-  createKernel(input: { id: string; cwd: string; interpreter: string }): Promise<string>;
-  execute(kernelId: string, code: string, onOutput: (output: JupyterOutput) => void): Promise<void>;
+  createKernel(input: { id: string; cwd: string; interpreter: string; environment?: NotebookProjectEnvironment }): Promise<string>;
+  execute(kernelId: string, code: string, onOutput: (output: JupyterOutput) => void): Promise<number | void>;
   interrupt(kernelId: string): Promise<void>;
   stop(kernelId: string): Promise<void>;
   close(): Promise<void>;
@@ -26,8 +26,19 @@ export interface NotebookServiceOptions {
   detectEnvironment?: typeof detectNotebookEnvironment;
 }
 const terminal = (value: NotebookExecution) => !["queued", "running"].includes(value.state);
+type StoredOutput = Exclude<NotebookOutput, { type: "reference" }>;
+const INLINE_OUTPUT_BYTES = 64 * 1024;
+const MAX_TEXT_OUTPUT_BYTES = 4 * 1024 * 1024;
+const MAX_RICH_OUTPUT_BYTES = 24 * 1024 * 1024;
+const MAX_OUTPUT_EVENTS = 1000;
+const OUTPUT_CHECKPOINT_MS = 5_000;
+const FRAME_MIME_TYPES = new Set(["text/html", "application/javascript", "image/svg+xml", "application/vnd.plotly.v1+json"]);
 const text = (value: unknown) => typeof value === "string" ? value : "";
 const mimeText = (value: unknown) => Array.isArray(value) && value.every(line => typeof line === "string") ? value.join("") : text(value);
+const cellSource = (cell: IpynbCell) => Array.isArray(cell.source) ? cell.source.join("") : cell.source;
+const cellKind = (cell: IpynbCell) => cell.cell_type === "code" ? "code" : "markdown";
+const outputFingerprint = (cell: IpynbCell) =>
+  createHash("sha256").update(JSON.stringify([cell.execution_count ?? null, cell.outputs ?? []])).digest("hex");
 const scrub = (value: string) => value.replace(/\b(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{12,})\b/g, "[redacted]")
   .replace(/((?:api[_-]?key|access[_-]?token|authorization|password|secret)\s*[=:]\s*)([^\s,;]+)/gi, "$1[redacted]");
 function scrubData(value: unknown, depth = 0): unknown {
@@ -37,30 +48,64 @@ function scrubData(value: unknown, depth = 0): unknown {
   if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).slice(0, 10000).map(([key, item]) => [key, key.startsWith("image/") ? item : scrubData(item, depth + 1)]));
   return value;
 }
-function outputFromRaw(raw: { type?: unknown; msg_type?: unknown; content?: unknown; [key: string]: unknown } | JupyterOutput): NotebookOutput | null {
+function outputFromRaw(raw: { type?: unknown; msg_type?: unknown; content?: unknown; [key: string]: unknown } | JupyterOutput, options: { redact?: boolean } = {}): StoredOutput | null {
   const kind = raw.type ?? ("msg_type" in raw ? raw.msg_type : undefined);
   const content = raw.content && typeof raw.content === "object" ? raw.content as Record<string, unknown> : raw as Record<string, unknown>;
   if (kind === "stream") return { type: "stream", name: content.name === "stderr" ? "stderr" : "stdout", text: scrub(mimeText(content.text)) };
   if (kind === "error") return { type: "error", name: text(content.ename ?? content.name), message: scrub(text(content.evalue ?? content.message)), traceback: Array.isArray(content.traceback) ? content.traceback.map(line => scrub(text(line))) : [] };
   if (["display", "display_data", "execute_result", "update_display_data"].includes(String(kind))) {
-    const data = content.data && typeof content.data === "object" ? content.data as Record<string, unknown> : {};
-    return { type: "display", data: scrubData(data) as Record<string, unknown>, metadata: content.metadata && typeof content.metadata === "object" ? content.metadata as Record<string, unknown> : {} };
+    const data = content.data && typeof content.data === "object" && !Array.isArray(content.data) ? content.data as Record<string, unknown> : {};
+    const metadata = content.metadata && typeof content.metadata === "object" && !Array.isArray(content.metadata) ? content.metadata as Record<string, unknown> : {};
+    // Figure arrays can have one element per observation. Preserve the MIME shape and redact text without clipping arrays.
+    const cleanData = options.redact === false ? data : JSON.parse(JSON.stringify(data, (key, value) =>
+      typeof value === "string" && !key.startsWith("image/") ? scrub(value) : value)) as Record<string, unknown>;
+    return { type: "display", data: cleanData, metadata };
   }
   return null;
 }
-function asOutput(output: NotebookOutput): Record<string, unknown> {
+function asOutput(output: StoredOutput): Record<string, unknown> {
   if (output.type === "stream") return { output_type: "stream", name: output.name, text: output.text };
   if (output.type === "error") return { output_type: "error", ename: output.name, evalue: output.message, traceback: output.traceback };
   return { output_type: "display_data", data: output.data, metadata: output.metadata ?? {} };
 }
-function asCell(cell: IpynbCell): NotebookCell {
-  return { id: cell.id, kind: cell.cell_type === "code" ? "code" : "markdown", source: Array.isArray(cell.source) ? cell.source.join("") : cell.source,
-    executionCount: cell.execution_count ?? null,
-    outputs: (cell.outputs ?? []).map(raw => outputFromRaw({ ...raw, type: raw.output_type })).filter((output): output is NotebookOutput => output !== null) };
+function outputForClient(output: StoredOutput, encoded = JSON.stringify(output)): NotebookOutput {
+  const bytes = Buffer.byteLength(encoded);
+  const mimeTypes = output.type === "display" ? Object.keys(output.data) : ["text/plain"];
+  if (output.type === "display") {
+    const view = output.data["application/vnd.jupyter.widget-view+json"] as { model_id?: unknown } | undefined;
+    if (typeof view?.model_id === "string" && /^[A-Za-z0-9_-]{1,200}$/.test(view.model_id)) {
+      return bytes <= INLINE_OUTPUT_BYTES ? output :
+        { type: "display", data: { "application/vnd.jupyter.widget-view+json": { model_id: view.model_id } } };
+    }
+  }
+  if (bytes > INLINE_OUTPUT_BYTES || mimeTypes.some(mime => FRAME_MIME_TYPES.has(mime))) {
+    const version = createHash("sha256").update(encoded).digest("hex").slice(0, 24);
+    return { type: "reference", mimeTypes: mimeTypes.filter(mime => mime.length <= 256).slice(0, 32), bytes, version };
+  }
+  return output;
 }
-function persistedCell(cell: NotebookCell): IpynbCell {
+function cellOutputs(cell: IpynbCell): StoredOutput[] {
+  return (cell.outputs ?? []).flatMap(raw => {
+    const output = outputFromRaw({ ...raw, type: raw.output_type }, { redact: false });
+    return output ? [output] : [];
+  });
+}
+function asCell(cell: IpynbCell): NotebookCell {
+  return { id: cell.id, kind: cellKind(cell), source: cellSource(cell),
+    executionCount: cell.execution_count ?? null,
+    outputs: (cell.outputs ?? []).flatMap<NotebookOutput>(raw => {
+      const output = outputFromRaw({ ...raw, type: raw.output_type }, { redact: false });
+      if (!output) return [];
+      const projected = outputForClient(output);
+      if (projected !== output) return [projected];
+      if (output.type !== "display") return [output];
+      const safe = outputFromRaw({ ...raw, type: raw.output_type });
+      return safe ? [safe] : [];
+    }) };
+}
+function persistedCell(cell: Pick<NotebookCell, "id" | "kind" | "source">): IpynbCell {
   return { id: cell.id, cell_type: cell.kind, source: cell.source, metadata: {},
-    ...(cell.kind === "code" ? { execution_count: cell.executionCount, outputs: cell.outputs.map(asOutput) } : {}) };
+    ...(cell.kind === "code" ? { execution_count: null, outputs: [] } : {}) };
 }
 
 export function createNotebooksService(deps: Deps, services: Services, options: NotebookServiceOptions = {}): NotebooksService {
@@ -77,6 +122,7 @@ export function createNotebooksService(deps: Deps, services: Services, options: 
   const chains = new Map<string, Promise<void>>();
   const jobs = new Map<string, Promise<void>>();
   const interrupted = new Set<string>();
+  const liveCells = new Map<string, IpynbCell>();
   const idleTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const widgetModels = new Map<string, Map<string, NotebookComm>>();
   const commSubscriptions = new Map<string, () => void>();
@@ -96,9 +142,12 @@ export function createNotebooksService(deps: Deps, services: Services, options: 
   function state(id: string, value: NotebookKernel["state"], error: string | null = null) {
     db.prepare("UPDATE notebook_kernels SET state = ?, error = ?, updated_at = ? WHERE id = ?").run(value, error, now(), id);
   }
-  function publish(id: string) {
-    const value = row(id); let revision = "";
-    try { revision = storage.read(id).revision; } catch { /* Refetch exposes corrupt/external file errors without losing execution receipts. */ }
+  function publish(id: string, revision?: string) {
+    const value = row(id);
+    if (revision === undefined) {
+      try { revision = storage.read(id).revision; }
+      catch { revision = ""; /* Refetch exposes corrupt/external file errors without losing execution receipts. */ }
+    }
     bus.emit({ type: "notebook.updated", kernelId: id, project: value.project, revision });
   }
   function available(id: string) {
@@ -120,7 +169,14 @@ export function createNotebooksService(deps: Deps, services: Services, options: 
         for (const [id, nativeId] of nativeIds) if (ids.includes(nativeId)) {
           nativeIds.delete(id);
           commSubscriptions.get(id)?.(); commSubscriptions.delete(id); widgetModels.delete(id);
-          if (!closed) { state(id, "stopped"); publish(id); }
+          if (!closed) {
+            const queued = db.prepare("SELECT id FROM notebook_executions WHERE kernel_id = ? AND state = 'queued'").all(id) as { id: string }[];
+            for (const run of queued) {
+              interrupted.add(run.id);
+              executionState(run.id, "interrupted", "Kernel connection was lost before this cell started");
+            }
+            state(id, "stopped"); publish(id);
+          }
         }
       }, onStatus: (nativeId, status) => {
         for (const [id, current] of nativeIds) if (current === nativeId && !closed) {
@@ -137,9 +193,23 @@ export function createNotebooksService(deps: Deps, services: Services, options: 
     const host = runtime(id);
     if (!nativeIds.has(id)) {
       state(id, "starting");
-      await host.start();
       const value = row(id);
-      nativeIds.set(id, await host.createKernel({ id, cwd: value.cwd, interpreter: value.interpreter }));
+      if (!options.runtimeFactory) {
+        const health = await probeNotebookEnvironment({
+          home: deps.config.home, cwd: value.cwd, location: kernel(value).location, interpreter: value.interpreter,
+        });
+        if (health.hostStatus !== "ready") throw new Error(
+          health.hostStatus === "missing" ? "Managed Jupyter host is missing. Use Set up Python in the kernel menu." :
+            "Managed Jupyter host could not import jupyter_server. Use Set up Python to repair it.",
+        );
+        if (health.kernelStatus !== "ready") throw new Error(
+          health.kernelStatus === "missing-ipykernel" ? "The selected Python is missing ipykernel. Use Set up Python or choose another kernel." :
+            "The selected Python interpreter could not start. Choose another kernel.",
+        );
+      }
+      await host.start();
+      const environment = notebookProjectEnvironment(projectRoot(value.project));
+      nativeIds.set(id, await host.createKernel({ id, cwd: value.cwd, interpreter: value.interpreter, environment }));
       if (host.subscribeComms) commSubscriptions.set(id, host.subscribeComms(nativeIds.get(id)!, message => {
         if (!validComm(message)) return;
         let models = widgetModels.get(id);
@@ -220,11 +290,32 @@ export function createNotebooksService(deps: Deps, services: Services, options: 
     db.prepare("UPDATE notebook_executions SET state = ?, error = ?, started_at = CASE WHEN ? = 'running' THEN ? ELSE started_at END, finished_at = CASE WHEN ? IN ('completed','failed','interrupted') THEN ? ELSE finished_at END WHERE id = ?").run(value, error, value, now(), value, now(), id);
     bus.emit({ type: "notebook.execution", execution: execution(id) });
   }
+  function markInterrupted(id: string) {
+    const active = db.prepare("SELECT id FROM notebook_executions WHERE kernel_id = ? AND state IN ('queued','running')").all(id) as { id: string }[];
+    for (const value of active) interrupted.add(value.id);
+  }
   async function stopKernel(id: string) {
-    clearIdle(id); await service.interrupt(id); await chains.get(id);
-    const nativeId = nativeIds.get(id); if (nativeId) { await runtime(id).stop(nativeId); nativeIds.delete(id); }
-    commSubscriptions.get(id)?.(); commSubscriptions.delete(id); widgetModels.delete(id);
-    state(id, "stopped"); publish(id);
+    clearIdle(id);
+    markInterrupted(id);
+    const stopNative = async () => {
+      const nativeId = nativeIds.get(id);
+      if (!nativeId) return;
+      try { await runtime(id).stop(nativeId); } finally { nativeIds.delete(id); }
+    };
+    try {
+      await stopNative();
+      await chains.get(id);
+      // A kernel may have been starting when the lifecycle action arrived.
+      await stopNative();
+      state(id, "stopped");
+    } catch (error) {
+      state(id, "failed", "Could not stop the notebook kernel");
+      throw error;
+    } finally {
+      clearIdle(id);
+      commSubscriptions.get(id)?.(); commSubscriptions.delete(id); widgetModels.delete(id);
+      publish(id);
+    }
   }
   const service: NotebooksService = {
     list(project) {
@@ -251,28 +342,35 @@ export function createNotebooksService(deps: Deps, services: Services, options: 
       const find = () => db.prepare("SELECT * FROM notebook_kernels WHERE root = ? AND path = ?").get(root, path) as Row | undefined;
       const existing = find();
       if (existing) {
-        if (!existing.interpreter && request.interpreter) db.prepare("UPDATE notebook_kernels SET interpreter = ?, updated_at = ? WHERE id = ?").run(request.interpreter, now(), existing.id);
+        if (!existing.interpreter && request.interpreter) db.prepare("UPDATE notebook_kernels SET interpreter = ?, location = ?, updated_at = ? WHERE id = ?").run(request.interpreter, JSON.stringify(location), now(), existing.id);
         return kernel(row(existing.id));
       }
       let created = false;
+      let hint;
       if (!files.exists(root, path)) {
         if (!request.create) throw new HttpError(404, "notebook file does not exist");
         files.create(root, path); created = true;
-      } else files.read(root, path);
+      } else hint = notebookKernelHint(files.read(root, path).document.metadata);
       const cwd = join(root, dirname(path));
-      const interpreter = request.interpreter ?? (await (options.detectEnvironment ?? detectNotebookEnvironment)({ home: deps.config.home, cwd, location })).interpreter ?? "";
+      const interpreter = request.interpreter ?? (await (options.detectEnvironment ?? detectNotebookEnvironment)({ home: deps.config.home, cwd, projectRoot: root, location, hint })).interpreter ?? "";
       if (closed) throw new HttpError(409, "notebook service is closing");
       const raced = find();
-      if (raced) return kernel(raced);
+      if (raced) return { ...kernel(raced), kernelHint: hint };
       const id = randomUUID();
       db.prepare("INSERT INTO notebook_kernels(id, project, root, path, name, cwd, interpreter, location, state, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'stopped', ?, ?)").run(id, project, root, path, basename(path, ".ipynb"), cwd, interpreter, JSON.stringify(location), now(), now());
       if (created) services.projects.noteWritten(project, [path]);
       publish(id);
-      return kernel(row(id));
+      return { ...kernel(row(id)), kernelHint: hint };
     },
     snapshot(id) {
       const value = row(id), snapshot = storage.read(id);
-      return { kernel: kernel(value), revision: snapshot.revision, cells: snapshot.document.cells.map(asCell) };
+      return { kernel: { ...kernel(value), kernelHint: notebookKernelHint(snapshot.document.metadata) }, revision: snapshot.revision, cells: snapshot.document.cells.map(asCell) };
+    },
+    output(id, cellId, index) {
+      const live = liveCells.get(id);
+      const cell = live?.id === cellId ? live : storage.read(id).document.cells.find(cell => cell.id === cellId);
+      const raw = cell?.outputs?.[index];
+      return raw ? outputFromRaw({ ...raw, type: raw.output_type }) : null;
     },
     save(id, revision, cells) {
       available(id);
@@ -284,17 +382,23 @@ export function createNotebooksService(deps: Deps, services: Services, options: 
         ids.add(cell.id);
       }
       const previous = storage.read(id);
+      if (previous.revision !== revision) throw new HttpError(409, "notebook changed; reload before saving");
       const old = new Map(previous.document.cells.map(cell => [cell.id, cell]));
-      previous.document.cells = cells.map(cell => {
+      const next = cells.map(cell => {
         const prior = old.get(cell.id);
-        const unchanged = prior && asCell(prior).source === cell.source && asCell(prior).kind === cell.kind;
-        if (unchanged) return prior;
-        return persistedCell({ ...cell, outputs: [], executionCount: null });
+        if (prior && cellKind(prior) === cell.kind) {
+          if (cellSource(prior) === cell.source) return prior;
+          return { ...prior, source: cell.source, ...(cell.kind === "code" ? { outputs: [], execution_count: null } : {}) };
+        }
+        return persistedCell(cell);
       });
-      storage.write(id, previous.document, revision);
-      db.prepare("UPDATE notebook_kernels SET updated_at = ? WHERE id = ?").run(now(), id);
-      publish(id);
-      return service.snapshot(id);
+      const changed = next.length !== previous.document.cells.length || next.some((cell, index) => cell !== previous.document.cells[index]);
+      const saved = changed ? storage.write(id, { ...previous.document, cells: next }, revision) : previous;
+      if (changed) {
+        db.prepare("UPDATE notebook_kernels SET updated_at = ? WHERE id = ?").run(now(), id);
+        publish(id, saved.revision);
+      }
+      return { kernel: kernel(row(id)), revision: saved.revision, cells: saved.document.cells.map(asCell) };
     },
     async execute(id, request: ExecuteCellRequest) {
       available(id);
@@ -305,86 +409,143 @@ export function createNotebooksService(deps: Deps, services: Services, options: 
       let cell = request.cellId ? snapshot.document.cells.find(value => value.id === request.cellId) : undefined;
       if (request.cellId && !cell) throw new HttpError(404, "unknown cell");
       if (cell && db.prepare("SELECT id FROM notebook_executions WHERE kernel_id = ? AND cell_id = ? AND state IN ('queued','running')").get(id, cell.id)) throw new HttpError(409, "this cell already has a queued or running execution");
-      if (!cell) { cell = persistedCell({ id: randomUUID(), kind: "code", source: "", outputs: [], executionCount: null }); snapshot.document.cells.push(cell); }
+      let changed = false;
+      if (!cell) { cell = persistedCell({ id: randomUUID(), kind: "code", source: "" }); snapshot.document.cells.push(cell); changed = true; }
       if (cell.cell_type !== "code") throw new HttpError(400, "only code cells execute");
       if (request.source !== undefined) {
         if (typeof request.source !== "string" || Buffer.byteLength(request.source) > 1024 * 1024) throw new HttpError(400, "source must be at most 1 MiB");
-        cell.source = request.source;
+        if (cellSource(cell) !== request.source) {
+          cell.source = request.source;
+          cell.outputs = []; cell.execution_count = null;
+          changed = true;
+        }
       }
-      const source = asCell(cell).source;
+      const source = cellSource(cell);
       const executionId = randomUUID(), cellId = cell.id;
-      storage.write(id, snapshot.document, request.revision);
+      if (changed) publish(id, storage.write(id, snapshot.document, request.revision).revision);
       db.prepare("INSERT INTO notebook_executions(id, kernel_id, cell_id, state) VALUES (?, ?, ?, 'queued')").run(executionId, id, cellId);
-      bus.emit({ type: "notebook.execution", execution: execution(executionId) }); publish(id); clearIdle(id);
+      bus.emit({ type: "notebook.execution", execution: execution(executionId) }); clearIdle(id);
       const previous = chains.get(id) ?? Promise.resolve();
       const job = previous.catch(() => undefined).then(async () => {
-        if (closed || interrupted.has(executionId)) { executionState(executionId, "interrupted"); interrupted.delete(executionId); return; }
-        let bytes = 0, events = 0, truncated = false, clearOnNextOutput = false;
-        let outputCell: IpynbCell | undefined, outputTimer: ReturnType<typeof setTimeout> | undefined, flushError: unknown;
+        const cancelled = () => closed || interrupted.has(executionId);
+        const finishCancelled = () => {
+          if (!terminal(execution(executionId))) executionState(executionId, "interrupted");
+          interrupted.delete(executionId);
+        };
+        if (cancelled()) { finishCancelled(); return; }
+        let textBytes = 0, richBytes = 0, events = 0, clearOnNextOutput = false;
+        const warnings = new Set<string>();
+        let outputCell: IpynbCell | undefined, outputTimer: ReturnType<typeof setTimeout> | undefined, flushError: unknown, dirtyOutput = false;
+        let savedRevision: string | undefined, expectedOutput: string;
+        function currentCell(document: IpynbDocument) {
+          const target = document.cells.find(value => value.id === cellId);
+          if (!target || target.cell_type !== "code" || cellSource(target) !== source) throw new HttpError(409, "cell changed on disk during execution; outputs were not written");
+          return target;
+        }
         const flush = () => {
           if (outputTimer) clearTimeout(outputTimer); outputTimer = undefined;
-          if (!outputCell) return;
-          const next = storage.read(id), target = next.document.cells.find(value => value.id === cellId)!;
-          if (!target || asCell(target).source !== source) throw new HttpError(409, "cell changed on disk during execution; outputs were not written");
+          if (!outputCell || !dirtyOutput || flushError) return;
+          const next = storage.read(id), target = currentCell(next.document);
+          if (next.revision !== savedRevision && outputFingerprint(target) !== expectedOutput) {
+            throw new HttpError(409, "cell outputs changed on disk during execution; Odin preserved the disk version");
+          }
           target.outputs = outputCell.outputs; target.execution_count = outputCell.execution_count;
-          storage.write(id, next.document, next.revision); publish(id);
+          const saved = storage.write(id, next.document, next.revision);
+          savedRevision = saved.revision; expectedOutput = outputFingerprint(target);
+          dirtyOutput = false; publish(id, savedRevision);
         };
-        const scheduleFlush = () => { if (!outputTimer) outputTimer = setTimeout(() => { try { flush(); } catch (error) { flushError = error; } }, 100); };
+        const checkpoint = () => {
+          try { flush(); } catch (error) { flushError = error; }
+        };
+        const scheduleFlush = () => {
+          dirtyOutput = true;
+          if (!outputTimer) outputTimer = setTimeout(checkpoint, OUTPUT_CHECKPOINT_MS);
+        };
+        const emitOutput = (output: StoredOutput, index: number, encoded?: string) => {
+          const projected = outputForClient(output, encoded);
+          bus.emit({ type: "notebook.output", kernelId: id, executionId, cellId, output: projected,
+            ...(projected.type === "reference" ? { outputIndex: index } : {}) });
+        };
         try {
           const { host, nativeId } = await ensureStarted(id);
+          if (cancelled()) { if (nativeIds.has(id)) state(id, "idle"); finishCancelled(); return; }
+          const latest = storage.read(id), target = currentCell(latest.document);
+          savedRevision = latest.revision; expectedOutput = outputFingerprint(target);
           state(id, "busy"); executionState(executionId, "running");
-          const latest = storage.read(id), target = latest.document.cells.find(value => value.id === cellId)!;
           target.outputs = []; target.execution_count = (target.execution_count ?? 0) + 1;
-          storage.write(id, latest.document, latest.revision);
-          outputCell = target;
-          await host.execute(nativeId, source, raw => {
-            if (closed || interrupted.has(executionId)) return;
-            if (flushError) throw flushError;
-            if (truncated) return;
-            const content = raw.content && typeof raw.content === "object" ? raw.content as Record<string, unknown> : raw;
+          outputCell = target; liveCells.set(id, target); dirtyOutput = true;
+          const count = await host.execute(nativeId, source, raw => {
+            if (cancelled() || flushError) return;
+            const content = raw.content;
             if (raw.type === "clear_output") {
               if (content.wait) clearOnNextOutput = true;
               else {
-                outputCell!.outputs = []; scheduleFlush();
+                clearOnNextOutput = false; target.outputs = []; scheduleFlush();
               }
               return;
             }
             const output = outputFromRaw(raw);
             if (!output) return;
-            const size = Buffer.byteLength(JSON.stringify(output));
-            if (bytes + size > 4 * 1024 * 1024 || ++events > 1000) {
-              truncated = true;
-              const note: NotebookOutput = { type: "stream", name: "stderr", text: "\n[Odin truncated execution output at 4 MiB or 1000 output events]\n" };
-              outputCell!.outputs!.push(asOutput(note)); scheduleFlush();
-              bus.emit({ type: "notebook.output", kernelId: id, executionId, cellId, output: note }); return;
+            if (clearOnNextOutput) { target.outputs = []; clearOnNextOutput = false; scheduleFlush(); }
+            const outputs = target.outputs!;
+            const encoded = JSON.stringify(output);
+            const size = Buffer.byteLength(encoded);
+            const rich = output.type === "display";
+            const limit = ++events > MAX_OUTPUT_EVENTS ? "1000 output events" :
+              rich && richBytes + size > MAX_RICH_OUTPUT_BYTES ? "24 MiB of rich output" :
+              !rich && textBytes + size > MAX_TEXT_OUTPUT_BYTES ? "4 MiB of text output" : null;
+            if (limit) {
+              if (!warnings.has(limit)) {
+                warnings.add(limit);
+                const note: StoredOutput = { type: "stream", name: "stderr", text: "\n[Odin truncated execution output at " + limit + "]\n" };
+                outputs.push(asOutput(note)); scheduleFlush(); emitOutput(note, outputs.length - 1);
+              }
+              return;
             }
-            bytes += size;
-            const targetCell = outputCell!;
-            if (clearOnNextOutput) { targetCell.outputs = []; clearOnNextOutput = false; }
-            const transient = content.transient as { display_id?: string } | undefined;
+            if (rich) richBytes += size; else textBytes += size;
+            const transient = content.transient as { display_id?: unknown } | undefined;
             const persisted = asOutput(output);
-            if (transient?.display_id) persisted.metadata = { ...(output.type === "display" ? output.metadata : {}), odin_display_id: transient.display_id };
-            const existing = raw.type === "update_display_data" && transient?.display_id ? targetCell.outputs!.findIndex(value => (value.metadata as { odin_display_id?: string } | undefined)?.odin_display_id === transient.display_id) : -1;
-            if (existing !== -1) targetCell.outputs![existing] = persisted;
-            else {
-              const last = targetCell.outputs!.at(-1);
+            if (raw.type === "execute_result" && typeof content.execution_count === "number" && Number.isSafeInteger(content.execution_count) && content.execution_count >= 0) {
+              persisted.output_type = "execute_result"; persisted.execution_count = content.execution_count;
+              target.execution_count = content.execution_count;
+            }
+            const displayId = transient?.display_id;
+            if (rich && typeof displayId === "string" && displayId.length <= 256) persisted.metadata = { ...output.metadata, odin_display_id: displayId };
+            const updated = raw.type === "update_display_data" && typeof displayId === "string" ? outputs.reduce<number[]>((indexes, value, index) => {
+              if ((value.metadata as { odin_display_id?: string } | undefined)?.odin_display_id === displayId) indexes.push(index);
+              return indexes;
+            }, []) : [];
+            if (updated.length) {
+              for (const index of updated) {
+                const existing = outputs[index];
+                outputs[index] = existing.output_type === "execute_result"
+                  ? { ...persisted, output_type: "execute_result", execution_count: existing.execution_count }
+                  : persisted;
+                emitOutput(output, index, encoded);
+              }
+            } else {
+              const last = outputs.at(-1);
               if (output.type === "stream" && last?.output_type === "stream" && last.name === output.name) last.text = text(last.text) + output.text;
-              else targetCell.outputs!.push(persisted);
+              else outputs.push(persisted);
+              emitOutput(output, outputs.length - 1, encoded);
             }
             scheduleFlush();
-            bus.emit({ type: "notebook.output", kernelId: id, executionId, cellId, output });
           });
-          flush(); if (flushError) throw flushError;
-          executionState(executionId, interrupted.has(executionId) ? "interrupted" : "completed");
+          if (typeof count === "number" && Number.isSafeInteger(count) && count >= 0 && target.execution_count !== count) {
+            target.execution_count = count; dirtyOutput = true;
+          }
+          checkpoint(); if (flushError) throw flushError;
           state(id, "idle");
+          executionState(executionId, interrupted.has(executionId) ? "interrupted" : "completed");
         } catch (error) {
-          try { flush(); } catch { /* Keep the failed receipt even when an external file edit prevents output persistence. */ }
-          const message = scrub(error instanceof Error ? error.message : "notebook execution failed").slice(0, 2048);
-          executionState(executionId, interrupted.has(executionId) || closed ? "interrupted" : "failed", message);
+          checkpoint();
+          const failure = flushError ?? error;
+          const message = scrub(failure instanceof Error ? failure.message : "notebook execution failed").slice(0, 2048);
           state(id, nativeIds.has(id) ? "idle" : "failed", message);
+          executionState(executionId, interrupted.has(executionId) || closed ? "interrupted" : "failed", message);
         } finally {
           if (outputTimer) clearTimeout(outputTimer);
-          interrupted.delete(executionId); publish(id);
+          liveCells.delete(id); interrupted.delete(executionId); publish(id, flushError ? undefined : savedRevision);
         }
       });
       chains.set(id, job); jobs.set(executionId, job);
@@ -407,9 +568,50 @@ export function createNotebooksService(deps: Deps, services: Services, options: 
     },
     async interrupt(id) {
       row(id);
-      const active = db.prepare("SELECT id FROM notebook_executions WHERE kernel_id = ? AND state IN ('queued','running')").all(id) as { id: string }[];
-      for (const value of active) interrupted.add(value.id);
+      markInterrupted(id);
       const nativeId = nativeIds.get(id); if (nativeId) await runtime(id).interrupt(nativeId);
+    },
+    async configure(id, request) {
+      available(id);
+      const value = row(id);
+      const location = request?.location;
+      const interpreter = request?.interpreter;
+      if (!location || (location.kind !== "native" && location.kind !== "wsl") ||
+          (location.kind === "wsl" && (typeof location.distro !== "string" || !/^[A-Za-z0-9_.-]{1,100}$/.test(location.distro)))) {
+        throw new HttpError(400, "invalid execution location");
+      }
+      if (typeof interpreter !== "string" || interpreter.length > 4096 || /[\u0000-\u001f\u007f]/.test(interpreter) ||
+          !(location.kind === "wsl" ? posix.isAbsolute(interpreter) : isAbsolute(interpreter))) {
+        throw new HttpError(400, "the Python interpreter must be an absolute path");
+      }
+      const serialized = JSON.stringify(location.kind === "wsl" ? { kind: "wsl", distro: location.distro } : { kind: "native" });
+      if (value.interpreter === interpreter && value.location === serialized) return kernel(value);
+      transitions.add(id);
+      try {
+        await stopKernel(id);
+        db.prepare("UPDATE notebook_kernels SET interpreter = ?, location = ?, updated_at = ? WHERE id = ?").run(interpreter, serialized, now(), id);
+        publish(id);
+        return kernel(row(id));
+      } finally {
+        transitions.delete(id);
+      }
+    },
+    async restart(id) {
+      available(id);
+      if (!row(id).interpreter) throw new HttpError(409, "no Python environment; set one up");
+      transitions.add(id);
+      try {
+        await stopKernel(id);
+        await ensureStarted(id);
+        state(id, "idle");
+        armIdle(id);
+      } catch (error) {
+        state(id, "failed", scrub(error instanceof Error ? error.message : "Notebook kernel could not restart").slice(0, 2048));
+        throw error;
+      } finally {
+        transitions.delete(id);
+        publish(id);
+      }
     },
     async stop(id) {
       available(id); transitions.add(id);
@@ -456,11 +658,11 @@ export function createNotebooksService(deps: Deps, services: Services, options: 
       };
       const result = (value: unknown): HostToolResult => ({ text: JSON.stringify(value) });
       const executionResult = (value: NotebookExecution): HostToolResult => {
-        const cell = service.snapshot(value.kernelId).cells.find(cell => cell.id === value.cellId);
+        const cell = storage.read(value.kernelId).document.cells.find(cell => cell.id === value.cellId);
         const parts: string[] = [JSON.stringify(value)];
         const images: NonNullable<HostToolResult["content"]> = [];
         let imageBytes = 0;
-        for (const output of cell?.outputs ?? []) {
+        for (const output of cell ? cellOutputs(cell) : []) {
           if (output.type === "stream") parts.push(output.text);
           else if (output.type === "error") parts.push(`${output.name}: ${output.message}\n${output.traceback.join("\n")}`);
           else {
@@ -493,14 +695,15 @@ export function createNotebooksService(deps: Deps, services: Services, options: 
         } },
         { name: "notebook_read", description: "Read notebook cells and bounded outputs; use offset/limit for paging.", params: { ...kernelParam, offset: { type: "number", description: "Cell offset", optional: true }, limit: { type: "number", description: "Cell count, up to 50", optional: true } }, async handler(input) { const snapshot = service.snapshot(requireKernel(input)); const offset = Math.max(0, Math.floor(Number(input.offset) || 0)); const cells = snapshot.cells.slice(offset, offset + Math.min(50, Math.max(1, Number(input.limit) || 10))); let preview = JSON.stringify({ ...snapshot, cells }); if (preview.length > 64000) preview = preview.slice(0, 64000) + "\n[Truncated; request fewer cells]"; return { text: preview }; } },
         { name: "notebook_output", description: "Page through a cell's persisted text/error output. Up to 16000 characters per page; raster plots accompany the first page.", params: { ...kernelParam, cell_id: { type: "string", description: "Cell ID" }, offset: { type: "number", description: "Character offset", optional: true }, limit: { type: "number", description: "Character count, at most 16000", optional: true } }, async handler(input) {
-          const id = requireKernel(input), cell = service.snapshot(id).cells.find(value => value.id === input.cell_id);
+          const id = requireKernel(input), cell = storage.read(id).document.cells.find(value => value.id === input.cell_id);
           if (!cell) throw new HttpError(404, "unknown cell");
           const offset = input.offset === undefined ? 0 : Number(input.offset), limit = input.limit === undefined ? 16000 : Number(input.limit);
           if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 16000) throw new HttpError(400, "invalid output page");
-          const flattened = scrub(cell.outputs.map(output => output.type === "stream" ? output.text : output.type === "error" ? `${output.name}: ${output.message}\n${output.traceback.join("\n")}` : Array.isArray(output.data["text/plain"]) ? output.data["text/plain"].join("") : text(output.data["text/plain"])).join("\n"));
+          const outputs = cellOutputs(cell);
+          const flattened = scrub(outputs.map(output => output.type === "stream" ? output.text : output.type === "error" ? `${output.name}: ${output.message}\n${output.traceback.join("\n")}` : mimeText(output.data["text/plain"])).join("\n"));
           const summary = JSON.stringify({ kernelId: id, cellId: cell.id, offset, total: flattened.length, hasMore: offset + limit < flattened.length, text: flattened.slice(offset, offset + limit) });
           const content: NonNullable<HostToolResult["content"]> = [{ type: "text", text: summary }]; let imageBytes = 0;
-          if (!offset) for (const output of cell.outputs) if (output.type === "display") for (const mimeType of ["image/png", "image/jpeg"] as const) {
+          if (!offset) for (const output of outputs) if (output.type === "display") for (const mimeType of ["image/png", "image/jpeg"] as const) {
             const data = output.data[mimeType]; if (typeof data === "string" && content.length <= 4 && imageBytes + data.length < 4 * 1024 * 1024) { content.push({ type: "image", mimeType, data }); imageBytes += data.length; }
           }
           return { text: summary, ...(content.length > 1 ? { content } : {}) };

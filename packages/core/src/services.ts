@@ -431,12 +431,15 @@ export interface NotebooksService extends Closeable {
   list(project: string): import("@odin/shared/notebooks").NotebookKernel[];
   /** Returns the existing record for request.path or creates one (writing the file if `create`). Starts no process. */
   open(project: string, request: import("@odin/shared/notebooks").OpenNotebookRequest): Promise<import("@odin/shared/notebooks").NotebookKernel>;
+  configure(kernelId: string, request: import("@odin/shared/notebooks").ConfigureNotebookKernelRequest): Promise<import("@odin/shared/notebooks").NotebookKernel>;
   snapshot(kernelId: string): import("@odin/shared/notebooks").NotebookSnapshot;
-  save(kernelId: string, revision: string, cells: import("@odin/shared/notebooks").NotebookCell[]): import("@odin/shared/notebooks").NotebookSnapshot;
+  output(kernelId: string, cellId: string, index: number): import("@odin/shared/notebooks").NotebookOutput | null;
+  save(kernelId: string, revision: string, cells: (import("@odin/shared/notebooks").NotebookCellEdit | import("@odin/shared/notebooks").NotebookCell)[]): import("@odin/shared/notebooks").NotebookSnapshot;
   execute(kernelId: string, request: import("@odin/shared/notebooks").ExecuteCellRequest): Promise<import("@odin/shared/notebooks").NotebookExecution>;
   execution(id: string): import("@odin/shared/notebooks").NotebookExecution;
   wait(id: string, timeoutMs?: number): Promise<import("@odin/shared/notebooks").NotebookExecution>;
   interrupt(kernelId: string): Promise<void>;
+  restart(kernelId: string): Promise<void>;
   stop(kernelId: string): Promise<void>;
   remove(kernelId: string): Promise<void>;
   hostTools(sessionId: string): HostTool[];

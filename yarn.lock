@@ -2336,6 +2336,7 @@ __metadata:
     "@opencode/client": "npm:2.3.0"
     "@opencode/core": "npm:2.3.0"
     "@opencode/sdk": "npm:2.3.0"
+    plotly.js-strict-dist-min: "npm:4.3.0"
     zod: "npm:^4.0.0"
   languageName: unknown
   linkType: soft
@@ -8748,6 +8749,13 @@ __metadata:
     base64-js: "npm:^1.5.1"
     xmlbuilder: "npm:^15.1.1"
   checksum: 10c0/af681277c2e541c6aab0ddee57f59459c43beeea1ee7aa2d4218aa39595fb41c068e2d2be3e4abb17e3252eaf2c1b806ecfb1d402fa5a3f4a6e1a7a32c880c9a
+  languageName: node
+  linkType: hard
+
+"plotly.js-strict-dist-min@npm:4.3.0":
+  version: 4.3.0
+  resolution: "plotly.js-strict-dist-min@npm:4.3.0"
+  checksum: 10c0/36e6a17955be7b0dce3eab7a59828452ddce9352f916522c0b164c8382f23a59b0eb2af46638915ee9d344fb620d1a866c98643507b985c6c489e039359e9006
   languageName: node
   linkType: hard
 

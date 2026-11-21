@@ -76,29 +76,38 @@ export interface Api {
   ): Promise<import('@odin/shared/notebooks').NotebookDataFrame>
   notebookEnvironment(
     project: string,
-    location?: import('@odin/shared/notebooks').KernelLocation,
+    request?: import('@odin/shared/notebooks').NotebookEnvironmentRequest,
   ): Promise<import('@odin/shared/notebooks').NotebookEnvironment>
   setupNotebookEnvironment(
     project: string,
-    location?: import('@odin/shared/notebooks').KernelLocation,
+    request?: import('@odin/shared/notebooks').NotebookEnvironmentRequest,
   ): Promise<import('@odin/shared/notebooks').NotebookEnvironment>
   listNotebooks(project: string): Promise<import('@odin/shared/notebooks').NotebookKernel[]>
   openNotebook(
     project: string,
     request: import('@odin/shared/notebooks').OpenNotebookRequest,
   ): Promise<import('@odin/shared/notebooks').NotebookKernel>
+  configureNotebook(
+    kernelId: string,
+    request: import('@odin/shared/notebooks').ConfigureNotebookKernelRequest,
+  ): Promise<import('@odin/shared/notebooks').NotebookKernel>
   getNotebook(kernelId: string): Promise<import('@odin/shared/notebooks').NotebookSnapshot>
   saveNotebook(
     kernelId: string,
     revision: string,
-    cells: import('@odin/shared/notebooks').NotebookCell[],
+    cells: import('@odin/shared/notebooks').NotebookCellEdit[],
   ): Promise<import('@odin/shared/notebooks').NotebookSnapshot>
   executeNotebook(
     kernelId: string,
     request: import('@odin/shared/notebooks').ExecuteCellRequest,
   ): Promise<import('@odin/shared/notebooks').NotebookExecution>
   notebookExecution(id: string): Promise<import('@odin/shared/notebooks').NotebookExecution>
+  waitNotebookExecution(
+    id: string,
+    signal?: AbortSignal,
+  ): Promise<import('@odin/shared/notebooks').NotebookExecution>
   interruptNotebook(kernelId: string): Promise<void>
+  restartNotebook(kernelId: string): Promise<void>
   stopNotebook(kernelId: string): Promise<void>
   removeNotebook(kernelId: string): Promise<void>
   notebookOutputUrl(kernelId: string, cellId: string, index: number): string
