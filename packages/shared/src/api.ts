@@ -255,7 +255,7 @@ export interface ProjectDetail extends ProjectSummary {
   context: ProjectContext;
   /** Earliest `createdAt` of the project's sessions (not archived, not side threads), or null when there are none. */
   firstSessionAt: string | null;
-  /** Latest `updatedAt` of the same sessions, or null. */
+  /** Latest run activity of the same sessions, or null. */
   lastSessionAt: string | null;
 }
 
@@ -597,6 +597,8 @@ export interface Session {
   createdAt: string;
   /** Last qualifying conversation activity. Null when there has been no activity to surface since import. */
   activityAt?: string | null;
+  /** Latest run activity, including for quiet imports. Null when no run time is known. */
+  lastRunAt?: string | null;
   /** Last record update, including metadata changes. */
   updatedAt: string;
   endedAt: string | null;

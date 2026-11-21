@@ -2,6 +2,7 @@
 // The session overview shown on hover: what it is, how it's going, and where it left off.
 import { computed, onMounted, shallowRef } from 'vue'
 import type { Session, SessionDetail } from '@odin/shared/api'
+import { lastRunAt } from '@odin/shared/session'
 import { IuBadge } from '@/components/Badge'
 import { IuIcon } from '@/components/Icon'
 import { IuFlock } from '@/components/Spinner'
@@ -60,11 +61,22 @@ const cost = computed(() => formatCost(metrics.value.costUsd))
       <span class="hc__title">{{ session.title }}</span>
     </header>
     <p class="hc__state">
-      <StatusWord :word="display.label" :since="`updated ${relativeTime(session.updatedAt)}`" />
+      <StatusWord
+        :word="display.label"
+        :since="lastRunAt(session) ? `last run ${relativeTime(lastRunAt(session) ?? '')}` : ''"
+      />
     </p>
     <p v-if="needs" class="hc__need">{{ needs }}</p>
 
     <dl class="hc__props">
+      <div>
+        <dt>Last updated</dt>
+        <dd>
+          <time :datetime="session.updatedAt" :title="session.updatedAt">{{
+            relativeTime(session.updatedAt)
+          }}</time>
+        </dd>
+      </div>
       <div>
         <dt><IuIcon name="folder" :size="14" /><span class="hc__sr">Project</span></dt>
         <dd>

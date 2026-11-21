@@ -28,10 +28,6 @@ export function activityAt(
   return session.activityAt === undefined ? session.updatedAt : session.activityAt
 }
 
-export function mostRecentActivityFirst(a: ReadableSession, b: ReadableSession): number {
-  return Date.parse(activityAt(b) ?? '') - Date.parse(activityAt(a) ?? '')
-}
-
 /** Records that `session` was opened at its current activity time. */
 export function markSeen(session: ReadableSession) {
   const at = activityAt(session)

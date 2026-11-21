@@ -346,7 +346,7 @@ Subagents (`invoke_subagent`) and background tasks map to Odin task activities. 
   `sync.status` and `activity`.
 - `ProjectSummary.activity`: 14 numbers, sessions with any activity per local calendar day for the last 14 days,
   oldest first, today last (`metrics.sessionsPerDay(name, 14)`, the `sessions` column of `metrics.activity`).
-- `ProjectDetail.firstSessionAt` / `lastSessionAt`: earliest `createdAt` and latest `updatedAt` of the project's
+- `ProjectDetail.firstSessionAt` / `lastSessionAt`: earliest `createdAt` and latest `lastRunAt` of the project's
   sessions counted by `sessions.counts` (working project or in `projects[]`, not archived, not side threads); null
   when there are none. Only on `ProjectDetail`, not in the project list.
 - **Branches** (`GET /api/projects/:name/branches` → `ProjectBranch[]`, `ProjectsService.branches`): every local
@@ -583,6 +583,10 @@ AppSettings.defaultWorktree`.
   metadata edits. `activityAt: null` means there is no activity to surface, including on initial history import.
   The web client stores the last opened activity timestamp locally and falls back to `updatedAt` for older servers
   that omit `activityAt`. Existing sessions retain their previous `updatedAt` as the starting value on upgrade.
+- **Recency**: `Session.lastRunAt` records the latest known run activity, including quiet imported history.
+  Metadata edits can advance `updatedAt` while `lastRunAt` stays fixed. Discovery uses the native timestamp when
+  importing historical sessions. Existing rows use the best timestamp already stored. A null last-run time means
+  no run time is known. The session list sorts by last run, then creation time; `since` still filters by `updatedAt`.
 - `counts(project?)`: running, waiting, total (not archived).
 
 ### Continuity and limits
@@ -1318,7 +1322,7 @@ The main routes; each module's `routes.ts` has the full list. All JSON. Errors: 
 | GET `/api/projects/:name/branches` | `ProjectBranch[]` |
 | GET `/api/projects/:name/worktrees` | `ProjectWorktrees` (checkout + worktrees with status, merged and sessions) |
 | DELETE `/api/projects/:name/worktrees` (`RemoveWorktreeRequest`) | 204; 400 not a Odin worktree of the project; 409 a live session's cwd is inside it, or the tree is dirty |
-| GET `/api/sessions?project=&state=a,b&tag=&model=&origin=&q=&archived=&pinned=&since=&limit=` | `Session[]` (newest `updatedAt` first; `archived` defaults to false) |
+| GET `/api/sessions?project=&state=a,b&tag=&model=&origin=&q=&archived=&pinned=&since=&limit=` | `Session[]` (newest `lastRunAt` first; `archived` defaults to false) |
 | POST `/api/sessions` (`StartSessionRequest`) | `Session` (201) |
 | GET `/api/sessions/:id` | `SessionDetail` |
 | PATCH `/api/sessions/:id` (`UpdateSessionRequest`) | `Session` |

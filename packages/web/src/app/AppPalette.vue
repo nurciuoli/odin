@@ -7,6 +7,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { HarnessInfo, ProjectMapFile, Session } from '@odin/shared/api'
+import { lastRunAt } from '@odin/shared/session'
 import type { GitBranch, GitStash } from '@odin/shared/git'
 import { useApi } from '@/api'
 import { IuCommandPalette, type CommandItem, type CommandSource } from '@/components/CommandPalette'
@@ -78,12 +79,13 @@ const GROUPS: Partial<Record<Session['state'], string>> = {
   running: SESSION_DISPLAY.running.label,
 }
 function sessionItem(s: Session, group?: string): CommandItem {
+  const age = relativeTime(lastRunAt(s) ?? '')
   return {
     id: `session:${s.id}`,
     label: s.title,
     detail: sessionPlace(s, projectTitle(s.project)),
     icon: SESSION_DISPLAY[s.state].icon,
-    hint: `${SESSION_DISPLAY[s.state].label} · ${relativeTime(s.updatedAt)}`,
+    hint: [SESSION_DISPLAY[s.state].label, age].filter(Boolean).join(' · '),
     group: group ?? GROUPS[s.state] ?? 'Recent',
   }
 }

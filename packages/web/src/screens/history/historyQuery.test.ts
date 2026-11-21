@@ -70,6 +70,14 @@ describe('History filtering', () => {
       now,
     )
     expect(recent.every(s => now - Date.parse(s.updatedAt) <= 3_600_000)).toBe(true)
+    const edited = {
+      ...sessions[0]!,
+      updatedAt: new Date(now).toISOString(),
+      lastRunAt: new Date(now - 7_200_000).toISOString(),
+    }
+    const value = { n: 1, unit: 'hours' }
+    expect(applyClauses([edited], [{ key: 'lastRun', op: 'inLast', value }], now)).toEqual([])
+    expect(applyClauses([edited], [{ key: 'updated', op: 'inLast', value }], now)).toEqual([edited])
     expect(applyClauses(sessions, [{ key: 'state', op: 'is', value: null }])).toHaveLength(
       sessions.length,
     )
@@ -84,6 +92,7 @@ describe('History filtering', () => {
       'tag',
       'model',
       'origin',
+      'lastRun',
       'updated',
     ])
     expect(fields.find(f => f.key === 'model')!.options!.length).toBeGreaterThan(0)

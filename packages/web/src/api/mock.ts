@@ -44,7 +44,14 @@ import { PROJECT_NAME_PATTERN } from '@odin/shared/labels'
 import { SECRET_NAME_PATTERN, secretRefs } from '@odin/shared/library'
 import { normaliseModel } from '@odin/shared/pricing'
 import { applyHarnessEvent, toolResult } from '@odin/shared/transcript'
-import { emptyMetrics, LOW_CONFIDENCE_N, sessionBranch, slugify } from '@odin/shared/session'
+import {
+  emptyMetrics,
+  lastRunAt,
+  LOW_CONFIDENCE_N,
+  mostRecentRunFirst,
+  sessionBranch,
+  slugify,
+} from '@odin/shared/session'
 import type { Api } from './types'
 import { MOCK_FILE_MAP, mockFileText } from './mock.filemap'
 import { createFixtures, fakeHash, fakeUuid, localDay, type Fixtures } from './fixtures'
@@ -523,8 +530,13 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
   }
   const detail = (p: ProjectDetail): ProjectDetail => ({ ...p, ...summary(p) })
 
-  function touch(s: Session, patch: Partial<Session> = {}) {
-    Object.assign(s, patch, { updatedAt: nowIso() })
+  function touch(s: Session, patch: Partial<Session> = {}, ran = false) {
+    const at = nowIso()
+    Object.assign(s, patch, {
+      updatedAt: at,
+      activityAt: ran ? at : s.activityAt === undefined ? s.updatedAt : s.activityAt,
+      lastRunAt: ran ? at : lastRunAt(s),
+    })
     emit({ type: 'session.updated', session: s })
     emit({ type: 'project.updated', project: s.project })
   }
@@ -551,15 +563,19 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
     emit({ type: 'session.event', sessionId, event })
     switch (event.type) {
       case 'state':
-        touch(s, {
-          state: event.state,
-          waitingFor:
-            event.state === 'waiting'
-              ? pending[0]?.kind === 'question'
-                ? 'question'
-                : 'permission'
-              : null,
-        })
+        touch(
+          s,
+          {
+            state: event.state,
+            waitingFor:
+              event.state === 'waiting'
+                ? pending[0]?.kind === 'question'
+                  ? 'question'
+                  : 'permission'
+                : null,
+          },
+          event.state === 'running',
+        )
         if (event.state === 'idle') pumpQueue(sessionId)
         break
       case 'permission.request':
@@ -619,10 +635,11 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
         }
         s.metrics.turns++
         s.metrics.activeMs = (s.metrics.activeMs ?? 0) + event.durationMs
-        touch(s)
+        touch(s, {}, true)
         break
       case 'entry':
         if (event.entry.kind === 'tool') s.metrics.toolCalls++
+        touch(s, {}, true)
         break
       case 'model':
         touch(s, { model: event.model })
@@ -776,6 +793,8 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
       pull: null,
       createdAt: nowIso(),
       updatedAt: nowIso(),
+      activityAt: null,
+      lastRunAt: null,
       endedAt: null,
       error: null,
       metrics: emptyMetrics(),
@@ -1298,7 +1317,7 @@ export function createMockApi(options: MockApiOptions = {}): MockApi {
         if (filter.archived === undefined && filter.q) delete (f as SessionFilter).archived
         const list = db.sessions
           .filter(s => matches(s, f, firstPrompt(s.id)))
-          .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+          .sort(mostRecentRunFirst)
         return f.limit ? list.slice(0, f.limit) : list
       }),
     getSession: id =>

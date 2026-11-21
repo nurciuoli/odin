@@ -93,13 +93,13 @@ function foreign(services: Services, name: string): Pick<ProjectDetail, "session
   return { sessions: services.sessions.counts(name), sync: services.sync.status(name), activity };
 }
 
-/** Earliest createdAt and latest updatedAt of the sessions `sessions.counts` counts (not archived, not side threads). */
+/** Earliest creation and latest run of the sessions `sessions.counts` counts. */
 function sessionSpan(services: Services, name: string): Pick<ProjectDetail, "firstSessionAt" | "lastSessionAt"> {
   const sessions = services.sessions.list({ project: name, archived: false, limit: 1_000_000 });
   let first: string | null = null, last: string | null = null;
   for (const s of sessions) {
     if (first === null || Date.parse(s.createdAt) < Date.parse(first)) first = s.createdAt;
-    if (last === null || Date.parse(s.updatedAt) > Date.parse(last)) last = s.updatedAt;
+    if (s.lastRunAt && (last === null || s.lastRunAt > last)) last = s.lastRunAt;
   }
   return { firstSessionAt: first, lastSessionAt: last };
 }

@@ -5,6 +5,7 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import type { Session, SessionState } from '@odin/shared/api'
+import { lastRunAt, mostRecentRunFirst } from '@odin/shared/session'
 import { useApi } from '@/api'
 import { useProjects } from '@/app/projects'
 import { IuBadge } from '@/components/Badge'
@@ -51,6 +52,7 @@ type Row = {
   agent: string
   template: string
   updatedAt: string
+  lastRunAt: string
   cost: number | null
   tokensOut: number
   actions: string
@@ -64,7 +66,7 @@ const titleOf = (name: string) => projects.projects.value.find(p => p.name === n
 const rows = computed<Row[]>(() =>
   props.sessions
     .slice()
-    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt))
+    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || mostRecentRunFirst(a, b))
     .map(s => ({
       id: s.id,
       title: s.title,
@@ -74,6 +76,7 @@ const rows = computed<Row[]>(() =>
       agent: s.agent ?? '',
       template: s.templateId ?? '',
       updatedAt: s.updatedAt,
+      lastRunAt: lastRunAt(s) ?? '',
       cost: s.metrics.costUsd,
       tokensOut: s.metrics.tokens.output,
       actions: '',
@@ -92,7 +95,8 @@ const columns = computed<Column<Row>[]>(() => {
     { key: 'project', header: 'Projects', sortable: true, width: '160px' },
     { key: 'state', header: 'State', sortable: true, width: '136px' },
     { key: 'model', header: 'Model', sortable: true, width: '150px' },
-    { key: 'updatedAt', header: 'Updated', sortable: true, width: '110px' },
+    { key: 'lastRunAt', header: 'Last run', sortable: true, width: '110px' },
+    { key: 'updatedAt', header: 'Last updated', sortable: true, width: '120px' },
     { key: 'cost', header: 'Cost', sortable: true, numeric: true, align: 'end', width: '80px' },
     {
       key: 'tokensOut',
@@ -281,6 +285,12 @@ async function confirm() {
       </template>
       <template #cell:template="{ row }">
         <span v-if="row.template">{{ row.template }}</span>
+      </template>
+      <template #cell:lastRunAt="{ row }">
+        <time v-if="row.lastRunAt" :datetime="row.lastRunAt" :title="row.lastRunAt">{{
+          relativeTime(row.lastRunAt)
+        }}</time>
+        <span v-else>—</span>
       </template>
       <template #cell:updatedAt="{ row }">
         <time :datetime="row.updatedAt" :title="row.updatedAt">{{

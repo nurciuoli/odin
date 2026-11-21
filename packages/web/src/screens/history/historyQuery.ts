@@ -1,6 +1,7 @@
 // History's filter state as plain data: URL query ↔ FilterBar clauses, and which sessions a state lets through.
 // URL shape: `?q=slow&archived=1&f=state:is:failed,idle&f=updated:inLast:7 days` (key:op:value, values comma-joined).
 import type { Session } from '@odin/shared/api'
+import { lastRunAt } from '@odin/shared/session'
 import type { Clause, FieldDef, Op } from '@/components/FilterBar'
 import { SESSION_DISPLAY } from '@/screens/shared/format'
 
@@ -24,7 +25,7 @@ const OPS = new Set<Op>([
   'empty',
   'inLast',
 ])
-const KEYS = new Set(['project', 'state', 'tag', 'model', 'origin', 'updated'])
+const KEYS = new Set(['project', 'state', 'tag', 'model', 'origin', 'lastRun', 'updated'])
 const UNITS: Record<string, number> = { hours: 3_600_000, days: 86_400_000, weeks: 7 * 86_400_000 }
 
 const asList = (v: Query[string]): string[] =>
@@ -130,7 +131,8 @@ export function filterFields(sessions: Session[], projects: { name: string; titl
         { value: 'external', label: 'Terminal' },
       ],
     },
-    { key: 'updated', label: 'Updated', type: 'date' },
+    { key: 'lastRun', label: 'Last run', type: 'date' },
+    { key: 'updated', label: 'Last updated', type: 'date' },
   ]
   return fields
 }
@@ -152,9 +154,10 @@ function valuesOf(s: Session, key: string): string[] {
   }
 }
 
-function dateClausePasses(s: Session, c: Clause, now: number): boolean {
-  const at = Date.parse(s.updatedAt)
-  if (c.op === 'empty') return false
+function dateClausePasses(value: string | null, c: Clause, now: number): boolean {
+  const at = Date.parse(value ?? '')
+  if (c.op === 'empty') return Number.isNaN(at)
+  if (Number.isNaN(at)) return false
   if (c.op === 'inLast') {
     const v = c.value as { n: number; unit: string }
     return at >= now - v.n * (UNITS[v.unit] ?? UNITS.days!)
@@ -166,7 +169,8 @@ function dateClausePasses(s: Session, c: Clause, now: number): boolean {
 
 export function clausePasses(s: Session, c: Clause, now = Date.now()): boolean {
   if (c.value === null) return true // not finished: constrains nothing yet
-  if (c.key === 'updated') return dateClausePasses(s, c, now)
+  if (c.key === 'lastRun') return dateClausePasses(lastRunAt(s), c, now)
+  if (c.key === 'updated') return dateClausePasses(s.updatedAt, c, now)
   const have = valuesOf(s, c.key)
   if (c.op === 'empty') return have.length === 0
   const want = (Array.isArray(c.value) ? c.value : [c.value]).map(String)

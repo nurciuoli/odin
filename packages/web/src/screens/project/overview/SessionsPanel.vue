@@ -4,6 +4,7 @@
 import { computed, ref, watch } from 'vue'
 import type { PermissionRequest } from '@odin/shared/harness'
 import type { Session } from '@odin/shared/api'
+import { lastRunAt, mostRecentRunFirst } from '@odin/shared/session'
 import { useApi } from '@/api'
 import { IuButton } from '@/components/Button'
 import { IuFlock } from '@/components/Spinner'
@@ -29,7 +30,7 @@ const LIMIT = 6
 const latest = computed(() =>
   (props.sessions ?? [])
     .filter(s => !s.archived && !s.aside)
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .sort(mostRecentRunFirst)
     .slice(0, LIMIT),
 )
 
@@ -126,9 +127,11 @@ const rows = computed<Row[]>(() =>
               <IuStatusDot :status="SESSION_DISPLAY[row.session.state].status" decorative />
               <span
                 >{{ SESSION_DISPLAY[row.session.state].label }}
-                <time :datetime="row.session.updatedAt">{{
-                  relativeTime(row.session.updatedAt)
-                }}</time></span
+                <time
+                  v-if="lastRunAt(row.session)"
+                  :datetime="lastRunAt(row.session) ?? undefined"
+                  >{{ relativeTime(lastRunAt(row.session) ?? '') }}</time
+                ></span
               >
             </template>
           </span>

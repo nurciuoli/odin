@@ -1,5 +1,15 @@
 // Session states and metrics helpers. Core enforces the state rules; web uses them to decide which actions to offer.
-import type { SessionMetrics, SessionState } from "./api.ts";
+import type { Session, SessionMetrics, SessionState } from "./api.ts";
+
+/** Use the activity timestamp when connected to an older server. */
+export function lastRunAt(session: Pick<Session, "lastRunAt" | "activityAt" | "updatedAt" | "createdAt">): string | null {
+  if (session.lastRunAt !== undefined) return session.lastRunAt;
+  return session.activityAt === undefined ? session.updatedAt : session.activityAt ?? session.createdAt;
+}
+
+export function mostRecentRunFirst(a: Session, b: Session): number {
+  return (lastRunAt(b) ?? "").localeCompare(lastRunAt(a) ?? "") || b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id);
+}
 
 /** States in which the harness may still produce events. */
 export const LIVE_SESSION_STATES: SessionState[] = ["running", "waiting"];
