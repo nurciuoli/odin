@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>dev.odin.core</string>
+  <key>UserName</key><string>__USER__</string>
+  <key>GroupName</key><string>__GROUP__</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE__</string>
+    <string>--env-file-if-exists=__HOME__/.odin.env</string>
+    <string>packages/core/src/index.ts</string>
+  </array>
+  <key>WorkingDirectory</key><string>__HOME__/odin-app</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key><string>__HOME__</string>
+    <key>USER</key><string>__USER__</string>
+    <key>PATH</key><string>__PATH__</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>StandardOutPath</key><string>__HOME__/.odin-logs/core.log</string>
+  <key>StandardErrorPath</key><string>__HOME__/.odin-logs/core.log</string>
+</dict>
+</plist>

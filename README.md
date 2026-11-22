@@ -115,6 +115,7 @@ For the desktop app, build it from source with `yarn build:desktop` (Windows; se
 - [Architecture](docs/architecture.md): how the pieces fit.
 - [Development](docs/development.md): setup, running, testing, environment variables.
 - [Desktop shell](docs/desktop.md): the Electron app and packaging.
+- [Hosting](docs/hosting.md): run Odin on an always-on computer and use it from other devices over Tailscale.
 - [Contracts](docs/contracts.md): the API, events, harness and security rules.
 
 ## Contributing

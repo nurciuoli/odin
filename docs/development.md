@@ -55,6 +55,8 @@ Set `NODE_DEBUG=odin-discovery` to log session discovery time and listed and imp
 | `ODIN_ALLOWED_LOGIN` | With Tailscale Serve: the one Tailscale login allowed in. |
 | `GITHUB_TOKEN` | Optional, for reading pull requests. Falls back to `gh auth token`. |
 
+To run core on an always-on computer behind Tailscale Serve, see [hosting.md](hosting.md).
+
 ## Check
 
 `yarn typecheck` and `yarn test` must pass for every change; `yarn verify:web` too if you touched `packages/web`

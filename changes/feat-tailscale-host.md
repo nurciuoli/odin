@@ -1,0 +1,1 @@
+- Odin can run on an always-on computer and be used from your phone or other devices over Tailscale. `docs/hosting.md` and the `deploy/` scripts cover setting up the host, deploying to it from Windows, macOS or Linux, exposing it with Tailscale Serve, and keeping it running after reboots.

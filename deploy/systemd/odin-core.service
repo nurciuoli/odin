@@ -1,0 +1,18 @@
+# Linux user unit for Odin core. Install as the odin user (see docs/hosting.md):
+#   mkdir -p ~/.config/systemd/user && cp ~/odin-app/deploy/systemd/odin-core.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now odin-core
+#   sudo loginctl enable-linger odin     # start at boot without a login
+# node must be on the PATH below. With nvm or fnm, add its bin folder to PATH.
+[Unit]
+Description=Odin core
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/odin-app
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/env node --env-file-if-exists=%h/.odin.env packages/core/src/index.ts
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
